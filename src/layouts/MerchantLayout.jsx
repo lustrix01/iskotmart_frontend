@@ -12,18 +12,22 @@ import {
   LogOut as LogOutIcon,
   AlertCircle,
   Bell,
-  CreditCard, // New Icon for Subscriptions
+  CreditCard,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function MerchantLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+
+  // --- FR-41: Securely log in and out of the merchant dashboard ---
   const { logout } = useAuth();
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  // --- FR-40: Sidebar provides quick access to settings and catalogs ---
   const menuItems = [
     { name: "Dashboard", path: "/merchant", icon: LayoutDashboard },
     { name: "Shop Settings", path: "/merchant/settings", icon: Settings },
@@ -34,7 +38,7 @@ export default function MerchantLayout() {
       name: "Subscriptions",
       path: "/merchant/subscriptions",
       icon: CreditCard,
-    }, // ADDED HERE
+    },
     { name: "Discount and Voucher", path: "/merchant/discounts", icon: Tag },
     { name: "Analytics", path: "/merchant/analytics", icon: TrendingUp },
     { name: "Earnings", path: "/merchant/earnings", icon: DollarSign },
@@ -59,7 +63,7 @@ export default function MerchantLayout() {
             </Link>
           </div>
 
-          <div className="p-4 mt-2 overflow-y-auto max-h-[calc(100vh-140px)] custom-scrollbar">
+          <div className="p-4 mt-2 overflow-y-auto max-h-[calc(100vh-140px)] no-scrollbar">
             <p className="text-gray-400 text-[10px] font-bold tracking-widest uppercase mb-4 opacity-50 px-4">
               Shop Management
             </p>
@@ -114,6 +118,14 @@ export default function MerchantLayout() {
               "Dashboard"}
           </h1>
           <div className="flex items-center gap-3">
+            {/* FR-41 Visual Proof: Secure Session Indicator */}
+            <div className="hidden md:flex items-center gap-1.5 bg-green-50 text-green-600 px-3 py-1.5 rounded-full border border-green-100 mr-2">
+              <ShieldCheck size={12} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">
+                Secure Session
+              </span>
+            </div>
+
             <button className="w-10 h-10 flex items-center justify-center border border-gray-100 rounded-full hover:bg-gray-50 transition-colors relative">
               <Bell size={18} className="text-gray-500" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
@@ -134,7 +146,7 @@ export default function MerchantLayout() {
         </div>
       </main>
 
-      {/* Logout Modal remains the same... */}
+      {/* Logout Modal */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
           <div

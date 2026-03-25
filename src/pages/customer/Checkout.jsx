@@ -16,7 +16,9 @@ import {
   MessageSquare,
   ShieldCheck,
   X,
-  Handshake, // Added for Meetup icon
+  Handshake,
+  Save,
+  Receipt,
 } from "lucide-react";
 
 export default function Checkout() {
@@ -24,22 +26,49 @@ export default function Checkout() {
   const navigate = useNavigate();
   const type = searchParams.get("type") || "product";
 
+  // --- FR-28 & FR-29: Choose payment options, including COD ---
   const [deliveryMethod, setDeliveryMethod] = useState("standard");
   const [paymentMethod, setPaymentMethod] = useState("cod");
+
   const [showSuccess, setShowSuccess] = useState(false);
   const [showGCashModal, setShowGCashModal] = useState(false);
   const [isProcessingGCash, setIsProcessingGCash] = useState(false);
 
+  const [orderNumber, setOrderNumber] = useState("");
+
+  // --- FR-31: Mark orders as paid or unpaid ---
+  const [paymentStatus, setPaymentStatus] = useState("Unpaid");
+
+  // FR-21: Collect customer shipping and contact information
+  const [isEditing, setIsEditing] = useState(false);
+  const [addressData, setAddressData] = useState({
+    name: "Owhie Lumbang",
+    phone: "09564499020",
+    label: "Home",
+    address:
+      "BRGY 38 GOGON LEGAZPI CITY 1035, Bgy. 38 - Gogon (Bgy. 54), Legazpi, Albay",
+  });
+
+  const [serviceData, setServiceData] = useState({
+    deadline: "March 30, 2026",
+    complexity: "Premium Branding",
+  });
+
   // Price Calculation Logic
   const subtotal = 1903.3;
-  const shippingFee = deliveryMethod === "standard" ? 50.0 : 0.0;
+  const shippingFee =
+    deliveryMethod === "standard" && type === "product" ? 50.0 : 0.0;
   const total = subtotal + shippingFee;
 
-  // Simulation handler for placing order
+  // --- FR-30: Record selected payment methods ---
   const handlePlaceOrder = () => {
     if (paymentMethod === "gcash") {
       setShowGCashModal(true);
     } else {
+      // For COD: Record as COD, Status is Unpaid
+      const newOrderNum = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+      setOrderNumber(newOrderNum);
+      setPaymentStatus("Unpaid");
       setShowSuccess(true);
     }
   };
@@ -50,13 +79,18 @@ export default function Checkout() {
     setTimeout(() => {
       setIsProcessingGCash(false);
       setShowGCashModal(false);
+
+      // For GCash: Record as GCash, Status is Paid
+      const newOrderNum = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+      setOrderNumber(newOrderNum);
+      setPaymentStatus("Paid");
       setShowSuccess(true);
     }, 2000);
   };
 
   return (
     <div className="bg-[#F5F7F9] min-h-screen pb-20 font-sans relative">
-      {/* 1. BREADCRUMBS */}
+      {/* BREADCRUMBS */}
       <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center gap-2 text-[11px] text-gray-400 font-bold tracking-wider">
         <Link to="/" className="hover:text-[#003366] transition-colors italic">
           Home
@@ -77,41 +111,145 @@ export default function Checkout() {
       <div className="max-w-[1400px] mx-auto px-6 flex flex-col lg:flex-row gap-8 items-start">
         {/* LEFT SIDE: DETAILS */}
         <div className="flex-grow w-full space-y-6">
-          {/* Section 1: Address or Requirements */}
-          <div className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden">
+          {/* Address / Requirements Collection */}
+          <div className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden transition-all">
             <div className="bg-gray-50/50 px-6 py-3 border-b border-gray-100 flex justify-between items-center">
               <h3 className="font-bold text-[#003366] text-[12px] tracking-wide">
                 {type === "product"
                   ? "Shipping address"
                   : "Service requirements"}
               </h3>
-              <button className="text-[10px] text-[#FF851B] font-bold hover:underline">
-                Edit
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className="text-[10px] text-[#FF851B] font-bold hover:underline flex items-center gap-1"
+              >
+                {isEditing ? (
+                  <>
+                    <Save size={12} /> Save
+                  </>
+                ) : (
+                  "Edit"
+                )}
               </button>
             </div>
+
             <div className="p-6">
               {type === "product" ? (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="font-bold text-gray-800 text-sm">
-                      Owhie Lumbang
-                    </span>
-                    <span className="text-gray-400 font-bold text-xs border-l pl-3">
-                      09564499020
-                    </span>
+                isEditing ? (
+                  <div className="space-y-3 animate-in fade-in">
+                    <div className="flex gap-3">
+                      <input
+                        type="text"
+                        value={addressData.name}
+                        onChange={(e) =>
+                          setAddressData({
+                            ...addressData,
+                            name: e.target.value,
+                          })
+                        }
+                        className="flex-1 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+                        placeholder="Full Name"
+                      />
+                      <input
+                        type="text"
+                        value={addressData.phone}
+                        onChange={(e) =>
+                          setAddressData({
+                            ...addressData,
+                            phone: e.target.value,
+                          })
+                        }
+                        className="flex-1 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+                        placeholder="Phone Number"
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <input
+                        type="text"
+                        value={addressData.label}
+                        onChange={(e) =>
+                          setAddressData({
+                            ...addressData,
+                            label: e.target.value,
+                          })
+                        }
+                        className="w-1/3 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+                        placeholder="Label (e.g. Home)"
+                      />
+                      <input
+                        type="text"
+                        value={addressData.address}
+                        onChange={(e) =>
+                          setAddressData({
+                            ...addressData,
+                            address: e.target.value,
+                          })
+                        }
+                        className="w-2/3 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+                        placeholder="Full Address"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-[#FF851B] text-white text-[9px] font-bold px-2 py-0.5 rounded-sm mt-1">
-                      Home
-                    </span>
-                    <p className="text-gray-500 text-xs leading-relaxed">
-                      BRGY 38 GOGON LEGAZPI CITY 1035, Bgy. 38 - Gogon (Bgy.
-                      54), Legazpi, Albay
-                    </p>
+                ) : (
+                  <div className="space-y-1 animate-in fade-in">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="font-bold text-gray-800 text-sm">
+                        {addressData.name}
+                      </span>
+                      <span className="text-gray-400 font-bold text-xs border-l pl-3">
+                        {addressData.phone}
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="bg-[#FF851B] text-white text-[9px] font-bold px-2 py-0.5 rounded-sm mt-1 uppercase tracking-wider">
+                        {addressData.label}
+                      </span>
+                      <p className="text-gray-500 text-xs leading-relaxed">
+                        {addressData.address}
+                      </p>
+                    </div>
+                  </div>
+                )
+              ) : isEditing ? (
+                <div className="grid grid-cols-2 gap-6 animate-in fade-in">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-gray-400 font-bold">
+                      Target deadline
+                    </label>
+                    <input
+                      type="date"
+                      value="2026-03-30"
+                      onChange={(e) =>
+                        setServiceData({
+                          ...serviceData,
+                          deadline: e.target.value,
+                        })
+                      }
+                      className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-gray-400 font-bold">
+                      Complexity
+                    </label>
+                    <select
+                      value={serviceData.complexity}
+                      onChange={(e) =>
+                        setServiceData({
+                          ...serviceData,
+                          complexity: e.target.value,
+                        })
+                      }
+                      className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+                    >
+                      <option>Basic Design</option>
+                      <option>Premium Branding</option>
+                      <option>Full Agency Setup</option>
+                    </select>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-6 animate-in fade-in">
                   <div className="flex items-center gap-3">
                     <Calendar className="text-[#0074D9]" size={18} />
                     <div>
@@ -119,7 +257,7 @@ export default function Checkout() {
                         Target deadline
                       </p>
                       <p className="text-xs font-bold text-gray-700">
-                        March 30, 2026
+                        {serviceData.deadline}
                       </p>
                     </div>
                   </div>
@@ -130,7 +268,7 @@ export default function Checkout() {
                         Complexity
                       </p>
                       <p className="text-xs font-bold text-gray-700">
-                        Premium Branding
+                        {serviceData.complexity}
                       </p>
                     </div>
                   </div>
@@ -139,7 +277,7 @@ export default function Checkout() {
             </div>
           </div>
 
-          {/* Section 2: Methods */}
+          {/* Delivery Methods */}
           <div className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden">
             <div className="bg-gray-50/50 px-6 py-3 border-b border-gray-100">
               <h3 className="font-bold text-[#003366] text-[12px] tracking-wide">
@@ -147,7 +285,6 @@ export default function Checkout() {
               </h3>
             </div>
             <div className="p-6 space-y-3">
-              {/* CHOICE 1: Standard */}
               <MethodCard
                 id="standard"
                 selected={deliveryMethod === "standard"}
@@ -164,7 +301,6 @@ export default function Checkout() {
                 price={type === "product" ? "₱50.0" : "₱0.0"}
               />
 
-              {/* CHOICE 2: Meetup (Now integrated for both types) */}
               <MethodCard
                 id="pickup"
                 selected={deliveryMethod === "pickup"}
@@ -181,7 +317,6 @@ export default function Checkout() {
                 price="₱0.0"
               />
 
-              {/* CONTEXTUAL ALERT FOR MEETUP */}
               {deliveryMethod === "pickup" && (
                 <div className="mt-4 p-4 bg-blue-50/50 border border-blue-100 rounded-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-1">
                   <MessageSquare
@@ -193,10 +328,9 @@ export default function Checkout() {
                       IskoChat Coordination Required
                     </p>
                     <p className="text-[10px] text-gray-500 leading-relaxed mt-0.5">
-                      You have selected <b>Meetup</b>. Please ensure you
-                      coordinate with the student merchant through IskoChat to
-                      agree on the specific college, building, or landmark for
-                      the hand-over.
+                      You have selected <b>Meetup</b>. Please coordinate with
+                      the student merchant through IskoChat to agree on the
+                      specific college, building, or landmark for the hand-over.
                     </p>
                   </div>
                 </div>
@@ -204,7 +338,7 @@ export default function Checkout() {
             </div>
           </div>
 
-          {/* Section 3: Payment */}
+          {/* FR-28 & FR-29: Payment Methods */}
           <div className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden">
             <div className="bg-gray-50/50 px-6 py-3 border-b border-gray-100">
               <h3 className="font-bold text-[#003366] text-[12px] tracking-wide">
@@ -248,14 +382,20 @@ export default function Checkout() {
                 <div key={i} className="flex gap-4 items-center">
                   <div className="w-12 h-12 bg-gray-50 border border-gray-100 rounded-sm overflow-hidden shrink-0">
                     <img
-                      src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=100"
+                      src={
+                        type === "product"
+                          ? "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=100"
+                          : "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=100"
+                      }
                       className="w-full h-full object-cover"
                       alt="item"
                     />
                   </div>
                   <div className="flex-grow">
                     <p className="text-[10px] font-bold text-gray-700 truncate">
-                      BU Canvas Tote Bag - Isko Originals
+                      {type === "product"
+                        ? "BU Canvas Tote Bag - Isko Originals"
+                        : "Professional Logo Design"}
                     </p>
                     <p className="text-[9px] text-gray-400 font-semibold">
                       Qty: 1 x ₱{subtotal / 2}
@@ -276,7 +416,9 @@ export default function Checkout() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Shipping / Meetup fee</span>
+                <span>
+                  {type === "product" ? "Shipping / Meetup fee" : "Service Fee"}
+                </span>
                 <span className="text-gray-700 font-bold">
                   ₱{shippingFee.toFixed(1)}
                 </span>
@@ -378,7 +520,7 @@ export default function Checkout() {
         </div>
       )}
 
-      {/* SUCCESS POPUP MODAL */}
+      {/* SUCCESS POPUP MODAL / RECEIPT (FR-30 & FR-31 Displayed Here) */}
       {showSuccess && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
           <div
@@ -393,11 +535,46 @@ export default function Checkout() {
               <h2 className="text-2xl font-bold text-[#003366] mb-2 tracking-tight">
                 Order placed successfully!
               </h2>
-              <p className="text-gray-500 text-sm mb-10 leading-relaxed px-4">
-                Thank you! Your order has been received.{" "}
+
+              {/* Order Receipt Details: Demonstrates FR-30 & FR-31 */}
+              <div className="bg-gray-50 rounded-md p-4 mt-4 mb-6 border border-gray-100 text-left">
+                <div className="flex items-center gap-2 mb-3 border-b border-gray-200 pb-2">
+                  <Receipt size={16} className="text-gray-400" />
+                  <span className="text-[11px] font-bold text-gray-600 uppercase tracking-widest">
+                    Order Details Recorded
+                  </span>
+                </div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Order Ref:</span>
+                    <span className="font-bold text-gray-800">
+                      {orderNumber}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Payment Method:</span>
+                    {/* Shows the recorded method (FR-30) */}
+                    <span className="font-bold text-gray-800">
+                      {paymentMethod === "gcash" ? "GCash" : "Cash on Delivery"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Payment Status:</span>
+                    {/* Shows Paid vs Unpaid (FR-31) */}
+                    <span
+                      className={`font-black uppercase text-[10px] px-2 py-0.5 rounded-sm ${paymentStatus === "Paid" ? "bg-green-100 text-green-700" : "bg-orange-100 text-[#FF851B]"}`}
+                    >
+                      {paymentStatus}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-gray-500 text-sm mb-8 leading-relaxed px-2">
+                Thank you!{" "}
                 {deliveryMethod === "pickup"
                   ? "Please check your IskoChat to finalize the meetup details with the student merchant."
-                  : "Your items will be delivered to your address soon."}
+                  : "Your items will be processed soon."}
               </p>
 
               <div className="space-y-3">

@@ -7,20 +7,22 @@ import {
   Filter,
   Edit3,
   Trash2,
-  MoreVertical,
   X,
   Image as ImageIcon,
   Check,
+  AlertCircle, // Added AlertCircle for the delete modal
 } from "lucide-react";
 
 export default function MerchantProducts() {
   const [activeTab, setActiveTab] = useState("products");
   const [searchTerm, setSearchTerm] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
 
-  // Mock Data
-  const [products] = useState([
+  // --- MODAL STATES ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null); // New state for delete confirmation
+
+  // --- STATEFUL MOCK DATA ---
+  const [products, setProducts] = useState([
     {
       id: "P001",
       name: "Premium Campus Sandwich",
@@ -50,7 +52,7 @@ export default function MerchantProducts() {
     },
   ]);
 
-  const [services] = useState([
+  const [services, setServices] = useState([
     {
       id: "S001",
       name: "Graphic Design Service",
@@ -73,14 +75,104 @@ export default function MerchantProducts() {
 
   const currentItems = activeTab === "products" ? products : services;
 
+  // --- FORM STATE ---
+  const [editingItem, setEditingItem] = useState(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    category: "Food",
+    price: 0,
+    stock: 0,
+    rate: "Per Hour",
+    status: "Active",
+    img: "",
+  });
+
   const handleOpenModal = (item = null) => {
-    setEditingItem(item);
+    if (item) {
+      setFormData(item);
+      setEditingItem(item);
+    } else {
+      setFormData({
+        name: "",
+        category: activeTab === "products" ? "Food" : "Creative",
+        price: 0,
+        stock: 0,
+        rate: "Per Hour",
+        status: "Active",
+        img: "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=150",
+      });
+      setEditingItem(null);
+    }
     setIsModalOpen(true);
   };
 
+  // --- FR-42 (Add), FR-44 (Edit Details), FR-45 (Set Price) ---
+  const handleSave = () => {
+    if (activeTab === "products") {
+      if (editingItem) {
+        setProducts(
+          products.map((p) =>
+            p.id === editingItem.id
+              ? {
+                  ...formData,
+                  id: editingItem.id,
+                  stock: Number(formData.stock),
+                  price: Number(formData.price),
+                }
+              : p,
+          ),
+        );
+      } else {
+        const newId = `P00${products.length + 1}`;
+        setProducts([
+          ...products,
+          {
+            ...formData,
+            id: newId,
+            stock: Number(formData.stock),
+            price: Number(formData.price),
+          },
+        ]);
+      }
+    } else {
+      if (editingItem) {
+        setServices(
+          services.map((s) =>
+            s.id === editingItem.id
+              ? {
+                  ...formData,
+                  id: editingItem.id,
+                  price: Number(formData.price),
+                }
+              : s,
+          ),
+        );
+      } else {
+        const newId = `S00${services.length + 1}`;
+        setServices([
+          ...services,
+          { ...formData, id: newId, price: Number(formData.price) },
+        ]);
+      }
+    }
+    setIsModalOpen(false);
+  };
+
+  // --- FR-43: Custom Delete Confirmation Logic ---
+  const confirmDelete = () => {
+    if (itemToDelete) {
+      if (activeTab === "products") {
+        setProducts(products.filter((p) => p.id !== itemToDelete.id));
+      } else {
+        setServices(services.filter((s) => s.id !== itemToDelete.id));
+      }
+      setItemToDelete(null); // Close the modal
+    }
+  };
+
   return (
-    <div className="animate-in fade-in duration-500 max-w-7xl mx-auto space-y-6">
-      {/* --- HEADER --- */}
+    <div className="animate-in fade-in duration-500 max-w-7xl mx-auto space-y-6 relative">
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-[#003366]">
@@ -99,7 +191,7 @@ export default function MerchantProducts() {
         </button>
       </div>
 
-      {/* --- TABS & SEARCH --- */}
+      {/* TABS & SEARCH */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col lg:flex-row justify-between items-center gap-4">
         <div className="flex bg-gray-50 p-1 rounded-xl w-full lg:w-auto">
           <button
@@ -136,7 +228,7 @@ export default function MerchantProducts() {
         </div>
       </div>
 
-      {/* --- TABLE --- */}
+      {/* TABLE */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[900px]">
@@ -153,81 +245,85 @@ export default function MerchantProducts() {
               </tr>
             </thead>
             <tbody className="text-xs font-medium text-gray-600">
-              {currentItems.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group"
-                >
-                  <td className="p-5 pl-8">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 border border-gray-100 shrink-0">
-                        <img
-                          src={item.img}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
+              {currentItems
+                .filter((item) =>
+                  item.name.toLowerCase().includes(searchTerm.toLowerCase()),
+                )
+                .map((item) => (
+                  <tr
+                    key={item.id}
+                    className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group"
+                  >
+                    <td className="p-5 pl-8">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 border border-gray-100 shrink-0">
+                          <img
+                            src={item.img}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div>
+                          <p className="font-bold text-[#003366] mb-0.5">
+                            {item.name}
+                          </p>
+                          <p className="text-[10px] text-gray-400 font-mono tracking-tighter uppercase">
+                            {item.id}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-[#003366] mb-0.5">
-                          {item.name}
-                        </p>
-                        <p className="text-[10px] text-gray-400 font-mono tracking-tighter uppercase">
-                          {item.id}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-5">
-                    <span className="px-3 py-1 bg-blue-50 text-[#0074D9] rounded-lg text-[10px] font-bold">
-                      {item.category}
-                    </span>
-                  </td>
-                  <td className="p-5 font-bold text-[#003366]">
-                    ₱{item.price.toLocaleString()}
-                  </td>
-                  <td className="p-5">
-                    {activeTab === "products" ? (
-                      <span
-                        className={`font-bold ${item.stock <= 5 ? "text-red-500" : "text-gray-500"}`}
-                      >
-                        {item.stock}{" "}
-                        <span className="text-[10px] font-normal text-gray-400 ml-1">
-                          units
-                        </span>
+                    </td>
+                    <td className="p-5">
+                      <span className="px-3 py-1 bg-blue-50 text-[#0074D9] rounded-lg text-[10px] font-bold">
+                        {item.category}
                       </span>
-                    ) : (
-                      <span className="text-gray-500">{item.rate}</span>
-                    )}
-                  </td>
-                  <td className="p-5">
-                    <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 w-fit ${
-                        item.status === "Active"
-                          ? "bg-green-50 text-green-600"
-                          : "bg-red-50 text-red-500"
-                      }`}
-                    >
-                      <div
-                        className={`w-1.5 h-1.5 rounded-full ${item.status === "Active" ? "bg-green-500" : "bg-red-500"}`}
-                      ></div>
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="p-5 pr-8 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => handleOpenModal(item)}
-                        className="p-2.5 text-gray-400 hover:text-[#0074D9] hover:bg-blue-50 rounded-xl transition-all"
+                    </td>
+                    <td className="p-5 font-bold text-[#003366]">
+                      ₱{item.price.toLocaleString()}
+                    </td>
+                    <td className="p-5">
+                      {activeTab === "products" ? (
+                        <span
+                          className={`font-bold ${item.stock <= 5 ? "text-red-500" : "text-gray-500"}`}
+                        >
+                          {item.stock}{" "}
+                          <span className="text-[10px] font-normal text-gray-400 ml-1">
+                            units
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">{item.rate}</span>
+                      )}
+                    </td>
+                    <td className="p-5">
+                      <span
+                        className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 w-fit ${item.status === "Active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}
                       >
-                        <Edit3 size={16} />
-                      </button>
-                      <button className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <div
+                          className={`w-1.5 h-1.5 rounded-full ${item.status === "Active" ? "bg-green-500" : "bg-red-500"}`}
+                        ></div>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="p-5 pr-8 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenModal(item)}
+                          className="p-2.5 text-gray-400 hover:text-[#0074D9] hover:bg-blue-50 rounded-xl transition-all"
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                        {/* --- Trigger Custom Delete Modal Here --- */}
+                        <button
+                          onClick={() => setItemToDelete(item)}
+                          className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -236,13 +332,10 @@ export default function MerchantProducts() {
       {/* --- ADD/EDIT MODAL (Slide-over Simulation) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex justify-end">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm animate-in fade-in"
             onClick={() => setIsModalOpen(false)}
           ></div>
-
-          {/* Modal Content */}
           <div className="relative w-full max-w-lg bg-white h-screen shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
               <h3 className="text-lg font-bold text-[#003366]">
@@ -265,10 +358,11 @@ export default function MerchantProducts() {
                   Item Image
                 </label>
                 <div className="w-full aspect-video rounded-2xl border-2 border-dashed border-gray-100 bg-gray-50 flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-gray-100 transition-all group">
-                  {editingItem ? (
+                  {formData.img ? (
                     <img
-                      src={editingItem.img}
+                      src={formData.img}
                       className="w-full h-full object-cover rounded-xl"
+                      alt="Preview"
                     />
                   ) : (
                     <>
@@ -291,7 +385,10 @@ export default function MerchantProducts() {
                   </label>
                   <input
                     type="text"
-                    defaultValue={editingItem?.name}
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
                     className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
                 </div>
@@ -301,16 +398,25 @@ export default function MerchantProducts() {
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
                       Category
                     </label>
-                    <select className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none">
-                      <option>Select Category</option>
-                      <option selected={editingItem?.category === "Food"}>
-                        Food
-                      </option>
-                      <option
-                        selected={editingItem?.category === "Electronics"}
-                      >
-                        Electronics
-                      </option>
+                    <select
+                      value={formData.category}
+                      onChange={(e) =>
+                        setFormData({ ...formData, category: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none"
+                    >
+                      {activeTab === "products" ? (
+                        <>
+                          <option>Food</option>
+                          <option>Electronics</option>
+                          <option>Apparel</option>
+                        </>
+                      ) : (
+                        <>
+                          <option>Creative</option>
+                          <option>Academics</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -319,7 +425,10 @@ export default function MerchantProducts() {
                     </label>
                     <input
                       type="number"
-                      defaultValue={editingItem?.price}
+                      value={formData.price}
+                      onChange={(e) =>
+                        setFormData({ ...formData, price: e.target.value })
+                      }
                       className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                     />
                   </div>
@@ -332,7 +441,10 @@ export default function MerchantProducts() {
                     </label>
                     <input
                       type="number"
-                      defaultValue={editingItem?.stock}
+                      value={formData.stock}
+                      onChange={(e) =>
+                        setFormData({ ...formData, stock: e.target.value })
+                      }
                       className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                     />
                   </div>
@@ -341,16 +453,35 @@ export default function MerchantProducts() {
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
                       Rate Type
                     </label>
-                    <select className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none">
-                      <option selected={editingItem?.rate === "Per Hour"}>
-                        Per Hour
-                      </option>
-                      <option selected={editingItem?.rate === "Per Project"}>
-                        Per Project
-                      </option>
+                    <select
+                      value={formData.rate}
+                      onChange={(e) =>
+                        setFormData({ ...formData, rate: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none"
+                    >
+                      <option>Per Hour</option>
+                      <option>Per Project</option>
                     </select>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
+                    Status
+                  </label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) =>
+                      setFormData({ ...formData, status: e.target.value })
+                    }
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none"
+                  >
+                    <option>Active</option>
+                    <option>Out of Stock</option>
+                    <option>Hidden</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -361,10 +492,54 @@ export default function MerchantProducts() {
               >
                 Cancel
               </button>
-              <button className="flex-1 py-3.5 rounded-xl text-xs font-bold text-white bg-[#003366] hover:bg-[#002244] shadow-lg shadow-blue-900/10 transition-all flex items-center justify-center gap-2">
-                <Check size={16} />
+              <button
+                onClick={handleSave}
+                className="flex-1 py-3.5 rounded-xl text-xs font-bold text-white bg-[#003366] hover:bg-[#002244] shadow-lg shadow-blue-900/10 transition-all flex items-center justify-center gap-2"
+              >
+                <Check size={16} />{" "}
                 {editingItem ? "Save Changes" : "Create Item"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- FR-43: DELETE CONFIRMATION MODAL --- */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm animate-in fade-in"
+            onClick={() => setItemToDelete(null)}
+          ></div>
+          <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-in zoom-in duration-200">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={32} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-[#003366] mb-2">
+                Delete Item?
+              </h3>
+              <p className="text-gray-500 text-xs mb-6 px-2">
+                Are you sure you want to delete{" "}
+                <span className="font-bold text-gray-800">
+                  {itemToDelete.name}
+                </span>
+                ? This action cannot be undone.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={confirmDelete}
+                  className="w-full bg-red-500 text-white py-3.5 rounded-xl font-bold text-xs hover:bg-red-600 transition-colors shadow-md"
+                >
+                  Yes, Delete Item
+                </button>
+                <button
+                  onClick={() => setItemToDelete(null)}
+                  className="w-full bg-white border border-gray-200 text-gray-500 py-3.5 rounded-xl font-bold text-xs hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>

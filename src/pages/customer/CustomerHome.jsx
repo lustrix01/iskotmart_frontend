@@ -1,15 +1,55 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Laptop,
+  Shirt,
+  Coffee,
+  BookOpen,
+  GraduationCap,
+  PenTool,
+  Camera,
+  ShoppingBag,
+  Home,
+  Paperclip,
+} from "lucide-react";
 
 export default function CustomerHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [discoveryCount, setDiscoveryCount] = useState(12); // State for "Load More"
 
   // Unique high-quality sample images for the carousel
   const slides = [
     "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1200&auto=format&fit=crop",
     "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1200&auto=format&fit=crop",
     "https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=1200&auto=format&fit=crop",
+  ];
+
+  // Dynamic Categories Data with Icons and Routes
+  const categories = [
+    {
+      name: "Electronics",
+      icon: Laptop,
+      path: "/products?category=electronics",
+    },
+    { name: "Apparel", icon: Shirt, path: "/products?category=apparel" },
+    { name: "Food & Drink", icon: Coffee, path: "/products?category=food" },
+    { name: "Books", icon: BookOpen, path: "/products?category=books" },
+    {
+      name: "Tutoring",
+      icon: GraduationCap,
+      path: "/services?category=tutoring",
+    },
+    { name: "Design", icon: PenTool, path: "/services?category=design" },
+    { name: "Photography", icon: Camera, path: "/services?category=photo" },
+    { name: "Errands", icon: ShoppingBag, path: "/services?category=errands" },
+    { name: "Dorm Needs", icon: Home, path: "/products?category=dorm" },
+    {
+      name: "Stationery",
+      icon: Paperclip,
+      path: "/products?category=stationery",
+    },
   ];
 
   useEffect(() => {
@@ -19,16 +59,17 @@ export default function CustomerHome() {
     return () => clearInterval(timer);
   }, [slides.length]);
 
-  // Reusable Product Card Component with Link integration
+  // Reusable Product Card Component with type routing (Product vs Service)
   const ProductCard = ({
     id = "1",
+    type = "product", // defaults to product, can be "service"
     name = "Product Name",
     price = "999.0",
     imgUrl,
   }) => (
-    <Link to={`/product/${id}`} className="block">
-      <div className="bg-white p-2 rounded-sm border border-transparent hover:border-gray-100 hover:shadow-md transition-all cursor-pointer group">
-        <div className="bg-gray-50 aspect-square mb-2 overflow-hidden rounded-sm">
+    <Link to={`/${type}/${id}`} className="block">
+      <div className="bg-white p-2 rounded-sm border border-transparent hover:border-gray-100 hover:shadow-md transition-all cursor-pointer group h-full flex flex-col">
+        <div className="bg-gray-50 aspect-square mb-2 overflow-hidden rounded-sm shrink-0">
           <img
             src={
               imgUrl ||
@@ -38,15 +79,23 @@ export default function CustomerHome() {
             className="w-full h-full object-cover transition-transform group-hover:scale-105"
           />
         </div>
-        <p className="text-[10px] text-gray-400 mb-0.5 font-normal">
-          Store Name
-        </p>
-        <h4 className="text-[11px] font-medium text-gray-800 leading-tight truncate uppercase">
-          {name}
-        </h4>
-        <p className="text-[#FF851B] font-semibold text-xs mt-0.5">₱{price}</p>
-        <div className="flex text-yellow-400 text-[8px] mt-1">
-          ★★★★★ <span className="text-gray-300 ml-1">(0)</span>
+        <div className="flex flex-col flex-grow justify-between">
+          <div>
+            <p className="text-[10px] text-gray-400 mb-0.5 font-normal">
+              Store Name
+            </p>
+            <h4 className="text-[11px] font-medium text-gray-800 leading-tight line-clamp-2 uppercase">
+              {name}
+            </h4>
+          </div>
+          <div>
+            <p className="text-[#FF851B] font-semibold text-xs mt-1">
+              ₱{price}
+            </p>
+            <div className="flex text-yellow-400 text-[8px] mt-1">
+              ★★★★★ <span className="text-gray-300 ml-1">(0)</span>
+            </div>
+          </div>
         </div>
       </div>
     </Link>
@@ -54,7 +103,7 @@ export default function CustomerHome() {
 
   return (
     <div className="max-w-[1400px] mx-auto p-4 lg:p-6 space-y-6 bg-white">
-      {/* HERO SECTION: Fixed height (320px) to prevent overlap and keep it professional */}
+      {/* HERO SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:h-[320px] mb-6 overflow-hidden">
         {/* Main Carousel (75% width) */}
         <div className="lg:col-span-3 relative h-[250px] lg:h-full rounded-sm overflow-hidden shadow-sm border border-gray-100">
@@ -101,7 +150,7 @@ export default function CustomerHome() {
           </div>
         </div>
 
-        {/* Side Banners (25% width) - UPDATED TO LINKS */}
+        {/* Side Banners (25% width) */}
         <div className="hidden lg:flex flex-col gap-3 h-full overflow-hidden">
           {/* Shop Products Link */}
           <Link
@@ -126,7 +175,7 @@ export default function CustomerHome() {
             className="flex-1 relative overflow-hidden group cursor-pointer shadow-sm rounded-sm border border-gray-100 block"
           >
             <img
-              src="https://images.unsplash.com/photo-1454165833767-027ffea9e778?q=80&w=600&auto=format&fit=crop"
+              src="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=400&auto=format&fit=crop"
               className="w-full h-full object-cover brightness-75 transition-transform group-hover:scale-105"
               alt="Book Services"
             />
@@ -143,14 +192,14 @@ export default function CustomerHome() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
           <div className="flex justify-between items-center mb-4 border-b pb-2">
-            <h3 className="font-semibold text-[#003366] text-sm italic italic">
+            <h3 className="font-semibold text-[#003366] text-sm italic">
               Featured Products
             </h3>
             <Link
               to="/products"
               className="text-[10px] text-[#FF851B] font-semibold hover:underline"
             >
-              See All
+              See All &gt;
             </Link>
           </div>
           <div className="grid grid-cols-3 gap-4">
@@ -174,7 +223,7 @@ export default function CustomerHome() {
 
         <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
           <div className="flex justify-between items-center mb-4 border-b pb-2">
-            <h3 className="font-semibold text-[#003366] text-sm italic italic">
+            <h3 className="font-semibold text-[#003366] text-sm italic">
               Featured Services
             </h3>
             <Link
@@ -185,18 +234,22 @@ export default function CustomerHome() {
             </Link>
           </div>
           <div className="grid grid-cols-3 gap-4">
+            {/* Note the type="service" prop added here! */}
             <ProductCard
               id="design"
+              type="service"
               name="Graphic Design"
               imgUrl="https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=400&auto=format&fit=crop"
             />
             <ProductCard
               id="photo"
+              type="service"
               name="Photography"
               imgUrl="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=400&auto=format&fit=crop"
             />
             <ProductCard
               id="tutor"
+              type="service"
               name="Tutoring"
               imgUrl="https://images.unsplash.com/photo-1434030216411-0b793f4b4173?q=80&w=400&auto=format&fit=crop"
             />
@@ -207,26 +260,28 @@ export default function CustomerHome() {
       {/* CATEGORIES */}
       <section className="bg-white border border-gray-100 shadow-sm rounded-sm">
         <div className="bg-gray-50/50 py-3 border-b border-gray-100 text-center">
-          <h3 className="font-semibold text-gray-500 text-xs uppercase tracking-widest italic italic">
+          <h3 className="font-semibold text-gray-500 text-xs uppercase tracking-widest italic">
             CATEGORIES
           </h3>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
-            <div
+          {categories.map((cat, i) => (
+            <Link
+              to={cat.path}
               key={i}
               className="border-r border-b border-gray-100 p-8 flex flex-col items-center gap-3 hover:bg-gray-50 transition-colors cursor-pointer group"
             >
               <div className="w-14 h-14 flex items-center justify-center transition-transform group-hover:scale-110">
-                <img
-                  src={`https://img.icons8.com/ios-filled/100/003366/${i % 2 === 0 ? "hamburger" : "necklace"}.png`}
-                  alt="Category"
+                <cat.icon
+                  size={32}
+                  className="text-[#003366]"
+                  strokeWidth={1.5}
                 />
               </div>
               <span className="text-[11px] font-semibold text-gray-600">
-                Category {i}
+                {cat.name}
               </span>
-            </div>
+            </Link>
           ))}
         </div>
       </section>
@@ -234,7 +289,7 @@ export default function CustomerHome() {
       {/* ON SALE NOW */}
       <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
         <div className="flex items-center gap-4 mb-5 border-b pb-2">
-          <h3 className="font-semibold text-[#FF851B] text-sm italic italic">
+          <h3 className="font-semibold text-[#FF851B] text-sm italic">
             On Sale Now
           </h3>
           <div className="flex gap-1.5">
@@ -247,13 +302,21 @@ export default function CustomerHome() {
               </span>
             ))}
           </div>
-          <button className="ml-auto text-[10px] text-[#FF851B] font-semibold hover:underline">
+          <Link
+            to="/products?sale=true"
+            className="ml-auto text-[10px] text-[#FF851B] font-semibold hover:underline"
+          >
             See All &gt;
-          </button>
+          </Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <ProductCard key={i} id={`sale-${i}`} />
+            <ProductCard
+              key={i}
+              id={`sale-${i}`}
+              name={`Sale Item ${i}`}
+              imgUrl={`https://picsum.photos/seed/${i + 100}/400/400`}
+            />
           ))}
         </div>
       </section>
@@ -261,24 +324,32 @@ export default function CustomerHome() {
       {/* DAILY DISCOVERY */}
       <section>
         <div className="bg-gray-50/50 py-3 border-t border-gray-100 mb-8 text-center rounded-sm">
-          <h3 className="font-semibold text-[#FF851B] text-sm uppercase tracking-[0.2em] italic italic">
+          <h3 className="font-semibold text-[#FF851B] text-sm uppercase tracking-[0.2em] italic">
             DAILY DISCOVERY
           </h3>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
+          {Array.from({ length: discoveryCount }).map((_, i) => (
             <ProductCard
               key={i}
               id={`discovery-${i}`}
+              name={`Discovery Item ${i + 1}`}
               imgUrl={`https://picsum.photos/seed/${i + 50}/400/400`}
             />
           ))}
         </div>
-        <div className="mt-12 flex justify-center">
-          <button className="border border-[#FF851B] text-[#FF851B] px-16 py-2.5 text-[11px] font-bold hover:bg-[#FF851B] hover:text-white transition-all uppercase tracking-widest shadow-sm rounded-sm">
-            Load More
-          </button>
-        </div>
+
+        {/* Load More Button Logic */}
+        {discoveryCount < 30 && (
+          <div className="mt-12 flex justify-center">
+            <button
+              onClick={() => setDiscoveryCount((prev) => prev + 6)}
+              className="border border-[#FF851B] text-[#FF851B] px-16 py-2.5 text-[11px] font-bold hover:bg-[#FF851B] hover:text-white transition-all uppercase tracking-widest shadow-sm rounded-sm"
+            >
+              Load More
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );

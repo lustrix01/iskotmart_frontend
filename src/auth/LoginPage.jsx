@@ -160,28 +160,6 @@ export default function LoginPage() {
                   Sign Up
                 </Link>
               </div>
-
-              {/* Developer Cheat Sheet for testing */}
-              <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-500">
-                <p className="font-bold mb-1 text-gray-700">
-                  Simulation Test Emails (any password):
-                </p>
-                <ul className="list-disc pl-4 space-y-0.5">
-                  <li>
-                    <strong>admin</strong>@iskomart.com &rarr; Admin Home
-                  </li>
-                  <li>
-                    <strong>mod</strong>@iskomart.com &rarr; Moderator Home
-                  </li>
-                  <li>
-                    <strong>merchant</strong>@iskomart.com &rarr; Merchant Home
-                  </li>
-                  <li>
-                    <strong>anything_else</strong>@email.com &rarr; Customer
-                    Home
-                  </li>
-                </ul>
-              </div>
             </form>
           </div>
         </div>
