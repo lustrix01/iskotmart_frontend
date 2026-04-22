@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import {
   MapPin,
@@ -19,6 +19,9 @@ import {
   Handshake,
   Save,
   Receipt,
+  // Added icons specifically for the GCash modal update
+  QrCode,
+  Upload,
 } from "lucide-react";
 
 export default function Checkout() {
@@ -54,6 +57,11 @@ export default function Checkout() {
     complexity: "Premium Branding",
   });
 
+  // --- ADDED STATES FOR NEW GCASH LOGIC ---
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [paymentScreenshot, setPaymentScreenshot] = useState(null);
+  const fileInputRef = useRef(null);
+
   // Price Calculation Logic
   const subtotal = 1903.3;
   const shippingFee =
@@ -73,8 +81,14 @@ export default function Checkout() {
     }
   };
 
-  // GCash simulation logic
-  const handleGCashSubmit = () => {
+  // GCash simulation logic (Modified to handle manual form submission)
+  const handleGCashSubmit = (e) => {
+    if (e) e.preventDefault(); // Prevent page reload if called from form
+    if (!referenceNumber) {
+      alert("Please enter the 13-digit Reference Number.");
+      return;
+    }
+
     setIsProcessingGCash(true);
     setTimeout(() => {
       setIsProcessingGCash(false);
@@ -86,6 +100,14 @@ export default function Checkout() {
       setPaymentStatus("Paid");
       setShowSuccess(true);
     }, 2000);
+  };
+
+  // Added handler for the screenshot
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setPaymentScreenshot(URL.createObjectURL(file));
+    }
   };
 
   return (
@@ -446,83 +468,132 @@ export default function Checkout() {
         </aside>
       </div>
 
-      {/* GCASH SIMULATION MODAL */}
+      {/* --- MODIFIED GCASH POPUP ONLY (Fixed height, no scrolling, form inputs) --- */}
       {showGCashModal && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             onClick={() => !isProcessingGCash && setShowGCashModal(false)}
           ></div>
-          <div className="bg-white w-full max-w-[360px] rounded-2xl overflow-hidden relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="bg-[#0055E3] p-6 text-white text-center">
-              <div className="flex justify-between items-center mb-6">
-                <img
-                  src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/GCash_logo.svg/1200px-GCash_logo.svg.png"
-                  className="h-6 brightness-0 invert"
-                  alt="gcash"
-                />
-                <button onClick={() => setShowGCashModal(false)}>
-                  <X size={20} />
-                </button>
-              </div>
-              <p className="text-[10px] opacity-80 font-bold uppercase tracking-widest">
+          <div className="bg-white w-full max-w-[420px] rounded-3xl overflow-hidden relative z-10 shadow-2xl animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-[#0055E3] p-5 text-white text-center relative">
+              <button
+                className="absolute top-4 right-4 opacity-70 hover:opacity-100"
+                onClick={() => setShowGCashModal(false)}
+              >
+                <X size={20} />
+              </button>
+              <img
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/GCash_logo.svg/1200px-GCash_logo.svg.png"
+                className="h-5 brightness-0 invert mx-auto mb-2"
+                alt="gcash"
+              />
+              <p className="text-[9px] opacity-80 font-bold uppercase tracking-widest">
                 Amount to Pay
               </p>
               <h4 className="text-3xl font-black mt-1">₱{total.toFixed(1)}</h4>
             </div>
 
-            <div className="p-8 space-y-6">
+            <div className="p-6 text-black">
               {isProcessingGCash ? (
-                <div className="py-10 text-center space-y-4">
-                  <div className="w-12 h-12 border-4 border-[#0055E3] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                <div className="py-12 text-center space-y-4">
+                  <div className="w-10 h-10 border-4 border-[#0055E3] border-t-transparent rounded-full animate-spin mx-auto"></div>
                   <p className="text-xs font-bold text-[#0055E3] animate-pulse uppercase tracking-widest">
                     Verifying Payment...
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">
-                      Mobile Number
-                    </label>
-                    <div className="flex items-center gap-2 border-b-2 border-gray-100 py-2">
-                      <span className="text-sm font-bold text-gray-400">
-                        +63
+                <form onSubmit={handleGCashSubmit} className="space-y-4">
+                  {/* Compact Merchant Details */}
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="w-20 h-20 bg-white p-1.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-center relative shrink-0">
+                      <QrCode size={60} className="text-[#0055E3] opacity-20" />
+                      <span className="absolute text-[8px] font-black text-gray-400">
+                        QR
                       </span>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest">
+                        Send to Merchant
+                      </p>
+                      <p className="text-lg font-black text-[#003366]">
+                        0912-345-6789
+                      </p>
+                      <p className="text-[10px] font-bold text-gray-500 italic">
+                        IskoMart Store
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Manual Inputs - Non-Scrollable Layout */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[9px] font-black text-gray-400 uppercase ml-1 tracking-widest">
+                        Reference Number
+                      </label>
                       <input
+                        required
                         type="text"
-                        className="bg-transparent outline-none font-bold text-gray-700 w-full"
-                        defaultValue="9564499020"
+                        maxLength={13}
+                        value={referenceNumber}
+                        onChange={(e) =>
+                          setReferenceNumber(e.target.value.replace(/\D/g, ""))
+                        }
+                        placeholder="13-digit number from GCash"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold focus:border-[#0055E3] outline-none transition-all mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] font-black text-gray-400 uppercase ml-1 tracking-widest">
+                        Proof of Payment
+                      </label>
+                      <div
+                        onClick={() => fileInputRef.current.click()}
+                        className="mt-1 w-full h-16 border-2 border-dashed border-gray-200 rounded-xl bg-slate-50 flex items-center justify-center cursor-pointer hover:border-[#0055E3] transition-all overflow-hidden"
+                      >
+                        {paymentScreenshot ? (
+                          <img
+                            src={paymentScreenshot}
+                            className="w-full h-full object-cover"
+                            alt="Proof"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2 text-gray-400">
+                            <Upload size={16} />
+                            <span className="text-[10px] font-bold uppercase tracking-wide">
+                              Upload Screenshot
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept="image/*"
+                        onChange={handleFileChange}
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">
-                      Enter 4-Digit MPIN
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="••••"
-                      className="w-full border-b-2 border-gray-100 py-2 outline-none font-bold text-2xl tracking-[10px] focus:border-[#0055E3]"
-                      maxLength={4}
-                    />
-                  </div>
+
                   <button
-                    onClick={handleGCashSubmit}
-                    className="w-full bg-[#0055E3] text-white py-4 rounded-full font-black text-xs shadow-lg hover:bg-[#0044B8] transition-all mt-4"
+                    type="submit"
+                    className="w-full bg-[#0055E3] text-white py-3.5 rounded-2xl font-black text-xs shadow-lg hover:bg-[#0044B8] transition-all uppercase tracking-widest mt-2"
                   >
-                    Confirm & Pay
+                    Confirm Payment
                   </button>
-                </div>
+                </form>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* SUCCESS POPUP MODAL / RECEIPT (FR-30 & FR-31 Displayed Here) */}
+      {/* SUCCESS POPUP MODAL / RECEIPT (Original Display Maintained) */}
       {showSuccess && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 text-black">
           <div
             className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm transition-opacity"
             onClick={() => setShowSuccess(false)}
@@ -536,7 +607,6 @@ export default function Checkout() {
                 Order placed successfully!
               </h2>
 
-              {/* Order Receipt Details: Demonstrates FR-30 & FR-31 */}
               <div className="bg-gray-50 rounded-md p-4 mt-4 mb-6 border border-gray-100 text-left">
                 <div className="flex items-center gap-2 mb-3 border-b border-gray-200 pb-2">
                   <Receipt size={16} className="text-gray-400" />
@@ -553,14 +623,12 @@ export default function Checkout() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Payment Method:</span>
-                    {/* Shows the recorded method (FR-30) */}
                     <span className="font-bold text-gray-800">
                       {paymentMethod === "gcash" ? "GCash" : "Cash on Delivery"}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Payment Status:</span>
-                    {/* Shows Paid vs Unpaid (FR-31) */}
                     <span
                       className={`font-black uppercase text-[10px] px-2 py-0.5 rounded-sm ${paymentStatus === "Paid" ? "bg-green-100 text-green-700" : "bg-orange-100 text-[#FF851B]"}`}
                     >

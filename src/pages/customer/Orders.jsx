@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import {
   Package,
@@ -14,6 +14,9 @@ import {
   ShieldCheck,
   MapPin,
   AlertCircle,
+  Camera,
+  Plus,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export default function Orders() {
@@ -26,6 +29,13 @@ export default function Orders() {
   // Modal states for FR-25 and FR-26
   const [cancelTarget, setCancelTarget] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null);
+
+  // --- FR-15: Rating & Review States ---
+  const [ratingTarget, setRatingTarget] = useState(null); // For the Review Modal
+  const [ratingValue, setRatingValue] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewImage, setReviewImage] = useState(null); // Holds the uploaded picture
+  const fileInputRef = useRef(null);
 
   // --- STATEFUL MOCK DATA ---
   const [orders, setOrders] = useState([
@@ -143,6 +153,29 @@ export default function Orders() {
     showToast(`Redirecting to Shop Profile...`);
   };
 
+  // --- FR-15: Review Submission ---
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReviewImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmitReview = (e) => {
+    e.preventDefault();
+    // In a real app, you would send ratingTarget.id, ratingValue, reviewComment, and reviewImage to the server.
+    showToast(`Review submitted for ${ratingTarget.merchant}! Thank you.`);
+    // Reset states
+    setRatingTarget(null);
+    setRatingValue(5);
+    setReviewComment("");
+    setReviewImage(null);
+  };
+
   const filteredOrders = useMemo(
     () =>
       activeTab === "All"
@@ -170,10 +203,10 @@ export default function Orders() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto animate-in fade-in duration-500 pb-20 relative">
+    <div className="max-w-5xl mx-auto animate-in fade-in duration-500 pb-20 relative text-black">
       {/* --- TOAST --- */}
       {notification && (
-        <div className="fixed top-24 right-10 z-[200] bg-[#003366] text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right">
+        <div className="fixed top-24 right-10 z-[200] bg-[#003366] text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right font-sans">
           <CheckCircle2 size={16} className="text-green-400" />
           <span className="text-xs font-bold">{notification}</span>
         </div>
@@ -183,7 +216,7 @@ export default function Orders() {
       {selectedOrder && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white rounded-[40px] w-full max-w-lg p-10 shadow-2xl animate-in zoom-in-95">
-            <div className="flex justify-between items-start mb-8">
+            <div className="flex justify-between items-start mb-8 font-sans">
               <div>
                 <h3 className="text-xl font-bold text-[#003366]">
                   Transaction details
@@ -194,13 +227,13 @@ export default function Orders() {
               </div>
               <button
                 onClick={() => setSelectedOrder(null)}
-                className="p-2 hover:bg-slate-100 rounded-full"
+                className="p-2 hover:bg-slate-100 rounded-full text-gray-400"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-6 font-sans">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400 font-medium">
                   Payment method
@@ -239,7 +272,7 @@ export default function Orders() {
 
             <button
               onClick={() => setSelectedOrder(null)}
-              className="w-full mt-8 py-4 bg-[#003366] text-white rounded-2xl text-xs font-bold hover:bg-[#002244] transition-colors"
+              className="w-full mt-8 py-4 bg-[#003366] text-white rounded-2xl text-xs font-bold hover:bg-[#002244] transition-colors font-sans"
             >
               Close details
             </button>
@@ -247,7 +280,116 @@ export default function Orders() {
         </div>
       )}
 
-      <div className="mb-8">
+      {/* --- FR-15: REVIEW & RATING MODAL (With Picture Upload) --- */}
+      {ratingTarget && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white rounded-[40px] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 relative font-sans">
+            <button
+              onClick={() => setRatingTarget(null)}
+              className="absolute top-6 right-6 p-2 text-gray-300 hover:text-gray-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="w-20 h-20 bg-orange-50 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-orange-100">
+                <ImageIcon size={32} className="text-[#FF851B]" />
+              </div>
+              <h3 className="text-xl font-bold text-[#003366]">Rate Product</h3>
+              <p className="text-xs text-gray-400 font-medium mt-1">
+                Your feedback helps the Bicol U community!
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmitReview} className="space-y-6">
+              {/* Star Rating Section */}
+              <div className="flex justify-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRatingValue(star)}
+                    className="transition-transform active:scale-90"
+                  >
+                    <Star
+                      size={32}
+                      fill={star <= ratingValue ? "#FF851B" : "none"}
+                      className={
+                        star <= ratingValue ? "text-[#FF851B]" : "text-gray-200"
+                      }
+                      strokeWidth={star <= ratingValue ? 0 : 2}
+                    />
+                  </button>
+                ))}
+              </div>
+
+              {/* Text Review */}
+              <div>
+                <label className="block text-[10px] font-black text-gray-300 uppercase tracking-widest mb-2 ml-1">
+                  Tell us more
+                </label>
+                <textarea
+                  required
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="What did you like or dislike about the product/service?"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-3xl p-5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#FF851B]/20 transition-all min-h-[100px] resize-none"
+                />
+              </div>
+
+              {/* Picture Upload Section */}
+              <div>
+                <label className="block text-[10px] font-black text-gray-300 uppercase tracking-widest mb-2 ml-1">
+                  Add a photo
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  {reviewImage ? (
+                    <div className="relative group">
+                      <img
+                        src={reviewImage}
+                        alt="Preview"
+                        className="w-20 h-20 object-cover rounded-2xl border-2 border-[#FF851B]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setReviewImage(null)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current.click()}
+                      className="w-20 h-20 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-[#FF851B] hover:text-[#FF851B] transition-all bg-slate-50"
+                    >
+                      <Plus size={20} />
+                      <span className="text-[10px] font-bold mt-1">Upload</span>
+                    </button>
+                  )}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-4 bg-[#FF851B] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100"
+              >
+                Submit Review
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-8 font-sans">
         <h1 className="text-2xl font-bold text-[#003366]">My orders</h1>
         <p className="text-xs text-gray-400 font-medium mt-1">
           Track your campus purchases and services
@@ -255,7 +397,7 @@ export default function Orders() {
       </div>
 
       {/* --- FR-27: STATUS TABS --- */}
-      <div className="bg-white border border-gray-100 rounded-2xl flex overflow-x-auto no-scrollbar shadow-sm mb-8 p-1.5">
+      <div className="bg-white border border-gray-100 rounded-2xl flex overflow-x-auto no-scrollbar shadow-sm mb-8 p-1.5 font-sans">
         {[
           "All",
           "To confirm",
@@ -279,7 +421,7 @@ export default function Orders() {
       </div>
 
       {/* --- ORDERS LIST --- */}
-      <div className="space-y-6">
+      <div className="space-y-6 font-sans">
         {filteredOrders.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[32px] border border-gray-100">
             <Package size={48} className="mx-auto mb-4 text-gray-300" />
@@ -390,9 +532,10 @@ export default function Orders() {
                     </button>
                   )}
 
+                  {/* FR-15: Rate Button (Now launches the review popup) */}
                   {order.status === "Completed" && (
                     <button
-                      onClick={() => showToast("Opening Review Center...")}
+                      onClick={() => setRatingTarget(order)}
                       className="flex-grow px-6 py-3 bg-[#FF851B] text-white text-xs font-bold rounded-2xl hover:bg-[#e67616] transition-all"
                     >
                       Rate product
@@ -425,7 +568,7 @@ export default function Orders() {
             className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm"
             onClick={() => setCancelTarget(null)}
           ></div>
-          <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-in zoom-in duration-200">
+          <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-in zoom-in duration-200 font-sans">
             <div className="p-8 text-center">
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertCircle size={32} className="text-red-500" />
@@ -459,7 +602,7 @@ export default function Orders() {
 
       {/* --- FR-25 MODAL: Confirm Order Reception --- */}
       {confirmTarget && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 font-sans">
           <div
             className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm"
             onClick={() => setConfirmTarget(null)}

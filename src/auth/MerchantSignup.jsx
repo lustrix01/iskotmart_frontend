@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import logo from "../assets/logo.png";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 
 export default function MerchantSignup() {
   const navigate = useNavigate();
@@ -9,6 +10,9 @@ export default function MerchantSignup() {
 
   // Multi-step state management
   const [step, setStep] = useState(1);
+
+  // State for inline error validation
+  const [emailError, setEmailError] = useState("");
 
   // Centralized form data state
   const [formData, setFormData] = useState({
@@ -30,7 +34,7 @@ export default function MerchantSignup() {
     dobDay: "",
     dobMonth: "",
     dobYear: "",
-    idFile: null,
+    idFile: null, // Holds the uploaded file object
     password: "",
     confirmPassword: "",
     // Step 3: Payment Options
@@ -44,6 +48,11 @@ export default function MerchantSignup() {
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
+
+    // Clear email error automatically when user starts typing again
+    if (name === "studentEmail") {
+      setEmailError("");
+    }
   };
 
   const handlePaymentChange = (e) => {
@@ -55,11 +64,34 @@ export default function MerchantSignup() {
   };
 
   const nextStep = (e) => {
-    e.preventDefault();
-    if (step === 2 && formData.password !== formData.confirmPassword) {
-      alert("Passwords don't match!");
-      return;
+    e.preventDefault(); // Prevents default form submission
+
+    if (step === 2) {
+      // 1. Password Match Validation
+      if (formData.password !== formData.confirmPassword) {
+        alert("Passwords don't match!");
+        return;
+      }
+
+      // 2. Official Email Validation
+      if (!formData.studentEmail.endsWith("@bicol-u.edu.ph")) {
+        setEmailError(
+          "Only valid @bicol-u.edu.ph email addresses are allowed.",
+        );
+        alert(
+          "Registration failed: Please use your official @bicol-u.edu.ph email.",
+        );
+        return;
+      }
+
+      // 3. Manual File Upload Validation (Fixes the silent block error)
+      if (!formData.idFile) {
+        alert("Please upload your COR or valid Student ID to continue.");
+        return;
+      }
     }
+
+    // Move to next step if all validations pass
     setStep((prev) => prev + 1);
   };
 
@@ -108,12 +140,29 @@ export default function MerchantSignup() {
           <p className="text-sm text-gray-300 font-medium">
             Join us and sell your goods or services!
           </p>
+
+          {/* Descriptive Requirement Banner */}
+          <div className="mt-8 bg-blue-900/40 border border-blue-400/30 rounded-xl p-4 max-w-sm flex items-start gap-3 text-left">
+            <AlertCircle className="text-[#1EA1F2] shrink-0 mt-0.5" size={20} />
+            <div>
+              <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-1">
+                BU Students Only
+              </h4>
+              <p className="text-blue-200 text-[11px] leading-relaxed">
+                To maintain a trusted campus marketplace, merchant accounts are
+                strictly exclusive to active Bicol University students. You{" "}
+                <b>must</b> use your official{" "}
+                <span className="font-bold text-white">@bicol-u.edu.ph</span>{" "}
+                email to register.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Right Side: Form Container */}
         <div className="flex justify-center w-full">
-          <div className="bg-white/95 backdrop-blur-sm p-6 sm:p-8 rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] w-full max-w-lg border border-white/20 relative">
-            {/* Top Back Arrow (Dynamic routing based on step) */}
+          <div className="bg-white/95 backdrop-blur-sm p-6 sm:p-8 rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] w-full max-w-lg border border-white/20 relative text-black">
+            {/* Top Back Arrow */}
             <div className="mb-4">
               {step === 1 ? (
                 <Link
@@ -400,8 +449,10 @@ export default function MerchantSignup() {
                             type="radio"
                             name="gender"
                             value="Male"
+                            checked={formData.gender === "Male"}
                             onChange={handleChange}
                             className="text-[#1EA1F2] focus:ring-[#1EA1F2] w-3 h-3"
+                            required
                           />{" "}
                           Male
                         </label>
@@ -410,8 +461,10 @@ export default function MerchantSignup() {
                             type="radio"
                             name="gender"
                             value="Female"
+                            checked={formData.gender === "Female"}
                             onChange={handleChange}
                             className="text-[#1EA1F2] focus:ring-[#1EA1F2] w-3 h-3"
+                            required
                           />{" "}
                           Female
                         </label>
@@ -419,11 +472,12 @@ export default function MerchantSignup() {
                     </div>
                   </div>
 
+                  {/* INLINE VALIDATION FOR STUDENT EMAIL */}
                   <div>
                     <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
                       Student Email{" "}
                       <span className="font-normal text-gray-400">
-                        (BU-assigned email)
+                        (Must end in @bicol-u.edu.ph)
                       </span>
                     </label>
                     <input
@@ -432,8 +486,18 @@ export default function MerchantSignup() {
                       value={formData.studentEmail}
                       onChange={handleChange}
                       required
-                      className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                      placeholder="e.g., juan.delacruz@bicol-u.edu.ph"
+                      className={`w-full px-2.5 py-1.5 bg-gray-50 border rounded-lg focus:ring-2 outline-none text-sm transition-colors ${
+                        emailError
+                          ? "border-red-500 focus:ring-red-500 bg-red-50"
+                          : "border-gray-200 focus:ring-[#1EA1F2]"
+                      }`}
                     />
+                    {emailError && (
+                      <p className="text-red-500 text-[10px] mt-1 font-semibold flex items-center gap-1 animate-in fade-in">
+                        <AlertCircle size={12} /> {emailError}
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -522,22 +586,33 @@ export default function MerchantSignup() {
                           (COR/ID)
                         </span>
                       </label>
-                      <label className="w-full flex justify-center items-center gap-2 px-2 py-1.5 bg-white border border-[#1EA1F2] text-[#1EA1F2] rounded-lg cursor-pointer hover:bg-blue-50 transition-colors text-sm font-bold">
-                        UPLOAD{" "}
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={2}
-                          stroke="currentColor"
-                          className="w-4 h-4"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-                          />
-                        </svg>
+                      {/* FIX applied here: removed 'required' from hidden input to allow submission */}
+                      <label
+                        className={`w-full flex justify-center items-center gap-2 px-2 py-1.5 bg-white border rounded-lg cursor-pointer transition-colors text-sm font-bold ${formData.idFile ? "border-green-500 text-green-600 bg-green-50 hover:bg-green-100" : "border-[#1EA1F2] text-[#1EA1F2] hover:bg-blue-50"}`}
+                      >
+                        {formData.idFile ? (
+                          <span className="flex items-center gap-1 text-[11px] truncate max-w-[100px]">
+                            <CheckCircle2 size={14} /> {formData.idFile.name}
+                          </span>
+                        ) : (
+                          <>
+                            UPLOAD{" "}
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth={2}
+                              stroke="currentColor"
+                              className="w-4 h-4"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                              />
+                            </svg>
+                          </>
+                        )}
                         <input
                           type="file"
                           className="hidden"
