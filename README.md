@@ -32,4 +32,3 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ## Database Schema
 ![iskomart database schema](db-schema.png)
--- The database file is in `./db/`. Just import into MariaDB, there's no need to create a database as it is included in the SQL script as `CREATE SCHEMA IF NOT EXISTS `iskomartdb` DEFAULT CHARACTER SET utf8 ;`
