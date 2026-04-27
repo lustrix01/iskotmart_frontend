@@ -27,7 +27,7 @@ If you are developing a production application, we recommend using TypeScript wi
 1. Start Apache and MySQL on XAMPP
 2. Open `localhost/phpmyadmin` on your browser.
 3. Go to the `Import` tab in the top-middle part of the window.
-4. Click `Choose File`, then find the SQL file in `.../iskotmart_frontend/src/db/*.sql`
+4. Click `Choose File`, then find the SQL file in `.../iskotmart_frontend/src/db/*.sql` [NOTE: **The most recent file will always be named `iskomartdb.sql`**]
 5. Click `Import`. Then, voila~
 
 ## Database Schema
