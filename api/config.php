@@ -1,6 +1,8 @@
 <?php
 
-require_once(__DIR__ . '/../backend/core/initialize.php');
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+ob_start();
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
@@ -23,6 +25,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+try {
+    require_once(__DIR__ . '/../backend/core/initialize.php');
+} catch (Throwable $e) {
+    error_log(sprintf(
+        '[api bootstrap] %s in %s:%d',
+        $e->getMessage(),
+        $e->getFile(),
+        $e->getLine()
+    ));
+
+    if (ob_get_length() !== false) {
+        ob_clean();
+    }
+
+    http_response_code(500);
+    echo json_encode(['error' => 'API server is unavailable. Check PHP and database configuration.']);
+    exit;
+}
+
 function jsonInput(): array {
     $raw = file_get_contents('php://input');
     if (!$raw) {
@@ -34,6 +55,10 @@ function jsonInput(): array {
 }
 
 function jsonResponse(array $payload, int $status = 200): void {
+    if (ob_get_length() !== false) {
+        ob_clean();
+    }
+
     http_response_code($status);
     echo json_encode($payload);
     exit;

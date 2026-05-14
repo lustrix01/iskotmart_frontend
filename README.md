@@ -25,10 +25,20 @@ If you are developing a production application, we recommend using TypeScript wi
 5. Run `npm run dev`.
 6. Open `http://localhost:5173`.
 
+### Open the webapp with PHP's built-in server
+Use this if the repo is not inside XAMPP `htdocs`.
+
+1. Start MySQL in XAMPP.
+2. Run `npm run dev:local`.
+3. Open `http://localhost:5173`.
+
+`npm run dev:local` starts PHP at `http://127.0.0.1:8000`, points Vite's API proxy there, and stops the PHP process when Vite exits. You can still run `npm run api` and `npm run dev` separately if you prefer two terminals.
+
 ### Backend target used by Vite
 - This frontend is configured for XAMPP-only runtime.
 - API calls to `/api/*` are proxied to `http://localhost/iskotmart_frontend` by default.
 - If your XAMPP document root path is different, set `VITE_API_PROXY_TARGET` before running Vite.
+- If signup says the API returned non-JSON, confirm that the proxy target opens `api/signup.php` through PHP, not as Vite's `index.html` or an Apache/XAMPP HTML error page.
 
 ### Import the database using MariaDB
 1. Start Apache and MySQL on XAMPP
