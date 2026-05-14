@@ -18,7 +18,7 @@ export default function MerchantVerification() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
   const [selectedMerchant, setSelectedMerchant] = useState(null);
-  const [modalType, setModalType] = useState(null);
+  const [, setModalType] = useState(null);
   const [notification, setNotification] = useState(null);
 
   const [merchants, setMerchants] = useState([
