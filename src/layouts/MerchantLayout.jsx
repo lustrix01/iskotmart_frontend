@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Settings,
@@ -15,11 +15,10 @@ import {
   CreditCard,
   ShieldCheck,
 } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function MerchantLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
 
   // --- FR-41: Securely log in and out of the merchant dashboard ---
   const { logout } = useAuth();
