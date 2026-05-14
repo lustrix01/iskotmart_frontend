@@ -35,9 +35,9 @@ class User {
         }
 
         $query = "INSERT INTO " . $this->userTable . " 
-            (USERNAME, EMAIL, PASSWORD_HASH, FNAME, LNAME, DOB, PHONE, GENDER, STATUS, ROLE, VERIF_STATUS, CREATED_ON)
+            (USERNAME, EMAIL, PASSWORD_HASH, FNAME, LNAME, DOB, PHONE, GENDER, STATUS, ROLE, CREATED_ON)
             VALUES
-            (:username, :email, :pwd, :fname, :lname, :dob, :phone, :gender, 'ACTIVE', :role, 'VERIFIED', CURDATE())";
+            (:username, :email, :pwd, :fname, :lname, :dob, :phone, :gender, 'ACTIVE', :role, CURDATE())";
 
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':username', $this->username);

@@ -19,9 +19,16 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ### Open the webapp locally
 1. [Import the database from `./db/` using MariaDB](#import-the-database-using-mariadb)
-2. On your terminal (preferably not on powershell), install necessary dependencies by running `npm install` while on `./xampp/htdocs/iskotmart_frontend/`
-3. After a successful install, run `npm run dev`
-4. It should return a URL like `http://localhost:5173`. Copy and paste this onto a browser of your choosing.
+2. Start Apache and MySQL in XAMPP.
+3. Place this project in `xampp/htdocs` (for example `C:\xampp\htdocs\iskotmart_frontend`).
+4. On your terminal, install dependencies with `npm install`.
+5. Run `npm run dev`.
+6. Open `http://localhost:5173`.
+
+### Backend target used by Vite
+- This frontend is configured for XAMPP-only runtime.
+- API calls to `/api/*` are proxied to `http://localhost/iskotmart_frontend` by default.
+- If your XAMPP document root path is different, set `VITE_API_PROXY_TARGET` before running Vite.
 
 ### Import the database using MariaDB
 1. Start Apache and MySQL on XAMPP
