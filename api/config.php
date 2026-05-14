@@ -5,6 +5,7 @@ require_once(__DIR__ . '/../backend/core/initialize.php');
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Credentials: true');
 header('Vary: Origin');
 
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -69,4 +70,84 @@ function normalizeRole(string $role): string {
 
     $key = strtoupper($role);
     return $map[$key] ?? 'customer';
+}
+
+function normalizeSignupRole(string $role): string {
+    $normalized = normalizeRole($role);
+    return $normalized === 'merchant' ? 'merchant' : 'customer';
+}
+
+function normalizeGender(string $gender): ?string {
+    $value = strtoupper(trim($gender));
+    $map = [
+        'MALE' => 'MALE',
+        'FEMALE' => 'FEMALE',
+        'OTHER' => 'OTHER',
+        'PREFER NOT TO SAY' => 'OTHER',
+    ];
+
+    return $map[$value] ?? null;
+}
+
+function isBicolUEmail(string $email): bool {
+    $normalized = strtolower(trim($email));
+    return $normalized !== '@bicol-u.edu.ph' && str_ends_with($normalized, '@bicol-u.edu.ph');
+}
+
+function startApiSession(bool $rememberMe = false): void {
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    $lifetime = $rememberMe ? 60 * 60 * 24 * 30 : 0;
+
+    session_set_cookie_params([
+        'lifetime' => $lifetime,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}
+
+function userPayloadFromRow(array $user): array {
+    return [
+        'id' => (int) $user['USER_ID'],
+        'name' => trim($user['FNAME'] . ' ' . $user['LNAME']),
+        'username' => $user['USERNAME'],
+        'email' => $user['EMAIL'],
+        'role' => normalizeRole($user['ROLE']),
+    ];
+}
+
+function issueAuthSession(array $user, bool $rememberMe = false): void {
+    startApiSession($rememberMe);
+    session_regenerate_id(true);
+    $_SESSION['user_id'] = (int) $user['id'];
+}
+
+function currentUser(PDO $db): ?array {
+    startApiSession();
+    $userId = $_SESSION['user_id'] ?? null;
+    if (!$userId) {
+        return null;
+    }
+
+    $stmt = $db->prepare(
+        "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, ROLE
+         FROM USERS
+         WHERE USER_ID = :user_id AND STATUS = 'ACTIVE'
+         LIMIT 1"
+    );
+    $stmt->execute([':user_id' => $userId]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user) {
+        unset($_SESSION['user_id']);
+        return null;
+    }
+
+    return userPayloadFromRow($user);
 }

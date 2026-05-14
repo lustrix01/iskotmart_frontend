@@ -81,8 +81,12 @@ const withSuspense = (Component) => (
 );
 
 const RequireAuth = ({ roles }) => {
-  const { user } = useAuth();
+  const { user, isAuthLoading } = useAuth();
   const location = useLocation();
+
+  if (isAuthLoading) {
+    return <div className="p-4 text-sm text-gray-500">Loading...</div>;
+  }
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location }} />;

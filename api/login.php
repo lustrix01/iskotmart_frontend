@@ -8,6 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $data = jsonInput();
 requireFields($data, ['email', 'password']);
+$rememberMe = filter_var($data['rememberMe'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 $stmt = $db->prepare(
     "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, PASSWORD_HASH, ROLE
@@ -22,14 +23,8 @@ if (!$user || !password_verify($data['password'], $user['PASSWORD_HASH'])) {
     jsonResponse(['error' => 'Invalid email or password'], 401);
 }
 
-$role = normalizeRole($user['ROLE']);
+$authUser = userPayloadFromRow($user);
 
-jsonResponse([
-    'user' => [
-        'id' => (int) $user['USER_ID'],
-        'name' => trim($user['FNAME'] . ' ' . $user['LNAME']),
-        'username' => $user['USERNAME'],
-        'email' => $user['EMAIL'],
-        'role' => $role,
-    ],
-]);
+issueAuthSession($authUser, $rememberMe);
+
+jsonResponse(['user' => $authUser]);

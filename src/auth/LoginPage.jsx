@@ -28,10 +28,19 @@ export default function LoginPage() {
       const response = await fetch("/api/login.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password, rememberMe }),
       });
 
-      const payload = await response.json();
+      const raw = await response.text();
+      let payload = {};
+      try {
+        payload = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          "Login API returned a non-JSON response. Check Vite proxy/PHP server.",
+        );
+      }
       if (!response.ok) {
         throw new Error(payload.error || "Unable to sign in.");
       }

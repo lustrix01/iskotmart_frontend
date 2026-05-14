@@ -7,26 +7,34 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $data = jsonInput();
-$role = normalizeRole($data['role'] ?? 'customer');
+$role = normalizeSignupRole($data['role'] ?? 'customer');
+$gender = normalizeGender((string) ($data['gender'] ?? ''));
 
 requireFields($data, ['username', 'email', 'password', 'firstName', 'lastName', 'dob', 'phone', 'gender']);
+if ($gender === null) {
+    jsonResponse(['error' => 'Invalid gender value.'], 422);
+}
 
 try {
+    $email = strtolower(trim((string) $data['email']));
     $passwordHash = password_hash($data['password'], PASSWORD_DEFAULT);
 
     if ($role === 'merchant') {
         requireFields($data, ['businessName', 'address', 'studentNumber']);
+        if (!isBicolUEmail($email)) {
+            jsonResponse(['error' => 'Merchant accounts require a valid @bicol-u.edu.ph email address.'], 422);
+        }
 
         $merchant = new Merchant($db);
         $merchant->username = $data['username'];
-        $merchant->email = $data['email'];
-        $merchant->bu_email = $data['email'];
+        $merchant->email = $email;
+        $merchant->bu_email = $email;
         $merchant->pwd = $passwordHash;
         $merchant->fname = $data['firstName'];
         $merchant->lname = $data['lastName'];
         $merchant->dob = $data['dob'];
         $merchant->phone = $data['phone'];
-        $merchant->gender = $data['gender'];
+        $merchant->gender = $gender;
         $merchant->shop_name = $data['businessName'];
         $merchant->shop_desc = $data['shopDescription'] ?? null;
         $merchant->address = $data['address'];
@@ -39,13 +47,13 @@ try {
 
         $user = new User($db);
         $user->username = $data['username'];
-        $user->email = $data['email'];
+        $user->email = $email;
         $user->pwd = $passwordHash;
         $user->fname = $data['firstName'];
         $user->lname = $data['lastName'];
         $user->dob = $data['dob'];
         $user->phone = $data['phone'];
-        $user->gender = $data['gender'];
+        $user->gender = $gender;
         $user->role = 'CUS';
 
         $userId = $user->createUser();
@@ -63,15 +71,16 @@ try {
         $db->commit();
     }
 
-    jsonResponse([
-        'user' => [
-            'id' => (int) $userId,
-            'name' => trim($data['firstName'] . ' ' . $data['lastName']),
-            'username' => $data['username'],
-            'email' => $data['email'],
-            'role' => $role,
-        ],
-    ], 201);
+    $authUser = [
+        'id' => (int) $userId,
+        'name' => trim($data['firstName'] . ' ' . $data['lastName']),
+        'username' => $data['username'],
+        'email' => $email,
+        'role' => $role,
+    ];
+    issueAuthSession($authUser);
+
+    jsonResponse(['user' => $authUser], 201);
 } catch (Throwable $e) {
     if ($db->inTransaction()) {
         $db->rollBack();
