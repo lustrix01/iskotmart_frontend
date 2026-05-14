@@ -40,7 +40,7 @@ export default function ReviewModeration() {
       product: "iPhone 15 Pro Max",
       rating: 5,
       comment:
-        "Super smooth transaction! Authentic item. The seller was very responsive to my inquiries and the packaging was top-notch. Highly recommended for students looking for genuine gadgets!",
+        "Super smooth transaction! Authentic item. The merchant was very responsive to my inquiries and the packaging was top-notch. Highly recommended for students looking for genuine gadgets!",
       status: "Published",
       flagReason: null,
       date: "2026-03-22",

@@ -310,7 +310,7 @@ export default function AccountManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <InfoBlock label="Email Address" value={selectedUser.email} />
                 <InfoBlock
-                  label="Joined Iskomart"
+                  label="Joined IskoMart"
                   value={selectedUser.joined}
                 />
                 <InfoBlock label="Account Type" value={selectedUser.role} />

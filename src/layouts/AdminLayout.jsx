@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   ShieldCheck,
@@ -11,13 +11,13 @@ import {
   PackageSearch,
   MessageSquare,
   LogOut as LogOutIcon,
-  Bell,
   AlertCircle,
 } from "lucide-react";
 import { useAuth } from "../context/useAuth";
 
 export default function AdminLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { logout } = useAuth();
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -42,9 +42,11 @@ export default function AdminLayout() {
 
   const handleConfirmLogout = () => {
     setIsLoggingOut(true);
-    setTimeout(() => {
-      if (logout) logout();
-      window.location.href = "/login";
+    setTimeout(async () => {
+      if (logout) {
+        await logout();
+      }
+      navigate("/login", { replace: true });
     }, 2000);
   };
 
@@ -119,10 +121,6 @@ export default function AdminLayout() {
           </h1>
 
           <div className="flex items-center gap-3">
-            <button className="w-10 h-10 flex items-center justify-center border border-gray-100 rounded-full hover:bg-gray-50 transition-colors relative">
-              <Bell size={18} className="text-gray-500" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
             <div className="flex items-center gap-2 pl-3 border-l border-gray-100">
               <div className="text-right">
                 <p className="text-[10px] font-black text-[#003366] uppercase leading-none">

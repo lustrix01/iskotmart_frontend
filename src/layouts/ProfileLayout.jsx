@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   User,
   MapPin,
@@ -17,6 +17,7 @@ import { useAuth } from "../context/useAuth";
 
 export default function ProfileLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { logout } = useAuth();
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -35,14 +36,11 @@ export default function ProfileLayout() {
   const handleConfirmLogout = () => {
     setIsLoggingOut(true);
 
-    setTimeout(() => {
-      // Clear the session via context
+    setTimeout(async () => {
       if (logout) {
-        logout();
+        await logout();
       }
-
-      // Force a hard redirect to override any built-in AuthContext routing
-      window.location.href = "/login";
+      navigate("/login", { replace: true });
     }, 2000);
   };
 

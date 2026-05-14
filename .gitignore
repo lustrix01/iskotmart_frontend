@@ -27,3 +27,6 @@ dist-ssr
 checklist.md
 AGENTS.md
 development plan.md
+
+# Local uploaded files
+api/uploads/

@@ -1,17 +1,8 @@
 import React, { useState } from "react";
 import {
-  Bell,
   Shield,
-  Globe,
-  Monitor,
   Save,
   AlertCircle,
-  Eye,
-  EyeOff,
-  Smartphone,
-  Mail,
-  Moon,
-  Sun,
 } from "lucide-react";
 
 export default function Preferences() {
@@ -28,13 +19,9 @@ export default function Preferences() {
 
   const closeModal = () => setModal({ ...modal, isOpen: false });
 
-  // Mock State for Toggles
+  // Local state mirrors currently supported preferences only.
   const [prefs, setPrefs] = useState({
-    emailNotif: true,
-    smsNotif: false,
-    pushNotif: true,
     publicProfile: true,
-    darkMode: false,
   });
 
   const togglePref = (key) => {
@@ -48,42 +35,12 @@ export default function Preferences() {
           Account preferences
         </h1>
         <p className="text-xs text-gray-400 mt-1">
-          Customize your IskoMart experience and privacy settings
+          Manage privacy settings available in the current release
         </p>
       </div>
 
       <div className="space-y-4">
-        {/* Section 1: Notifications */}
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3 bg-gray-50/20">
-            <Bell size={18} className="text-[#003366]" />
-            <h2 className="text-sm font-bold text-[#003366]">
-              Notification settings
-            </h2>
-          </div>
-          <div className="p-6 space-y-6">
-            <PreferenceItem
-              title="Email notifications"
-              desc="Receive order updates and receipts via your registered email"
-              active={prefs.emailNotif}
-              onToggle={() => togglePref("emailNotif")}
-            />
-            <PreferenceItem
-              title="Sms alerts"
-              desc="Get important account security alerts via text message"
-              active={prefs.smsNotif}
-              onToggle={() => togglePref("smsNotif")}
-            />
-            <PreferenceItem
-              title="Push notifications"
-              desc="Stay updated on price drops and chat messages on your browser"
-              active={prefs.pushNotif}
-              onToggle={() => togglePref("pushNotif")}
-            />
-          </div>
-        </div>
-
-        {/* Section 2: Privacy & Security */}
+        {/* Section: Privacy & Security */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3 bg-gray-50/20">
             <Shield size={18} className="text-[#003366]" />
@@ -112,24 +69,6 @@ export default function Preferences() {
           </div>
         </div>
 
-        {/* Section 3: Display Settings */}
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3 bg-gray-50/20">
-            <Monitor size={18} className="text-[#003366]" />
-            <h2 className="text-sm font-bold text-[#003366]">
-              Display preferences
-            </h2>
-          </div>
-          <div className="p-6">
-            <PreferenceItem
-              title="Dark mode"
-              desc="Switch to a darker theme to reduce eye strain (Beta)"
-              active={prefs.darkMode}
-              onToggle={() => togglePref("darkMode")}
-            />
-          </div>
-        </div>
-
         {/* Save Button Area */}
         <div className="pt-4 flex justify-end">
           <button
@@ -137,7 +76,7 @@ export default function Preferences() {
               handleAction(
                 "Preferences Saved",
                 "Your settings have been updated.",
-                "Updating user_preferences table -> Syncing metadata with session_cache",
+                "Updating profile visibility preferences for your account",
               )
             }
             className="flex items-center gap-2 bg-[#FF851B] text-white px-8 py-3 rounded-xl font-bold text-xs shadow-lg hover:bg-[#E67616] transition-all active:scale-95"

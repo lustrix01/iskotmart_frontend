@@ -47,6 +47,7 @@ export default function ProductDetails() {
   // --- DYNAMIC DATA SIMULATION ---
   // If the URL has "/product/", it loads this:
   const productData = {
+    id: Number.isFinite(Number(id)) ? Number(id) : 1,
     type: "product",
     name: "Limited Edition Bicol University Canvas Tote Bag",
     brand: "IskoMart Originals",
@@ -63,7 +64,7 @@ export default function ProductDetails() {
       { label: "Design", value: "Heat-pressed BU Pillar Logo" },
       { label: "Pocket", value: "Internal Phone Sleeve included" },
     ],
-    paymentOptions: ["GCash", "Cash on Delivery", "Bank Transfer"],
+    paymentOptions: ["GCash", "Cash on Delivery"],
     deliveryOptions: ["Standard Local (₱40.00)", "Campus Meetup (Free)"],
     merchant: {
       name: "CANDL& Student Ventures",
@@ -84,6 +85,7 @@ export default function ProductDetails() {
 
   // If the URL has "/service/", it loads this instead:
   const serviceData = {
+    id: Number.isFinite(Number(id)) ? Number(id) : 1,
     type: "service",
     name: "Premium Custom Logo Design & Branding",
     brand: "Creative BUenos",
@@ -116,7 +118,7 @@ export default function ProductDetails() {
         desc: "Final high-resolution files (PNG, SVG, AI) delivered via Google Drive.",
       },
     ],
-    paymentOptions: ["GCash", "Bank Transfer"],
+    paymentOptions: ["GCash", "Cash on Delivery"],
     deliveryOptions: [
       "Digital Delivery (Free)",
       "Face-to-Face Consultation (BU Campus)",
@@ -170,7 +172,10 @@ export default function ProductDetails() {
     }
 
     navigate(`/checkout?type=${itemData.type}`, {
-      state: { product: itemData, quantity },
+      state: {
+        type: itemData.type,
+        items: [{ ...itemData, qty: quantity }],
+      },
     });
   };
 
@@ -701,7 +706,7 @@ export default function ProductDetails() {
 
                   <p className="text-[14px] text-gray-600 leading-relaxed max-w-4xl py-2 font-medium">
                     {isService
-                      ? "The seller was very accommodating and professional throughout the entire process. Communication was smooth and the output was delivered on time. Definitely booking again!"
+                      ? "The merchant was very accommodating and professional throughout the entire process. Communication was smooth and the output was delivered on time. Definitely booking again!"
                       : "The quality is beyond my expectations! The canvas is thick and the print is durable. Perfect for Bicol University students who need to carry a lot of books. Fast shipping to Daraga campus!"}
                   </p>
 

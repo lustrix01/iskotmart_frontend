@@ -33,7 +33,7 @@ export default function ReportLogs() {
       date: "2026-03-20",
       status: "Pending",
       detail:
-        "The seller is using stock photos and the price is suspiciously low for a brand new unit.",
+        "The merchant is using stock photos and the price is suspiciously low for a brand new unit.",
     },
     {
       id: 102,

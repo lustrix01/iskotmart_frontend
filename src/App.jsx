@@ -31,6 +31,7 @@ const Messages = lazy(() => import("./pages/customer/Messages"));
 const Preferences = lazy(() => import("./pages/customer/Preferences"));
 const ShopProducts = lazy(() => import("./pages/customer/ShopProducts"));
 const BookServices = lazy(() => import("./pages/customer/BookServices"));
+const SearchResults = lazy(() => import("./pages/customer/SearchResults"));
 const MerchantProfile = lazy(() => import("./pages/customer/MerchantProfile"));
 
 // Merchant Pages
@@ -39,9 +40,6 @@ const ShopSettings = lazy(() => import("./pages/merchant/ShopSettings"));
 const MerchantProducts = lazy(() => import("./pages/merchant/MerchantProducts"));
 const MerchantOrders = lazy(() => import("./pages/merchant/MerchantOrders"));
 const MerchantMessages = lazy(() => import("./pages/merchant/MerchantMessages"));
-const MerchantSubscriptions = lazy(() =>
-  import("./pages/merchant/MerchantSubscriptions"),
-);
 const MerchantDiscounts = lazy(() => import("./pages/merchant/MerchantDiscounts"));
 const MerchantAnalytics = lazy(() => import("./pages/merchant/MerchantAnalytics"));
 const MerchantEarnings = lazy(() => import("./pages/merchant/MerchantEarnings"));
@@ -121,6 +119,7 @@ function App() {
           {/* Customer Routes */}
           <Route path="/" element={withSuspense(CustomerLayout)}>
             <Route index element={withSuspense(CustomerHome)} />
+            <Route path="search" element={withSuspense(SearchResults)} />
             <Route path="products" element={withSuspense(ShopProducts)} />
             <Route path="services" element={withSuspense(BookServices)} />
             <Route path="product/:id" element={withSuspense(ProductDetails)} />
@@ -153,10 +152,6 @@ function App() {
               <Route path="products" element={withSuspense(MerchantProducts)} />
               <Route path="orders" element={withSuspense(MerchantOrders)} />
               <Route path="messages" element={withSuspense(MerchantMessages)} />
-              <Route
-                path="subscriptions"
-                element={withSuspense(MerchantSubscriptions)}
-              />
               <Route path="discounts" element={withSuspense(MerchantDiscounts)} />
               <Route path="analytics" element={withSuspense(MerchantAnalytics)} />
               <Route path="earnings" element={withSuspense(MerchantEarnings)} />
