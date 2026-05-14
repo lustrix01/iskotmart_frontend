@@ -1,48 +1,47 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 import logo from "../assets/logo.png";
+
+const redirectByRole = {
+  admin: "/admin",
+  moderator: "/moderator",
+  merchant: "/merchant",
+  customer: "/",
+};
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (email && password) {
-      let role = "customer";
-      let redirectPath = "/";
+    setError("");
+    setIsSubmitting(true);
 
-      // SIMULATION LOGIC: Determine role based on the email entered
-      const lowerEmail = email.toLowerCase();
-
-      if (lowerEmail.includes("admin")) {
-        role = "admin";
-        redirectPath = "/admin";
-      } else if (lowerEmail.includes("mod")) {
-        role = "moderator";
-        redirectPath = "/moderator";
-      } else if (lowerEmail.includes("merchant")) {
-        role = "merchant";
-        redirectPath = "/merchant";
-      } else {
-        role = "customer";
-        redirectPath = "/"; // Default customer route
-      }
-
-      // Save user session in context
-      login({
-        id: Date.now(),
-        name: `${role.toUpperCase()} User`,
-        role: role,
-        email: email,
+    try {
+      const response = await fetch("/api/login.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, rememberMe }),
       });
 
-      // Send them to their specific page
-      navigate(redirectPath);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to sign in.");
+      }
+
+      login(payload.user);
+      navigate(redirectByRole[payload.user.role] || "/", { replace: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -112,10 +111,13 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF851B] focus:border-[#FF851B] focus:bg-white outline-none transition-all"
-                  placeholder="••••••••"
+                  placeholder="Password"
                   required
                 />
               </div>
+              {error && (
+                <p className="text-sm font-semibold text-red-600">{error}</p>
+              )}
 
               <div className="flex items-center justify-between text-sm mt-2">
                 <div className="flex items-center">
@@ -145,9 +147,10 @@ export default function LoginPage() {
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full bg-[#FF851B] text-white font-bold py-3.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300"
+                  disabled={isSubmitting}
+                  className="w-full bg-[#FF851B] text-white font-bold py-3.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300 disabled:opacity-70 disabled:hover:translate-y-0"
                 >
-                  Sign In
+                  {isSubmitting ? "Signing in..." : "Sign In"}
                 </button>
               </div>
 
