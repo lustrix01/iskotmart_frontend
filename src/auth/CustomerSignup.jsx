@@ -22,11 +22,27 @@ export default function CustomerSignup() {
   const navigate = useNavigate();
   const { login } = useAuth();
 
+  const passwordPolicyMessage =
+    "Use at least 10 characters with uppercase, lowercase, number, and special character.";
+
+  const validateStrongPassword = (value) => {
+    if (value.length < 10) return false;
+    if (!/[A-Z]/.test(value)) return false;
+    if (!/[a-z]/.test(value)) return false;
+    if (!/\d/.test(value)) return false;
+    if (!/[^A-Za-z0-9]/.test(value)) return false;
+    return true;
+  };
+
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
     if (password !== confirmPassword) {
       alert("Passwords don't match!");
+      return;
+    }
+    if (!validateStrongPassword(password)) {
+      setError(passwordPolicyMessage);
       return;
     }
     if (!agreeTerms) {
@@ -316,6 +332,9 @@ export default function CustomerSignup() {
                     required
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#FF851B] outline-none text-sm transition-all"
                   />
+                  <p className="mt-1 text-[10px] text-gray-400">
+                    {passwordPolicyMessage}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-0.5">

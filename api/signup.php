@@ -15,8 +15,28 @@ if ($gender === null) {
     jsonResponse(['error' => 'Invalid gender value.'], 422);
 }
 
+$dob = trim((string) ($data['dob'] ?? ''));
+$dobParts = explode('-', $dob);
+if (
+    count($dobParts) !== 3 ||
+    !checkdate((int) $dobParts[1], (int) $dobParts[2], (int) $dobParts[0])
+) {
+    jsonResponse([
+        'error' => 'Invalid date of birth.',
+        'details' => ['Use a real date in YYYY-MM-DD format.'],
+    ], 422);
+}
+
 try {
     $email = strtolower(trim((string) $data['email']));
+    $passwordError = validateStrongPassword((string) $data['password']);
+    if ($passwordError !== null) {
+        jsonResponse([
+            'error' => 'Password does not meet security requirements.',
+            'details' => [$passwordError],
+        ], 422);
+    }
+
     $passwordHash = password_hash($data['password'], PASSWORD_DEFAULT);
 
     if ($role === 'merchant') {
@@ -32,7 +52,7 @@ try {
         $merchant->pwd = $passwordHash;
         $merchant->fname = $data['firstName'];
         $merchant->lname = $data['lastName'];
-        $merchant->dob = $data['dob'];
+        $merchant->dob = $dob;
         $merchant->phone = $data['phone'];
         $merchant->gender = $gender;
         $merchant->shop_name = $data['businessName'];
@@ -51,7 +71,7 @@ try {
         $user->pwd = $passwordHash;
         $user->fname = $data['firstName'];
         $user->lname = $data['lastName'];
-        $user->dob = $data['dob'];
+        $user->dob = $dob;
         $user->phone = $data['phone'];
         $user->gender = $gender;
         $user->role = 'CUS';
@@ -87,5 +107,51 @@ try {
     }
 
     logApiError($e);
-    jsonResponse(['error' => 'Unable to create account. Please review your details and try again.'], 400);
+
+    $message = $e->getMessage();
+    $sqlState = $e instanceof PDOException ? (string) $e->getCode() : '';
+
+    if (str_contains($message, 'Email already registered') || str_contains($message, 'username already taken')) {
+        jsonResponse([
+            'error' => 'Email or username is already taken.',
+            'details' => [
+                'Try a different username.',
+                'Use a different email address if this account was already registered.',
+            ],
+        ], 409);
+    }
+
+    if ($sqlState === '23000') {
+        jsonResponse([
+            'error' => 'A signup record conflicts with existing data.',
+            'details' => [
+                'The email, username, student number, or related merchant record may already exist.',
+                'Review the form and try again with unique account details.',
+            ],
+        ], 409);
+    }
+
+    if ($sqlState === '22007' || str_contains(strtolower($message), 'date')) {
+        jsonResponse([
+            'error' => 'The server rejected one of the date fields.',
+            'details' => ['Check that the date of birth is a real calendar date.'],
+        ], 422);
+    }
+
+    if ($sqlState === '42S02') {
+        jsonResponse([
+            'error' => 'Signup service is temporarily unavailable.',
+            'details' => [
+                'Please try again later or contact support.',
+            ],
+        ], 500);
+    }
+
+    jsonResponse([
+        'error' => 'Signup failed while saving the account.',
+        'details' => [
+            'The form passed client validation, but the server could not save the record.',
+            'Check that MySQL is running, the database schema is imported, and the username/email are unique.',
+        ],
+    ], 400);
 }

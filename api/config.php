@@ -25,6 +25,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+function requestOriginFromServer(): string {
+    $origin = trim((string) ($_SERVER['HTTP_ORIGIN'] ?? ''));
+    if ($origin !== '') {
+        return $origin;
+    }
+
+    $referer = trim((string) ($_SERVER['HTTP_REFERER'] ?? ''));
+    if ($referer === '') {
+        return '';
+    }
+
+    $parts = parse_url($referer);
+    if (!$parts || empty($parts['scheme']) || empty($parts['host'])) {
+        return '';
+    }
+
+    $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+    return strtolower($parts['scheme'] . '://' . $parts['host'] . $port);
+}
+
+function enforceMutationRequestOrigin(array $allowedOrigins): void {
+    $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if (!in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+        return;
+    }
+
+    $secFetchSite = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '')));
+    if ($secFetchSite === 'cross-site') {
+        jsonResponse(['error' => 'Cross-site request blocked.'], 403);
+    }
+
+    $origin = requestOriginFromServer();
+    if ($origin !== '' && !in_array($origin, $allowedOrigins, true)) {
+        jsonResponse(['error' => 'Request origin is not allowed.'], 403);
+    }
+}
+
+enforceMutationRequestOrigin($allowedOrigins);
+
 try {
     require_once(__DIR__ . '/../backend/core/initialize.php');
 } catch (Throwable $e) {
@@ -117,6 +156,26 @@ function normalizeGender(string $gender): ?string {
 function isBicolUEmail(string $email): bool {
     $normalized = strtolower(trim($email));
     return $normalized !== '@bicol-u.edu.ph' && str_ends_with($normalized, '@bicol-u.edu.ph');
+}
+
+function validateStrongPassword(string $password): ?string {
+    if (strlen($password) < 10) {
+        return 'Password must be at least 10 characters long.';
+    }
+    if (!preg_match('/[A-Z]/', $password)) {
+        return 'Password must include at least one uppercase letter.';
+    }
+    if (!preg_match('/[a-z]/', $password)) {
+        return 'Password must include at least one lowercase letter.';
+    }
+    if (!preg_match('/\d/', $password)) {
+        return 'Password must include at least one number.';
+    }
+    if (!preg_match('/[^A-Za-z0-9]/', $password)) {
+        return 'Password must include at least one special character.';
+    }
+
+    return null;
 }
 
 function startApiSession(bool $rememberMe = false): void {

@@ -51,7 +51,16 @@ export default function LoginPage() {
       }
 
       login(payload.user);
-      navigate(requestedPath || redirectByRole[payload.user.role] || "/", {
+      const isMerchant = payload.user.role === "merchant";
+      const merchantRequestedPath =
+        isMerchant && requestedPath?.startsWith("/merchant")
+          ? requestedPath
+          : null;
+      const destination = isMerchant
+        ? merchantRequestedPath || "/merchant"
+        : requestedPath || redirectByRole[payload.user.role] || "/";
+
+      navigate(destination, {
         replace: true,
       });
     } catch (err) {
@@ -89,7 +98,7 @@ export default function LoginPage() {
                 Welcome Back!
               </h2>
               <p className="text-sm text-gray-500 font-medium">
-                Sign in to continue shopping
+                Sign in to continue
               </p>
             </div>
 
