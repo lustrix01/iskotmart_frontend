@@ -25,11 +25,13 @@ import {
   Handshake,
   ListChecks,
 } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
 
 export default function ProductDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
 
   // Automatically detect if we are on the /service/ route or /product/ route
   const isService = location.pathname.includes("/service");
@@ -145,7 +147,16 @@ export default function ProductDetails() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const redirectGuestToLogin = () => {
+    navigate("/login", { state: { from: location } });
+  };
+
   const handleAddToCart = () => {
+    if (!user) {
+      redirectGuestToLogin();
+      return;
+    }
+
     setCartCount((prev) => prev + quantity);
     triggerToast(
       `${quantity} ${isService ? "slot(s)" : "item(s)"} added to cart!`,
@@ -153,6 +164,11 @@ export default function ProductDetails() {
   };
 
   const handleBuyNow = () => {
+    if (!user) {
+      redirectGuestToLogin();
+      return;
+    }
+
     navigate(`/checkout?type=${itemData.type}`, {
       state: { product: itemData, quantity },
     });
@@ -423,6 +439,11 @@ export default function ProductDetails() {
               </button>
               <button
                 onClick={() => {
+                  if (!user) {
+                    redirectGuestToLogin();
+                    return;
+                  }
+
                   setIsWishlisted(!isWishlisted);
                   triggerToast(
                     isWishlisted

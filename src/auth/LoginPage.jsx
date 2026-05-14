@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import logo from "../assets/logo.png";
 
@@ -17,7 +17,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
+
+  const from = location.state?.from;
+  const requestedPath =
+    from && `${from.pathname || "/"}${from.search || ""}${from.hash || ""}`;
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -46,7 +51,9 @@ export default function LoginPage() {
       }
 
       login(payload.user);
-      navigate(redirectByRole[payload.user.role] || "/", { replace: true });
+      navigate(requestedPath || redirectByRole[payload.user.role] || "/", {
+        replace: true,
+      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -162,6 +169,14 @@ export default function LoginPage() {
                   {isSubmitting ? "Signing in..." : "Sign In"}
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => navigate("/", { replace: true })}
+                className="w-full border-2 border-[#003366] text-[#003366] font-bold py-3 px-4 rounded-xl hover:bg-[#003366] hover:text-white transition-all duration-300"
+              >
+                Continue as guest
+              </button>
 
               <div className="text-center text-sm text-gray-500 mt-6">
                 Don't have an account?{" "}

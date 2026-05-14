@@ -126,12 +126,14 @@ function App() {
             <Route path="product/:id" element={withSuspense(ProductDetails)} />
             <Route path="service/:id" element={withSuspense(ProductDetails)} />
             <Route path="merchant/:id" element={withSuspense(MerchantProfile)} />
-            <Route path="cart" element={withSuspense(Cart)} />
-            <Route path="checkout" element={withSuspense(Checkout)} />
+            <Route element={<RequireAuth roles={["customer"]} />}>
+              <Route path="cart" element={withSuspense(Cart)} />
+              <Route path="checkout" element={withSuspense(Checkout)} />
+            </Route>
           </Route>
 
           {/* Profile/Account Routes */}
-          <Route element={<RequireAuth />}>
+          <Route element={<RequireAuth roles={["customer"]} />}>
             <Route path="/profile" element={withSuspense(ProfileLayout)}>
               <Route index element={withSuspense(Profile)} />
               <Route path="addresses" element={withSuspense(Addresses)} />

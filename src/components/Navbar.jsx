@@ -1,9 +1,13 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Search, Heart, ShoppingCart, User, Mail } from "lucide-react";
 import { useAuth } from "../context/useAuth";
 
 export default function Navbar() {
   const { user } = useAuth();
+  const location = useLocation();
+
+  const guestLink = (path) =>
+    user ? { to: path } : { to: "/login", state: { from: { pathname: path } } };
 
   return (
     <nav className="bg-[#003366] text-white shadow-md sticky top-0 z-50">
@@ -35,7 +39,7 @@ export default function Navbar() {
         <div className="flex items-center gap-5 text-sm font-medium">
           {/* Messages Link */}
           <Link
-            to="/profile/messages"
+            {...guestLink("/profile/messages")}
             className="flex items-center gap-1 hover:text-[#FF851B] transition-colors relative"
           >
             <Mail size={20} />
@@ -46,7 +50,7 @@ export default function Navbar() {
 
           {/* Wishlist Link */}
           <Link
-            to="/profile/wishlist"
+            {...guestLink("/profile/wishlist")}
             className="flex items-center gap-1 hover:text-[#FF851B] transition-colors relative"
           >
             <Heart size={20} />
@@ -56,7 +60,7 @@ export default function Navbar() {
           </Link>
 
           <Link
-            to="/cart"
+            {...guestLink("/cart")}
             className="flex items-center gap-1 hover:text-[#FF851B] transition-colors relative"
           >
             <ShoppingCart size={20} />
@@ -67,7 +71,8 @@ export default function Navbar() {
 
           {/* My profile - Permanent link, Title Case, Removed extra boldness and italics */}
           <Link
-            to="/profile"
+            to={user ? "/profile" : "/login"}
+            state={user ? undefined : { from: location }}
             className="flex items-center gap-2 hover:text-[#FF851B] transition-colors ml-2 border-l border-white/20 pl-4"
           >
             <div className="border border-white/40 rounded-full p-1.5">
