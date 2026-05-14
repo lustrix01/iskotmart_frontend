@@ -31,7 +31,7 @@ export default function AccountLogs() {
   const [selectedLog, setSelectedLog] = useState(null); // For Modal
 
   // Enhanced Mock Data with Severity and Metadata
-  const [logs, setLogs] = useState([
+  const [logs] = useState([
     {
       id: 1,
       timestamp: "2026-03-22 14:30:05",
