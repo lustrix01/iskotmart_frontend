@@ -34,6 +34,12 @@ Use this if the repo is not inside XAMPP `htdocs`.
 
 `npm run dev:local` starts PHP at `http://127.0.0.1:8000`, points Vite's API proxy there, and stops the PHP process when Vite exits. You can still run `npm run api` and `npm run dev` separately if you prefer two terminals.
 
+### Audit frontend dependencies
+1. Run `npm audit` to check for dependency vulnerabilities.
+2. Run `npm audit fix` to apply compatible fixes.
+3. Run `npm run build` and `npm run lint` after fixing.
+4. Avoid `npm audit fix --force` unless you intend to test possible breaking upgrades.
+
 ### Backend target used by Vite
 - This frontend is configured for XAMPP-only runtime.
 - API calls to `/api/*` are proxied to `http://localhost/iskotmart_frontend` by default.
