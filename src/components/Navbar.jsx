@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Search, Heart, ShoppingCart, User, Mail } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function Navbar() {
   const { user } = useAuth();
@@ -74,7 +74,7 @@ export default function Navbar() {
               <User size={16} />
             </div>
             <span className="text-sm font-semibold tracking-normal">
-              My profile
+              {user ? "My profile" : "Sign in"}
             </span>
           </Link>
         </div>
