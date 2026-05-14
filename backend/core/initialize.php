@@ -6,7 +6,7 @@
     //defines DS as directory separator...essentially \ on windows and / on linux, so that the code can be used on both systems without modification
     defined('DS') ? null : define('DS', DIRECTORY_SEPARATOR);
 
-    //resolve the src root where core/ and include/ directories live
+    //resolve the backend root where core/ and include/ directories live
     defined('ROOT') ? null : define('ROOT', dirname(__DIR__) . DS);
     
     //defines include and core paths from the resolved root

@@ -1,6 +1,6 @@
 <?php
 
-require_once(__DIR__ . '/../src/core/initialize.php');
+require_once(__DIR__ . '/../backend/core/initialize.php');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');

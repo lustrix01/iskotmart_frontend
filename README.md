@@ -18,7 +18,7 @@ If you are developing a production application, we recommend using TypeScript wi
 # How to...
 
 ### Open the webapp locally
-1. [Import the database from `./src/db/` using MariaDB](#import-the-database-using-mariadb)
+1. [Import the database from `./db/` using MariaDB](#import-the-database-using-mariadb)
 2. On your terminal (preferably not on powershell), install necessary dependencies by running `npm install` while on `./xampp/htdocs/iskotmart_frontend/`
 3. After a successful install, run `npm run dev`
 4. It should return a URL like `http://localhost:5173`. Copy and paste this onto a browser of your choosing.
@@ -27,7 +27,7 @@ If you are developing a production application, we recommend using TypeScript wi
 1. Start Apache and MySQL on XAMPP
 2. Open `localhost/phpmyadmin` on your browser.
 3. Go to the `Import` tab in the top-middle part of the window.
-4. Click `Choose File`, then find the SQL file in `.../iskotmart_frontend/src/db/*.sql` [NOTE: **The most recent file will always be named `iskomartdb.sql`**]
+4. Click `Choose File`, then find the SQL file in `.../iskotmart_frontend/db/*.sql` [NOTE: **The most recent file will always be named `iskomartdb.sql`**]
 5. Click `Import`. Then, voila~
 
 ## Database Schema
