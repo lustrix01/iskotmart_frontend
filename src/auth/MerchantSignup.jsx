@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 import logo from "../assets/logo.png";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 
@@ -13,6 +13,8 @@ export default function MerchantSignup() {
 
   // State for inline error validation
   const [emailError, setEmailError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Centralized form data state
   const [formData, setFormData] = useState({
@@ -99,21 +101,60 @@ export default function MerchantSignup() {
     setStep((prev) => prev - 1);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError("");
     if (!formData.agreeTerms) {
       alert("Please agree to the Terms and Conditions.");
       return;
     }
-    // Submit final data
-    console.log("Merchant Data Submitted:", formData);
-    login({
-      id: Date.now(),
-      name: formData.businessName,
-      role: "merchant",
-      email: formData.studentEmail,
-    });
-    navigate("/");
+
+    setIsSubmitting(true);
+    try {
+      const address = [
+        formData.bizCity,
+        formData.bizProvince,
+        formData.sameAsBiz
+          ? null
+          : [formData.postalCity, formData.postalProvince]
+              .filter(Boolean)
+              .join(", "),
+      ]
+        .filter(Boolean)
+        .join(" / ");
+
+      const response = await fetch("/api/signup.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: "merchant",
+          businessName: formData.businessName,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          username: formData.username,
+          gender: formData.gender,
+          email: formData.studentEmail,
+          phone: `+63${formData.phone}`,
+          studentNumber: formData.studentNumber,
+          dob: `${formData.dobYear}-${formData.dobMonth.padStart(2, "0")}-${formData.dobDay.padStart(2, "0")}`,
+          address,
+          idImageUrl: formData.idFile?.name || null,
+          password: formData.password,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to create merchant account.");
+      }
+
+      login(payload.user);
+      navigate("/merchant", { replace: true });
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -765,9 +806,10 @@ export default function MerchantSignup() {
                   <div className="flex gap-3 pt-2">
                     <button
                       type="submit"
-                      className="flex-[2] bg-[#FF851B] text-white font-bold py-3 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] transition-all"
+                      disabled={isSubmitting}
+                      className="flex-[2] bg-[#FF851B] text-white font-bold py-3 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] transition-all disabled:opacity-70 disabled:hover:translate-y-0"
                     >
-                      CREATE ACCOUNT
+                      {isSubmitting ? "CREATING..." : "CREATE ACCOUNT"}
                     </button>
                     <button
                       type="button"
@@ -777,6 +819,11 @@ export default function MerchantSignup() {
                       CANCEL
                     </button>
                   </div>
+                  {submitError && (
+                    <p className="text-xs font-semibold text-red-600">
+                      {submitError}
+                    </p>
+                  )}
                 </div>
               )}
             </form>
