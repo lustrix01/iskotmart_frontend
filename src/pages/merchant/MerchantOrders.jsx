@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Search,
   Filter,
@@ -21,61 +21,39 @@ export default function MerchantOrders() {
   // --- FR-48 & FR-49: Tabs for filtering Ongoing vs Historical Orders ---
   const [activeTab, setActiveTab] = useState("All");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
-  const [orders, setOrders] = useState([
-    {
-      id: "ORD-2026-001",
-      customer: "Juan Dela Cruz",
-      email: "juan@example.com",
-      items: [{ name: "iPhone 15 Pro Max", qty: 1, price: 65999 }],
-      total: 65999,
-      method: "G-Cash",
-      paymentStatus: "Paid",
-      status: "Pending",
-      date: "Mar 18, 2026",
-      phone: "+63 912 345 6789",
-      address: "123 Rizal St, Legazpi City, Albay",
-    },
-    {
-      id: "ORD-2026-002",
-      customer: "Ada Lovelace",
-      email: "ada@science.ph",
-      items: [{ name: "Math Tutoring", qty: 2, price: 250 }],
-      total: 500,
-      method: "Meet-up (Cash)",
-      paymentStatus: "Unpaid",
-      status: "Confirmed",
-      date: "Mar 20, 2026",
-      phone: "+63 998 765 4321",
-      address: "Bicol University - Main Campus",
-    },
-    {
-      id: "ORD-2026-003",
-      customer: "Pedro Penduko",
-      email: "pedro@magic.com",
-      items: [{ name: "Canvas Tote Bag", qty: 3, price: 350 }],
-      total: 1050,
-      method: "Maya",
-      paymentStatus: "Paid",
-      status: "Shipped",
-      date: "Mar 21, 2026",
-      phone: "+63 915 000 1111",
-      address: "Phase 2, Marikina Village",
-    },
-    {
-      id: "ORD-2026-004",
-      customer: "Maria Clara",
-      email: "maria@example.com",
-      items: [{ name: "Review Materials", qty: 1, price: 150 }],
-      total: 150,
-      method: "Cash",
-      paymentStatus: "Paid",
-      status: "Completed",
-      date: "Mar 10, 2026",
-      phone: "+63 912 000 2222",
-      address: "BU East Campus",
-    },
-  ]);
+  const [orders, setOrders] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOrders = async () => {
+      try {
+        const response = await fetch("/api/merchant_orders.php", {
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load merchant orders.");
+        }
+        if (isMounted) {
+          setOrders(payload.orders || []);
+          setLoadError("");
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(error.message);
+        }
+      }
+    };
+
+    loadOrders();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -87,12 +65,40 @@ export default function MerchantOrders() {
     });
   }, [searchTerm, activeTab, orders]);
 
-  const updateStatus = (id, newStatus) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o)),
-    );
-    if (selectedOrder?.id === id)
-      setSelectedOrder({ ...selectedOrder, status: newStatus });
+  const updateStatus = async (id, newStatus) => {
+    const order = orders.find((item) => item.id === id);
+    if (!order) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/merchant_orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          source: order.source,
+          rawId: order.rawId,
+          status: newStatus,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update order status.");
+      }
+
+      const nextOrders = payload.orders || [];
+      setOrders(nextOrders);
+      setSelectedOrder(
+        nextOrders.find((item) => item.id === id) || {
+          ...order,
+          status: newStatus,
+        },
+      );
+      setLoadError("");
+    } catch (error) {
+      setLoadError(error.message);
+    }
   };
 
   const getStatusStyle = (status) => {
@@ -114,6 +120,11 @@ export default function MerchantOrders() {
 
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
+      {loadError && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-xs font-bold text-red-600">
+          {loadError}
+        </div>
+      )}
       {/* 1. QUICK STATS OVERVIEW */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
@@ -254,6 +265,16 @@ export default function MerchantOrders() {
                   </td>
                 </tr>
               ))}
+              {filteredOrders.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-10 text-center text-xs font-bold text-gray-400"
+                  >
+                    No database orders found for this merchant.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

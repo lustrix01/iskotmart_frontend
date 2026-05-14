@@ -17,6 +17,7 @@ import {
   Camera,
   Plus,
   Image as ImageIcon,
+  Printer,
 } from "lucide-react";
 
 export default function Orders() {
@@ -36,6 +37,69 @@ export default function Orders() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewImage, setReviewImage] = useState(null); // Holds the uploaded picture
   const fileInputRef = useRef(null);
+
+  const handlePrintReceipt = (order) => {
+    const receiptWindow = window.open("", "_blank", "width=720,height=900");
+    if (!receiptWindow) {
+      showToast("Allow popups to print the receipt.");
+      return;
+    }
+
+    const itemRows = order.items
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.name}</td>
+            <td style="text-align:center;">${item.qty}</td>
+            <td style="text-align:right;">PHP ${item.price.toLocaleString()}</td>
+            <td style="text-align:right;">PHP ${(item.price * item.qty).toLocaleString()}</td>
+          </tr>
+        `,
+      )
+      .join("");
+
+    receiptWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt ${order.id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #1f2937; padding: 32px; }
+            h1 { color: #003366; margin-bottom: 4px; }
+            .muted { color: #6b7280; font-size: 12px; }
+            .row { display: flex; justify-content: space-between; margin: 8px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+            th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; font-size: 12px; }
+            th { text-align: left; color: #003366; background: #f9fafb; }
+            .total { font-size: 22px; font-weight: 800; color: #ff851b; }
+            .footer { margin-top: 28px; font-size: 11px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <h1>IskoMart Receipt</h1>
+          <p class="muted">Generated from order record ${order.id}</p>
+          <div style="margin-top: 24px;">
+            <div class="row"><strong>Merchant</strong><span>${order.merchant}</span></div>
+            <div class="row"><strong>Date</strong><span>${order.date}</span></div>
+            <div class="row"><strong>Status</strong><span>${order.status}</span></div>
+            <div class="row"><strong>Payment</strong><span>${order.payment}</span></div>
+            <div class="row"><strong>Delivery mode</strong><span>${order.mode}</span></div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Item</th><th>Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Line Total</th></tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <div class="row" style="margin-top: 24px;">
+            <strong>Total Paid</strong><span class="total">PHP ${order.total.toLocaleString()}</span>
+          </div>
+          <p class="footer">Receipt values are based on the selected order record displayed in IskoMart.</p>
+          <script>window.print(); window.close();</script>
+        </body>
+      </html>
+    `);
+    receiptWindow.document.close();
+  };
 
   // --- STATEFUL MOCK DATA ---
   const [orders, setOrders] = useState([
@@ -72,7 +136,7 @@ export default function Orders() {
         },
       ],
       status: "To confirm", // Can be cancelled (FR-26)
-      payment: "Bank transfer",
+      payment: "GCash",
       mode: "Online",
       total: 5000,
       date: "Mar 22, 2026",
@@ -233,7 +297,7 @@ export default function Orders() {
               </button>
             </div>
 
-            <div className="space-y-6 font-sans">
+              <div className="space-y-6 font-sans">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400 font-medium">
                   Payment method
@@ -268,14 +332,22 @@ export default function Orders() {
                   ₱{selectedOrder.total.toLocaleString()}
                 </span>
               </div>
-            </div>
+              </div>
 
-            <button
-              onClick={() => setSelectedOrder(null)}
-              className="w-full mt-8 py-4 bg-[#003366] text-white rounded-2xl text-xs font-bold hover:bg-[#002244] transition-colors font-sans"
-            >
-              Close details
-            </button>
+            <div className="mt-8 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => handlePrintReceipt(selectedOrder)}
+                className="py-4 bg-[#FF851B] text-white rounded-2xl text-xs font-bold hover:bg-[#E67616] transition-colors font-sans flex items-center justify-center gap-2"
+              >
+                <Printer size={16} /> Print receipt
+              </button>
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="py-4 bg-[#003366] text-white rounded-2xl text-xs font-bold hover:bg-[#002244] transition-colors font-sans"
+              >
+                Close details
+              </button>
+            </div>
           </div>
         </div>
       )}

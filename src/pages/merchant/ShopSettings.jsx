@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Camera,
   Save,
@@ -25,11 +25,17 @@ export default function ShopSettings() {
   const [activeTab, setActiveTab] = useState("profile"); // 'profile', 'fulfillment', or 'security'
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [accountInfo, setAccountInfo] = useState({
+    username: "",
+    email: "",
+  });
 
   // Shop Data State (FR-47: Customize product page / shop profile)
   const [shopData, setShopData] = useState({
-    name: "TechHub Electronics",
-    bio: "Digital art, custom illustrations, and graphic design services. We specialize in cute and aesthetic branding for student orgs, thesis projects, and personal works.",
+    name: "",
+    bio: "",
+    address: "",
     banner:
       "https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=1200",
     avatar:
@@ -45,18 +51,90 @@ export default function ShopSettings() {
     deliveryFee: 50,
   });
 
-  // Simulation handler
-  const handleSave = () => {
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      try {
+        const response = await fetch("/api/merchant_profile.php", {
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load shop profile.");
+        }
+
+        if (isMounted) {
+          const profile = payload.profile;
+          setShopData((current) => ({
+            ...current,
+            name: profile.shopName || "",
+            bio: profile.shopDescription || "",
+            address: profile.address || "",
+            avatar: profile.avatarUrl || current.avatar,
+          }));
+          setAccountInfo({
+            username: profile.username || "",
+            email: profile.businessEmail || profile.email || "",
+          });
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(error.message);
+        }
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSave = async () => {
     setIsSaving(true);
-    setTimeout(() => {
+    setLoadError("");
+
+    try {
+      const response = await fetch("/api/merchant_profile.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          shopName: shopData.name,
+          shopDescription: shopData.bio,
+          address: shopData.address,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to save shop profile.");
+      }
+
+      const profile = payload.profile;
+      setShopData((current) => ({
+        ...current,
+        name: profile.shopName || "",
+        bio: profile.shopDescription || "",
+        address: profile.address || "",
+      }));
       setIsSaving(false);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
-    }, 1500);
+    } catch (error) {
+      setLoadError(error.message);
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="animate-in fade-in duration-500 max-w-6xl mx-auto pb-20 space-y-6">
+      {loadError && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-xs font-bold text-red-600">
+          {loadError}
+        </div>
+      )}
       {/* --- TOP NAVIGATION TABS --- */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex bg-gray-50 p-1 rounded-xl w-full md:w-auto overflow-x-auto no-scrollbar">
@@ -160,6 +238,19 @@ export default function ShopSettings() {
                 }
                 className="w-full text-sm text-gray-500 leading-relaxed bg-transparent hover:bg-gray-50/50 p-2 rounded-lg border border-transparent focus:border-[#FF851B] focus:bg-white focus:outline-none transition-all resize-none"
               />
+              <div className="mt-4">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
+                  Shop Address
+                </label>
+                <input
+                  type="text"
+                  value={shopData.address}
+                  onChange={(e) =>
+                    setShopData({ ...shopData, address: e.target.value })
+                  }
+                  className="mt-2 w-full text-sm text-gray-500 bg-transparent hover:bg-gray-50/50 p-2 rounded-lg border border-transparent focus:border-[#FF851B] focus:bg-white focus:outline-none transition-all"
+                />
+              </div>
             </div>
 
             {/* Public Stats Preview */}
@@ -488,7 +579,7 @@ export default function ShopSettings() {
                       Username
                     </p>
                     <p className="text-xs font-bold text-[#003366]">
-                      techhub_electronics_admin
+                      {accountInfo.username || "Not available"}
                     </p>
                   </div>
                 </div>
@@ -501,7 +592,7 @@ export default function ShopSettings() {
                       Recovery Email
                     </p>
                     <p className="text-xs font-bold text-[#003366]">
-                      merchant@iskomart.com
+                      {accountInfo.email || "Not available"}
                     </p>
                   </div>
                 </div>

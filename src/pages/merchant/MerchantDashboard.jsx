@@ -1,120 +1,104 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   DollarSign,
   ShoppingBag,
   Package,
   Users,
-  Clock,
-  ArrowRight,
   PlusCircle,
   Settings,
 } from "lucide-react";
 
+const formatMoney = (value) =>
+  `PHP ${Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
 export default function MerchantDashboard() {
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState("Last 7 Days");
+  const [summary, setSummary] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
-  // --- FR-52: Dynamic Analytics Simulation ---
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSummary = async () => {
+      try {
+        const response = await fetch("/api/merchant_dashboard.php", {
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load dashboard data.");
+        }
+        if (isMounted) {
+          setSummary(payload);
+          setLoadError("");
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(error.message);
+        }
+      }
+    };
+
+    loadSummary();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const stats = useMemo(
+    () => [
+      {
+        title: "Total Sales",
+        value: summary?.stats?.totalSalesFormatted || formatMoney(0),
+        trend: `${summary?.stats?.totalOrders || 0} database orders`,
+        icon: DollarSign,
+        path: "/merchant/earnings",
+      },
+      {
+        title: "Pending Orders",
+        value: String(summary?.stats?.pendingOrders || 0),
+        trend: "Awaiting merchant action",
+        icon: ShoppingBag,
+        path: "/merchant/orders",
+      },
+      {
+        title: "Products Listed",
+        value: String(summary?.stats?.catalogItems || 0),
+        trend: `${summary?.stats?.activeCatalogItems || 0} active`,
+        icon: Package,
+        path: "/merchant/products",
+      },
+      {
+        title: "Store Visitors",
+        value: String(summary?.stats?.storeVisitors || 0),
+        trend: "No visitor table in schema",
+        icon: Users,
+        path: "/merchant/analytics",
+      },
+    ],
+    [summary],
+  );
+
+  const recentOrders = summary?.recentOrders || [];
   const chartData =
     activeFilter === "Last 7 Days"
       ? "M0 180 C 60 140, 100 120, 133 130 C 200 150, 230 180, 266 170 C 330 150, 360 80, 400 70 C 460 50, 500 120, 533 110 C 600 90, 630 30, 666 20 C 720 10, 760 40, 800 50"
       : "M0 150 C 60 160, 100 180, 133 140 C 200 100, 230 60, 266 80 C 330 120, 360 160, 400 140 C 460 90, 500 50, 533 70 C 600 100, 630 130, 666 90 C 720 40, 760 20, 800 30";
 
-  const chartPoints =
-    activeFilter === "Last 7 Days"
-      ? [
-          { cx: 0, cy: 180 },
-          { cx: 133, cy: 130 },
-          { cx: 266, cy: 170 },
-          { cx: 400, cy: 70 },
-          { cx: 533, cy: 110 },
-          { cx: 666, cy: 20 },
-          { cx: 800, cy: 50 },
-        ]
-      : [
-          { cx: 0, cy: 150 },
-          { cx: 133, cy: 140 },
-          { cx: 266, cy: 80 },
-          { cx: 400, cy: 140 },
-          { cx: 533, cy: 70 },
-          { cx: 666, cy: 90 },
-          { cx: 800, cy: 30 },
-        ];
-
-  const stats = [
-    {
-      title: "Total Sales",
-      value: activeFilter === "Last 7 Days" ? "₱128,450" : "₱450,200",
-      trend: "+12.5% this period",
-      icon: DollarSign,
-      path: "/merchant/earnings",
-      bg: "bg-orange-50",
-    },
-    {
-      title: "Pending Orders",
-      value: "1,234",
-      trend: "8 new today",
-      icon: ShoppingBag,
-      path: "/merchant/orders",
-      bg: "bg-orange-50",
-    },
-    {
-      title: "Products Listed",
-      value: "23",
-      trend: "12 active",
-      icon: Package,
-      path: "/merchant/products",
-      bg: "bg-orange-50",
-    },
-    {
-      title: "Store Visitors",
-      value: activeFilter === "Last 7 Days" ? "2,847" : "10,492",
-      trend: "+18.2% this period",
-      icon: Users,
-      path: "/merchant/analytics",
-      bg: "bg-orange-50",
-    },
-  ];
-
-  const recentOrders = [
-    {
-      id: "#ORD-2026-001",
-      account: "Juan Dela Cruz",
-      product: "iPhone 15 Pro Max",
-      amount: "₱65,999.00",
-      status: "Delivered",
-      date: "Mar 19, 2026",
-    },
-    {
-      id: "#ORD-2026-002",
-      account: "Maria Santos",
-      product: "MacBook Air M2",
-      amount: "₱64,990.00",
-      status: "Delivered",
-      date: "Mar 19, 2026",
-    },
-    {
-      id: "#ORD-2026-003",
-      account: "Ana Lopez",
-      product: "AirPods Pro 2",
-      amount: "₱13,490.00",
-      status: "Pending",
-      date: "Mar 18, 2026",
-    },
-    {
-      id: "#ORD-2026-004",
-      account: "Pedro Reyes",
-      product: "Apple Watch Series 9",
-      amount: "₱22,990.00",
-      status: "Processing",
-      date: "Mar 17, 2026",
-    },
-  ];
-
   return (
     <div className="animate-in fade-in duration-500 max-w-7xl mx-auto space-y-6">
-      {/* --- FR-40: QUICK ACTIONS ROW --- */}
+      {loadError && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-xs font-bold text-red-600">
+          {loadError}
+        </div>
+      )}
+
       <div className="flex gap-4">
         <button
           onClick={() => navigate("/merchant/products")}
@@ -136,11 +120,10 @@ export default function MerchantDashboard() {
         </button>
       </div>
 
-      {/* 1. TOP STATS ROW */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
+        {stats.map((stat) => (
           <button
-            key={i}
+            key={stat.title}
             onClick={() => navigate(stat.path)}
             className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between transition-all hover:shadow-lg hover:border-[#FF851B]/30 hover:-translate-y-1 text-left group"
           >
@@ -155,9 +138,7 @@ export default function MerchantDashboard() {
                 {stat.trend}
               </p>
             </div>
-            <div
-              className={`p-4 rounded-full ${stat.bg} group-hover:bg-[#FF851B] transition-colors`}
-            >
+            <div className="p-4 rounded-full bg-orange-50 group-hover:bg-[#FF851B] transition-colors">
               <stat.icon
                 size={28}
                 className="text-[#FF851B] group-hover:text-white transition-colors"
@@ -169,7 +150,6 @@ export default function MerchantDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 2. FR-52: SALES OVERVIEW CHART */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden lg:col-span-2">
           <div className="px-6 py-5 border-b border-gray-50 flex justify-between items-center bg-white">
             <h3 className="text-base font-bold text-[#003366]">
@@ -191,55 +171,13 @@ export default function MerchantDashboard() {
               ))}
             </div>
           </div>
-
           <div className="p-6 relative">
-            <div className="absolute left-6 top-6 bottom-8 flex flex-col justify-between text-[10px] font-bold text-gray-300">
-              <span>{activeFilter === "Last 7 Days" ? "30k" : "100k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "24k" : "80k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "18k" : "60k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "12k" : "40k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "6k" : "20k"}</span>
-              <span>0</span>
-            </div>
-
             <div className="ml-12 h-64 relative">
               <svg
                 className="w-full h-full transition-all duration-500"
                 preserveAspectRatio="none"
                 viewBox="0 0 800 200"
               >
-                <defs>
-                  <linearGradient
-                    id="chartGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop offset="0%" stopColor="#FF851B" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="#FF851B" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-
-                {/* Grid Lines */}
-                {[0, 40, 80, 120, 160, 200].map((y) => (
-                  <path
-                    key={y}
-                    d={`M0 ${y} L800 ${y}`}
-                    stroke="#f3f4f6"
-                    strokeWidth="1"
-                    fill="none"
-                  />
-                ))}
-
-                {/* Area Under Curve */}
-                <path
-                  d={`${chartData} L 800 200 L 0 200 Z`}
-                  fill="url(#chartGradient)"
-                  className="transition-all duration-500"
-                />
-
-                {/* The Line */}
                 <path
                   d={chartData}
                   stroke="#FF851B"
@@ -247,47 +185,16 @@ export default function MerchantDashboard() {
                   fill="none"
                   className="transition-all duration-500"
                 />
-
-                {/* Data Points */}
-                {chartPoints.map((pt, idx) => (
-                  <circle
-                    key={idx}
-                    cx={pt.cx}
-                    cy={pt.cy}
-                    r="4"
-                    fill="#FF851B"
-                    stroke="#fff"
-                    strokeWidth="2"
-                    className="transition-all duration-500"
-                  />
-                ))}
               </svg>
             </div>
-
             <div className="ml-12 mt-4 flex justify-between text-[10px] font-bold text-gray-400 px-1">
-              {activeFilter === "Last 7 Days" ? (
-                <>
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                  <span>Sun</span>
-                </>
-              ) : (
-                <>
-                  <span>Wk 1</span>
-                  <span>Wk 2</span>
-                  <span>Wk 3</span>
-                  <span>Wk 4</span>
-                </>
-              )}
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                <span key={day}>{day}</span>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* 3. RECENT ORDERS (Sidebar format) */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-full">
           <div className="px-6 py-5 border-b border-gray-50 flex justify-between items-center bg-white">
             <h3 className="text-base font-bold text-[#003366]">
@@ -295,9 +202,9 @@ export default function MerchantDashboard() {
             </h3>
           </div>
           <div className="p-6 space-y-4 overflow-y-auto flex-grow">
-            {recentOrders.map((order, i) => (
+            {recentOrders.map((order) => (
               <div
-                key={i}
+                key={order.id}
                 onClick={() => navigate("/merchant/orders")}
                 className="border border-gray-100 rounded-xl p-4 hover:bg-gray-50 cursor-pointer transition-colors group"
               >
@@ -305,15 +212,7 @@ export default function MerchantDashboard() {
                   <span className="text-[10px] font-bold text-gray-400 group-hover:text-[#0074D9] transition-colors">
                     {order.id}
                   </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
-                      order.status === "Pending"
-                        ? "bg-orange-100 text-[#FF851B]"
-                        : order.status === "Processing"
-                          ? "bg-blue-100 text-[#0074D9]"
-                          : "bg-green-100 text-green-600"
-                    }`}
-                  >
+                  <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-orange-100 text-[#FF851B]">
                     {order.status}
                   </span>
                 </div>
@@ -321,13 +220,20 @@ export default function MerchantDashboard() {
                   {order.product}
                 </p>
                 <div className="flex justify-between items-end mt-2">
-                  <span className="text-xs text-gray-500">{order.account}</span>
+                  <span className="text-xs text-gray-500">
+                    {order.account}
+                  </span>
                   <span className="font-black text-[#FF851B]">
                     {order.amount}
                   </span>
                 </div>
               </div>
             ))}
+            {recentOrders.length === 0 && (
+              <div className="border border-dashed border-gray-200 rounded-xl p-8 text-center text-xs font-bold text-gray-400">
+                No database orders for this merchant yet.
+              </div>
+            )}
           </div>
           <div className="p-4 border-t border-gray-50 bg-gray-50/50">
             <button

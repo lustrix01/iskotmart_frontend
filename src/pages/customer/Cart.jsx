@@ -11,10 +11,12 @@ import {
   ShieldCheck,
   AlertCircle,
 } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
 
 export default function Cart() {
   const [activeTab, setActiveTab] = useState("product");
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // --- FR-16: Allow customers to add products and services to the shopping cart ---
   // (Note: In a full app, this initial state would come from a global CartContext)
@@ -100,7 +102,24 @@ export default function Cart() {
   };
 
   const handleCheckout = () => {
-    navigate(`/checkout?type=${activeTab}`);
+    if (!user) {
+      navigate("/login", { state: { from: { pathname: "/cart" } } });
+      return;
+    }
+
+    navigate(`/checkout?type=${activeTab}`, {
+      state: {
+        type: activeTab,
+        items: activeItems,
+        totals: {
+          subtotal,
+          fee,
+          estFee,
+          discountAmount,
+          totalAmount,
+        },
+      },
+    });
   };
 
   // --- FR-19: Automatically compute and display the total price ---

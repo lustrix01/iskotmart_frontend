@@ -1,5 +1,10 @@
 import React, { useState, useRef } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useSearchParams,
+  useNavigate,
+} from "react-router-dom";
 import {
   MapPin,
   Truck,
@@ -23,11 +28,46 @@ import {
   QrCode,
   Upload,
 } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
 
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const type = searchParams.get("type") || "product";
+  const checkoutState = location.state || {};
+  const fallbackCheckoutItems =
+    type === "product"
+      ? [
+          {
+            id: 1,
+            name: "BU Canvas Tote Bag - Isko Originals",
+            price: 999.0,
+            qty: 1,
+            img: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=100",
+          },
+          {
+            id: 2,
+            name: "Mechanical Keyboard",
+            price: 904.3,
+            qty: 1,
+            img: "https://images.unsplash.com/photo-1591561954557-26941169b49e?q=80&w=100",
+          },
+        ]
+      : [
+          {
+            id: 1,
+            name: "Professional Logo Design",
+            price: 1903.3,
+            qty: 1,
+            img: "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=100",
+          },
+        ];
+  const checkoutItems =
+    Array.isArray(checkoutState.items) && checkoutState.items.length > 0
+      ? checkoutState.items
+      : fallbackCheckoutItems;
 
   // --- FR-28 & FR-29: Choose payment options, including COD ---
   const [deliveryMethod, setDeliveryMethod] = useState("standard");
@@ -36,6 +76,8 @@ export default function Checkout() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showGCashModal, setShowGCashModal] = useState(false);
   const [isProcessingGCash, setIsProcessingGCash] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
 
   const [orderNumber, setOrderNumber] = useState("");
 
@@ -62,22 +104,77 @@ export default function Checkout() {
   const [paymentScreenshot, setPaymentScreenshot] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Price Calculation Logic
-  const subtotal = 1903.3;
+  const subtotal = checkoutItems.reduce(
+    (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 1),
+    0,
+  );
   const shippingFee =
     deliveryMethod === "standard" && type === "product" ? 50.0 : 0.0;
-  const total = subtotal + shippingFee;
+  const serviceFee = type === "service" ? 50.0 : 0.0;
+  const discountAmount = Number(checkoutState.totals?.discountAmount || 0);
+  const total = subtotal + shippingFee + serviceFee - discountAmount;
+
+  const submitOrder = async ({ gcashReference = "" } = {}) => {
+    if (!user) {
+      navigate("/login", { state: { from: location } });
+      return;
+    }
+
+    setCheckoutError("");
+    setIsSubmittingOrder(true);
+
+    try {
+      const response = await fetch("/api/checkout.php", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          paymentMethod,
+          deliveryMethod,
+          referenceNumber: gcashReference,
+          customer: {
+            recipientName: addressData.name,
+            phone: addressData.phone,
+            address: addressData.address,
+          },
+          service: serviceData,
+          items: checkoutItems.map((item) => ({
+            id: Number(item.id),
+            name: item.name,
+            quantity: Number(item.qty || 1),
+          })),
+          totals: {
+            subtotal,
+            shippingFee,
+            serviceFee,
+            discountAmount,
+            total,
+          },
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to place order.");
+      }
+
+      setOrderNumber(payload.orderNumber);
+      setPaymentStatus(payload.paymentStatus);
+      setShowSuccess(true);
+    } catch (error) {
+      setCheckoutError(error.message);
+    } finally {
+      setIsSubmittingOrder(false);
+    }
+  };
 
   // --- FR-30: Record selected payment methods ---
   const handlePlaceOrder = () => {
     if (paymentMethod === "gcash") {
       setShowGCashModal(true);
     } else {
-      // For COD: Record as COD, Status is Unpaid
-      const newOrderNum = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
-      setOrderNumber(newOrderNum);
-      setPaymentStatus("Unpaid");
-      setShowSuccess(true);
+      submitOrder();
     }
   };
 
@@ -90,16 +187,10 @@ export default function Checkout() {
     }
 
     setIsProcessingGCash(true);
-    setTimeout(() => {
+    submitOrder({ gcashReference: referenceNumber }).finally(() => {
       setIsProcessingGCash(false);
       setShowGCashModal(false);
-
-      // For GCash: Record as GCash, Status is Paid
-      const newOrderNum = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
-      setOrderNumber(newOrderNum);
-      setPaymentStatus("Paid");
-      setShowSuccess(true);
-    }, 2000);
+    });
   };
 
   // Added handler for the screenshot
@@ -400,14 +491,15 @@ export default function Checkout() {
             </h2>
 
             <div className="space-y-4 mb-8">
-              {[1, 2].map((i) => (
-                <div key={i} className="flex gap-4 items-center">
+              {checkoutItems.map((item, i) => (
+                <div key={`${item.id}-${i}`} className="flex gap-4 items-center">
                   <div className="w-12 h-12 bg-gray-50 border border-gray-100 rounded-sm overflow-hidden shrink-0">
                     <img
                       src={
-                        type === "product"
+                        item.img ||
+                        (type === "product"
                           ? "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=100"
-                          : "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=100"
+                          : "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=100")
                       }
                       className="w-full h-full object-cover"
                       alt="item"
@@ -415,16 +507,24 @@ export default function Checkout() {
                   </div>
                   <div className="flex-grow">
                     <p className="text-[10px] font-bold text-gray-700 truncate">
-                      {type === "product"
-                        ? "BU Canvas Tote Bag - Isko Originals"
-                        : "Professional Logo Design"}
+                      {item.name}
                     </p>
                     <p className="text-[9px] text-gray-400 font-semibold">
+                      Qty: {item.qty || 1} x PHP{" "}
+                      {Number(item.price || 0).toFixed(1)}
+                      <span className="hidden">
                       Qty: 1 x ₱{subtotal / 2}
+                      </span>
                     </p>
                   </div>
                   <span className="text-[11px] font-bold text-gray-800">
+                    PHP{" "}
+                    {(
+                      Number(item.price || 0) * Number(item.qty || 1)
+                    ).toFixed(1)}
+                    <span className="hidden">
                     ₱{(subtotal / 2).toFixed(1)}
+                    </span>
                   </span>
                 </div>
               ))}
@@ -442,7 +542,10 @@ export default function Checkout() {
                   {type === "product" ? "Shipping / Meetup fee" : "Service Fee"}
                 </span>
                 <span className="text-gray-700 font-bold">
+                  PHP {(type === "product" ? shippingFee : serviceFee).toFixed(1)}
+                  <span className="hidden">
                   ₱{shippingFee.toFixed(1)}
+                  </span>
                 </span>
               </div>
             </div>
@@ -456,11 +559,20 @@ export default function Checkout() {
               </span>
             </div>
 
+            {checkoutError && (
+              <div className="mb-4 rounded-sm border border-red-100 bg-red-50 px-4 py-3 text-[11px] font-bold text-red-600">
+                {checkoutError}
+              </div>
+            )}
+
             <button
               onClick={handlePlaceOrder}
-              className="w-full bg-[#FF851B] text-white py-4 rounded-md font-bold text-xs tracking-wide hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100 active:scale-95"
+              disabled={isSubmittingOrder}
+              className="w-full bg-[#FF851B] text-white py-4 rounded-md font-bold text-xs tracking-wide hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
             >
-              {paymentMethod === "gcash"
+              {isSubmittingOrder
+                ? "Validating order..."
+                : paymentMethod === "gcash"
                 ? "Proceed to GCash"
                 : "Place order now"}
             </button>
