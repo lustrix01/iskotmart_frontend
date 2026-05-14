@@ -4,8 +4,11 @@ import {
   Routes,
   Route,
   Navigate,
+  Outlet,
+  useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/useAuth";
 
 // Layouts
 import CustomerLayout from "./layouts/CustomerLayout";
@@ -83,6 +86,21 @@ const PlaceholderPage = ({ title }) => (
   </div>
 );
 
+const RequireAuth = ({ roles }) => {
+  const { user } = useAuth();
+  const location = useLocation();
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  if (roles && !roles.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <Outlet />;
+};
+
 function App() {
   return (
     <AuthProvider>
@@ -109,50 +127,58 @@ function App() {
           </Route>
 
           {/* Profile/Account Routes */}
-          <Route path="/profile" element={<ProfileLayout />}>
-            <Route index element={<Profile />} />
-            <Route path="addresses" element={<Addresses />} />
-            <Route path="password" element={<ChangePassword />} />
-            <Route path="orders" element={<Orders />} />
-            <Route path="wishlist" element={<Wishlist />} />
-            <Route path="messages" element={<Messages />} />
-            <Route path="preferences" element={<Preferences />} />
+          <Route element={<RequireAuth />}>
+            <Route path="/profile" element={<ProfileLayout />}>
+              <Route index element={<Profile />} />
+              <Route path="addresses" element={<Addresses />} />
+              <Route path="password" element={<ChangePassword />} />
+              <Route path="orders" element={<Orders />} />
+              <Route path="wishlist" element={<Wishlist />} />
+              <Route path="messages" element={<Messages />} />
+              <Route path="preferences" element={<Preferences />} />
+            </Route>
           </Route>
 
           {/* Merchant Command Center Routes */}
-          <Route path="/merchant" element={<MerchantLayout />}>
-            <Route index element={<MerchantDashboard />} />
-            <Route path="settings" element={<ShopSettings />} />
-            <Route path="products" element={<MerchantProducts />} />
-            <Route path="orders" element={<MerchantOrders />} />
-            <Route path="messages" element={<MerchantMessages />} />
-            <Route path="subscriptions" element={<MerchantSubscriptions />} />
-            <Route path="discounts" element={<MerchantDiscounts />} />
-            <Route path="analytics" element={<MerchantAnalytics />} />
-            <Route path="earnings" element={<MerchantEarnings />} />
+          <Route element={<RequireAuth roles={["merchant"]} />}>
+            <Route path="/merchant" element={<MerchantLayout />}>
+              <Route index element={<MerchantDashboard />} />
+              <Route path="settings" element={<ShopSettings />} />
+              <Route path="products" element={<MerchantProducts />} />
+              <Route path="orders" element={<MerchantOrders />} />
+              <Route path="messages" element={<MerchantMessages />} />
+              <Route path="subscriptions" element={<MerchantSubscriptions />} />
+              <Route path="discounts" element={<MerchantDiscounts />} />
+              <Route path="analytics" element={<MerchantAnalytics />} />
+              <Route path="earnings" element={<MerchantEarnings />} />
+            </Route>
           </Route>
 
           {/* Moderator Console Routes */}
-          <Route path="/moderator" element={<IskoModLayout />}>
-            <Route index element={<ModDashboard />} />
-            <Route path="reports" element={<ReportLogs />} />
-            <Route path="listings" element={<ListingManagement />} />
-            <Route path="reviews" element={<ReviewModeration />} />
-            <Route path="accounts" element={<AccountModeration />} />
-            <Route path="promotions" element={<PromotedServices />} />
+          <Route element={<RequireAuth roles={["moderator"]} />}>
+            <Route path="/moderator" element={<IskoModLayout />}>
+              <Route index element={<ModDashboard />} />
+              <Route path="reports" element={<ReportLogs />} />
+              <Route path="listings" element={<ListingManagement />} />
+              <Route path="reviews" element={<ReviewModeration />} />
+              <Route path="accounts" element={<AccountModeration />} />
+              <Route path="promotions" element={<PromotedServices />} />
+            </Route>
           </Route>
 
           {/* Admin Command Center Routes */}
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminDashboard />} />
-            <Route path="verify" element={<MerchantVerification />} />
-            <Route path="accounts" element={<AccountManagement />} />
-            <Route path="costs" element={<OperationalCosts />} />
-            <Route path="moderators" element={<Moderators />} />
-            <Route path="reports" element={<ReportLogs />} />
-            <Route path="logs" element={<AccountLogs />} />
-            <Route path="listings" element={<ListingManagement />} />
-            <Route path="reviews" element={<ReviewModeration />} />
+          <Route element={<RequireAuth roles={["admin"]} />}>
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="verify" element={<MerchantVerification />} />
+              <Route path="accounts" element={<AccountManagement />} />
+              <Route path="costs" element={<OperationalCosts />} />
+              <Route path="moderators" element={<Moderators />} />
+              <Route path="reports" element={<ReportLogs />} />
+              <Route path="logs" element={<AccountLogs />} />
+              <Route path="listings" element={<ListingManagement />} />
+              <Route path="reviews" element={<ReviewModeration />} />
+            </Route>
           </Route>
 
           {/* Catch-all */}
