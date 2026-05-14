@@ -149,7 +149,7 @@ export default function Orders() {
     }
   };
 
-  const handleVisitShop = (mId) => {
+  const handleVisitShop = () => {
     showToast(`Redirecting to Shop Profile...`);
   };
 
