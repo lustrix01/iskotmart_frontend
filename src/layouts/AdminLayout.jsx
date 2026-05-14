@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   ShieldCheck,
@@ -14,11 +14,10 @@ import {
   Bell,
   AlertCircle,
 } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function AdminLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
   const { logout } = useAuth();
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
