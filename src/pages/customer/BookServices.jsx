@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronRight,
   ChevronDown,
@@ -9,62 +9,24 @@ import {
   ChevronLeft,
   Wrench,
 } from "lucide-react";
+import {
+  matchesListing,
+  storefrontDataDecision,
+  useStorefrontListings,
+} from "../../data/storefrontData";
 
 export default function BookServices() {
   const [activeSort, setActiveSort] = useState("Highest Rated");
+  const [searchParams] = useSearchParams();
+  const searchTerm = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "";
 
-  // Mock Data: Verified Freelancers/Service Providers
-  const freelancers = [
-    {
-      id: 1,
-      name: "Maria (Math Tutor)",
-      img: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=150",
-    },
-    {
-      id: 2,
-      name: "Dave (Tech Repair)",
-      img: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150",
-    },
-    {
-      id: 3,
-      name: "Sarah (Designer)",
-      img: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150",
-    },
-    {
-      id: 4,
-      name: "John (Errands)",
-      img: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150",
-    },
-    {
-      id: 5,
-      name: "Ana (Proofreading)",
-      img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150",
-    },
-    {
-      id: 6,
-      name: "Mark (Photography)",
-      img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=150",
-    },
-  ];
+  const merchants = [];
 
-  // Mock Data: Services
-  const services = Array(15)
-    .fill()
-    .map((_, i) => ({
-      id: i + 1,
-      name:
-        i % 2 === 0
-          ? "College Algebra Tutoring (1 Hour)"
-          : "Custom Logo Design",
-      price: i % 2 === 0 ? 250.0 : 800.0,
-      rateType: i % 2 === 0 ? "per hour" : "per project",
-      rating: 4.9,
-      completed: "120+",
-      img:
-        i % 2 === 0
-          ? "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?q=80&w=300"
-          : "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=300",
-    }));
+  const { services: storefrontServices, loading, error } = useStorefrontListings();
+  const services = storefrontServices.filter((item) =>
+    matchesListing(item, searchTerm, category),
+  );
 
   return (
     <div className="bg-[#F5F7F9] min-h-screen pb-12 font-sans animate-in fade-in duration-500">
@@ -79,12 +41,13 @@ export default function BookServices() {
         </div>
 
         {/* VERIFIED FREELANCERS SECTION */}
+        {merchants.length > 0 ? (
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm mb-6 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50 flex justify-between items-center bg-[#F8FAFC]">
             <div className="flex items-center gap-2 text-[#003366]">
               <ShieldCheck size={18} className="text-[#0074D9]" />
               <h2 className="text-sm font-bold">
-                Verified student freelancers
+                Verified student merchants
               </h2>
             </div>
             <Link
@@ -96,7 +59,7 @@ export default function BookServices() {
           </div>
 
           <div className="p-5 flex gap-6 overflow-x-auto no-scrollbar">
-            {freelancers.map((person) => (
+            {merchants.map((person) => (
               <Link
                 key={person.id}
                 to="#"
@@ -118,6 +81,7 @@ export default function BookServices() {
             ))}
           </div>
         </div>
+        ) : null}
 
         {/* MAIN LAYOUT: Sidebar + Content */}
         <div className="flex flex-col md:flex-row gap-6">
@@ -195,9 +159,40 @@ export default function BookServices() {
               </div>
             </div>
 
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-bold text-gray-500">
+                {services.length} service{services.length === 1 ? "" : "s"}
+                {searchTerm ? ` matching "${searchTerm}"` : ""}
+                {category ? ` in ${category}` : ""}
+              </p>
+              <p className="max-w-2xl text-[10px] font-semibold text-gray-400">
+                {storefrontDataDecision}
+              </p>
+            </div>
+
             {/* Service Grid (5 Columns) */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {services.map((item) => (
+            {loading ? (
+              <div className="bg-white border border-gray-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-[#003366]">
+                  Loading services...
+                </p>
+              </div>
+            ) : error ? (
+              <div className="bg-red-50 border border-red-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-red-600">{error}</p>
+              </div>
+            ) : services.length === 0 ? (
+              <div className="bg-white border border-gray-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-[#003366]">
+                  No services found.
+                </p>
+                <p className="mt-2 text-xs text-gray-400">
+                  Try another search term or browse all services.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {services.map((item) => (
                 <Link
                   to={`/service/${item.id}`}
                   key={item.id}
@@ -249,8 +244,9 @@ export default function BookServices() {
                     </div>
                   </div>
                 </Link>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Return Home Button */}
             <div className="mt-12 flex justify-center">

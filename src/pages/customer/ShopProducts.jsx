@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronRight,
   ChevronDown,
@@ -8,60 +8,24 @@ import {
   ShieldCheck,
   ChevronLeft,
 } from "lucide-react";
+import {
+  matchesListing,
+  storefrontDataDecision,
+  useStorefrontListings,
+} from "../../data/storefrontData";
 
 export default function ShopProducts() {
   const [activeSort, setActiveSort] = useState("Popular");
+  const [searchParams] = useSearchParams();
+  const searchTerm = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "";
 
-  // Mock Data: Verified Merchants
-  const merchants = [
-    {
-      id: 1,
-      name: "TechHub Electronics",
-      img: "https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=150",
-    },
-    {
-      id: 2,
-      name: "Student Snacks",
-      img: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=150",
-    },
-    {
-      id: 3,
-      name: "Dorm Essentials",
-      img: "https://images.unsplash.com/photo-1522771731535-61df24312214?q=80&w=150",
-    },
-    {
-      id: 4,
-      name: "Campus Kicks",
-      img: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=150",
-    },
-    {
-      id: 5,
-      name: "Art Supplies",
-      img: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?q=80&w=150",
-    },
-    {
-      id: 6,
-      name: "Study Notes Hub",
-      img: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?q=80&w=150",
-    },
-  ];
+  const merchants = [];
 
-  // Mock Data: Products
-  const products = Array(15)
-    .fill()
-    .map((_, i) => ({
-      id: i + 1,
-      name: i % 2 === 0 ? "Premium Campus Sandwich" : "Wireless Mouse",
-      price: 999.0,
-      oldPrice: 1200.0,
-      discount: "-12%",
-      rating: 4.8,
-      sold: "1.2k",
-      img:
-        i % 2 === 0
-          ? "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?q=80&w=300"
-          : "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?q=80&w=300",
-    }));
+  const { products: storefrontProducts, loading, error } = useStorefrontListings();
+  const products = storefrontProducts.filter((item) =>
+    matchesListing(item, searchTerm, category),
+  );
 
   return (
     <div className="bg-[#F5F7F9] min-h-screen pb-12 font-sans animate-in fade-in duration-500">
@@ -76,6 +40,7 @@ export default function ShopProducts() {
         </div>
 
         {/* VERIFIED MERCHANTS SECTION */}
+        {merchants.length > 0 ? (
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm mb-6 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50 flex justify-between items-center bg-[#F8FAFC]">
             <div className="flex items-center gap-2 text-[#003366]">
@@ -113,6 +78,7 @@ export default function ShopProducts() {
             ))}
           </div>
         </div>
+        ) : null}
 
         {/* MAIN LAYOUT: Sidebar + Content */}
         <div className="flex flex-col md:flex-row gap-6">
@@ -206,9 +172,40 @@ export default function ShopProducts() {
               </div>
             </div>
 
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-bold text-gray-500">
+                {products.length} product{products.length === 1 ? "" : "s"}
+                {searchTerm ? ` matching "${searchTerm}"` : ""}
+                {category ? ` in ${category}` : ""}
+              </p>
+              <p className="max-w-2xl text-[10px] font-semibold text-gray-400">
+                {storefrontDataDecision}
+              </p>
+            </div>
+
             {/* Product Grid (5 Columns) */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {products.map((item) => (
+            {loading ? (
+              <div className="bg-white border border-gray-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-[#003366]">
+                  Loading products...
+                </p>
+              </div>
+            ) : error ? (
+              <div className="bg-red-50 border border-red-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-red-600">{error}</p>
+              </div>
+            ) : products.length === 0 ? (
+              <div className="bg-white border border-gray-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-[#003366]">
+                  No products found.
+                </p>
+                <p className="mt-2 text-xs text-gray-400">
+                  Try another search term or browse all products.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {products.map((item) => (
                 <Link
                   to={`/product/${item.id}`}
                   key={item.id}
@@ -277,8 +274,9 @@ export default function ShopProducts() {
                     </div>
                   </div>
                 </Link>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Return Home Button */}
             <div className="mt-12 flex justify-center">
