@@ -15,52 +15,80 @@ import {
   Paperclip,
 } from "lucide-react";
 
+const slides = [
+  "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1200&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=1200&auto=format&fit=crop",
+];
+const slideCount = slides.length;
+
+const categories = [
+  { name: "Electronics", icon: Laptop, path: "/products?category=electronics" },
+  { name: "Apparel", icon: Shirt, path: "/products?category=apparel" },
+  { name: "Food & Drink", icon: Coffee, path: "/products?category=food" },
+  { name: "Books", icon: BookOpen, path: "/products?category=books" },
+  { name: "Tutoring", icon: GraduationCap, path: "/services?category=tutoring" },
+  { name: "Design", icon: PenTool, path: "/services?category=design" },
+  { name: "Photography", icon: Camera, path: "/services?category=photo" },
+  { name: "Errands", icon: ShoppingBag, path: "/services?category=errands" },
+  { name: "Dorm Needs", icon: Home, path: "/products?category=dorm" },
+  { name: "Stationery", icon: Paperclip, path: "/products?category=stationery" },
+];
+
+const ProductCard = ({
+  id = "1",
+  type = "product",
+  name = "Product Name",
+  price = "999.0",
+  imgUrl,
+}) => (
+  <Link to={`/${type}/${id}`} className="block">
+    <div className="bg-white p-2 rounded-sm border border-transparent hover:border-gray-100 hover:shadow-md transition-all cursor-pointer group h-full flex flex-col">
+      <div className="bg-gray-50 aspect-square mb-2 overflow-hidden rounded-sm shrink-0">
+        <img
+          src={
+            imgUrl ||
+            "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop"
+          }
+          alt={name}
+          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+        />
+      </div>
+      <div className="flex flex-col flex-grow justify-between">
+        <div>
+          <p className="text-[10px] text-gray-400 mb-0.5 font-normal">
+            Store Name
+          </p>
+          <h4 className="text-[11px] font-medium text-gray-800 leading-tight line-clamp-2 uppercase">
+            {name}
+          </h4>
+        </div>
+        <div>
+          <p className="text-[#FF851B] font-semibold text-xs mt-1">
+            PHP {price}
+          </p>
+          <div className="flex text-yellow-400 text-[8px] mt-1">
+            ***** <span className="text-gray-300 ml-1">(0)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Link>
+);
+
 export default function CustomerHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [discoveryCount, setDiscoveryCount] = useState(12); // State for "Load More"
 
-  // Unique high-quality sample images for the carousel
-  const slides = [
-    "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1200&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1200&auto=format&fit=crop",
-    "https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=1200&auto=format&fit=crop",
-  ];
-
-  // Dynamic Categories Data with Icons and Routes
-  const categories = [
-    {
-      name: "Electronics",
-      icon: Laptop,
-      path: "/products?category=electronics",
-    },
-    { name: "Apparel", icon: Shirt, path: "/products?category=apparel" },
-    { name: "Food & Drink", icon: Coffee, path: "/products?category=food" },
-    { name: "Books", icon: BookOpen, path: "/products?category=books" },
-    {
-      name: "Tutoring",
-      icon: GraduationCap,
-      path: "/services?category=tutoring",
-    },
-    { name: "Design", icon: PenTool, path: "/services?category=design" },
-    { name: "Photography", icon: Camera, path: "/services?category=photo" },
-    { name: "Errands", icon: ShoppingBag, path: "/services?category=errands" },
-    { name: "Dorm Needs", icon: Home, path: "/products?category=dorm" },
-    {
-      name: "Stationery",
-      icon: Paperclip,
-      path: "/products?category=stationery",
-    },
-  ];
-
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
+      setCurrentSlide((prev) => (prev === slideCount - 1 ? 0 : prev + 1));
     }, 5000);
     return () => clearInterval(timer);
-  }, [slides.length]);
+  }, []);
 
-  // Reusable Product Card Component with type routing (Product vs Service)
-  const ProductCard = ({
+  /*
+  const OldProductCard = ({
     id = "1",
     type = "product", // defaults to product, can be "service"
     name = "Product Name",
@@ -100,6 +128,7 @@ export default function CustomerHome() {
       </div>
     </Link>
   );
+  */
 
   return (
     <div className="max-w-[1400px] mx-auto p-4 lg:p-6 space-y-6 bg-white">
