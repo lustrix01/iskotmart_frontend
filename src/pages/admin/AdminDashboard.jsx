@@ -22,7 +22,7 @@ export default function AdminDashboard() {
   };
 
   // --- COMPONENT STATES ---
-  const [stats, setStats] = useState({
+  const [stats] = useState({
     pending: 24,
     merchants: 1234,
     reports: 23,
