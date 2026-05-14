@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 import logo from "../assets/logo.png";
 
 export default function CustomerSignup() {
@@ -16,12 +16,15 @@ export default function CustomerSignup() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSignup = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
+    setError("");
     if (password !== confirmPassword) {
       alert("Passwords don't match!");
       return;
@@ -31,13 +34,36 @@ export default function CustomerSignup() {
       return;
     }
     if (username && email && password) {
-      login({
-        id: Date.now(),
-        name: `${firstName} ${lastName}`,
-        role: "customer",
-        email,
-      });
-      navigate("/");
+      setIsSubmitting(true);
+      try {
+        const response = await fetch("/api/signup.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: "customer",
+            firstName,
+            lastName,
+            gender,
+            username,
+            email,
+            phone: `+63${phone}`,
+            dob: `${dobYear}-${dobMonth.padStart(2, "0")}-${dobDay.padStart(2, "0")}`,
+            password,
+          }),
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to create account.");
+        }
+
+        login(payload.user);
+        navigate("/");
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -336,11 +362,15 @@ export default function CustomerSignup() {
                 </Link>
                 <button
                   type="submit"
-                  className="w-2/3 bg-[#FF851B] text-white font-bold py-2.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300"
+                  disabled={isSubmitting}
+                  className="w-2/3 bg-[#FF851B] text-white font-bold py-2.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300 disabled:opacity-70 disabled:hover:translate-y-0"
                 >
-                  Create Account
+                  {isSubmitting ? "Creating..." : "Create Account"}
                 </button>
               </div>
+              {error && (
+                <p className="text-xs font-semibold text-red-600">{error}</p>
+              )}
             </form>
           </div>
         </div>
