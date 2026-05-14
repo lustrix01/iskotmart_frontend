@@ -3,13 +3,14 @@
     # Database connection details
 
     $db_host = getenv('DB_HOST') ?: '127.0.0.1';
+    $db_port = getenv('DB_PORT') ?: '3306';
     $db_user = getenv('DB_USER') ?: 'root';
     $db_pass = getenv('DB_PASS') ?: '';
     $db_name = getenv('DB_NAME') ?: 'iskomartdb';
 
     //pdo instead of mysqli, because it is more secure and easier to use
     $db = new PDO(
-        'mysql:host=' . $db_host . ';dbname=' . $db_name . ';charset=utf8mb4',
+        'mysql:host=' . $db_host . ';port=' . $db_port . ';dbname=' . $db_name . ';charset=utf8mb4',
         $db_user,
         $db_pass
     );
