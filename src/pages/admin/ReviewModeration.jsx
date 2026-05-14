@@ -22,7 +22,6 @@ export default function ReviewModeration() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [ratingFilter, setRatingFilter] = useState("All Ratings");
-  const [dateFilter, setDateFilter] = useState("All Time");
 
   const [selectedReview, setSelectedReview] = useState(null); // Used for View & Inquiry
   const [showInquiryModal, setShowInquiryModal] = useState(false);
@@ -128,7 +127,6 @@ export default function ReviewModeration() {
     });
   }, [reviews, searchTerm, statusFilter, ratingFilter]);
 
-  const totalPages = Math.ceil(filteredReviews.length / itemsPerPage);
   const paginatedReviews = filteredReviews.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
