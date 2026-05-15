@@ -408,7 +408,7 @@ function ServiceCartItems({ items, onRemove }) {
                     </label>
                     <input
                       type="text"
-                      placeholder="..."
+                      placeholder={`Enter ${field.toLowerCase()} details`}
                       className="bg-white border border-gray-200 rounded-sm px-3 py-2 text-[11px] focus:outline-none focus:border-[#003366]"
                     />
                   </div>

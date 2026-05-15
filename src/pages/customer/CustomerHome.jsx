@@ -35,50 +35,8 @@ const categories = [
   { name: "Stationery", icon: Paperclip, path: "/products?category=stationery" },
 ];
 
-const ProductCard = ({
-  id = "1",
-  type = "product",
-  name = "Product Name",
-  price = "999.0",
-  imgUrl,
-}) => (
-  <Link to={`/${type}/${id}`} className="block">
-    <div className="bg-white p-2 rounded-sm border border-transparent hover:border-gray-100 hover:shadow-md transition-all cursor-pointer group h-full flex flex-col">
-      <div className="bg-gray-50 aspect-square mb-2 overflow-hidden rounded-sm shrink-0">
-        <img
-          src={
-            imgUrl ||
-            "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop"
-          }
-          alt={name}
-          className="w-full h-full object-cover transition-transform group-hover:scale-105"
-        />
-      </div>
-      <div className="flex flex-col flex-grow justify-between">
-        <div>
-          <p className="text-[10px] text-gray-400 mb-0.5 font-normal">
-            Store Name
-          </p>
-          <h4 className="text-[11px] font-medium text-gray-800 leading-tight line-clamp-2 uppercase">
-            {name}
-          </h4>
-        </div>
-        <div>
-          <p className="text-[#FF851B] font-semibold text-xs mt-1">
-            PHP {price}
-          </p>
-          <div className="flex text-yellow-400 text-[8px] mt-1">
-            ***** <span className="text-gray-300 ml-1">(0)</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Link>
-);
-
 export default function CustomerHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [discoveryCount, setDiscoveryCount] = useState(12); // State for "Load More"
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -87,48 +45,6 @@ export default function CustomerHome() {
     return () => clearInterval(timer);
   }, []);
 
-  /*
-  const OldProductCard = ({
-    id = "1",
-    type = "product", // defaults to product, can be "service"
-    name = "Product Name",
-    price = "999.0",
-    imgUrl,
-  }) => (
-    <Link to={`/${type}/${id}`} className="block">
-      <div className="bg-white p-2 rounded-sm border border-transparent hover:border-gray-100 hover:shadow-md transition-all cursor-pointer group h-full flex flex-col">
-        <div className="bg-gray-50 aspect-square mb-2 overflow-hidden rounded-sm shrink-0">
-          <img
-            src={
-              imgUrl ||
-              "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop"
-            }
-            alt={name}
-            className="w-full h-full object-cover transition-transform group-hover:scale-105"
-          />
-        </div>
-        <div className="flex flex-col flex-grow justify-between">
-          <div>
-            <p className="text-[10px] text-gray-400 mb-0.5 font-normal">
-              Store Name
-            </p>
-            <h4 className="text-[11px] font-medium text-gray-800 leading-tight line-clamp-2 uppercase">
-              {name}
-            </h4>
-          </div>
-          <div>
-            <p className="text-[#FF851B] font-semibold text-xs mt-1">
-              ₱{price}
-            </p>
-            <div className="flex text-yellow-400 text-[8px] mt-1">
-              ★★★★★ <span className="text-gray-300 ml-1">(0)</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-  */
 
   return (
     <div className="max-w-[1400px] mx-auto p-4 lg:p-6 space-y-6 bg-white">
@@ -217,75 +133,6 @@ export default function CustomerHome() {
         </div>
       </div>
 
-      {/* FEATURED SECTIONS */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-        <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
-          <div className="flex justify-between items-center mb-4 border-b pb-2">
-            <h3 className="font-semibold text-[#003366] text-sm italic">
-              Featured Products
-            </h3>
-            <Link
-              to="/products"
-              className="text-[10px] text-[#FF851B] font-semibold hover:underline"
-            >
-              See All &gt;
-            </Link>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <ProductCard
-              id="bag"
-              name="Canvas Tote Bag"
-              imgUrl="https://images.unsplash.com/photo-1584917865442-de89df76afd3?q=80&w=400&auto=format&fit=crop"
-            />
-            <ProductCard
-              id="shoes"
-              name="Nike Running"
-              imgUrl="https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=400&auto=format&fit=crop"
-            />
-            <ProductCard
-              id="head"
-              name="Wireless Head"
-              imgUrl="https://images.unsplash.com/photo-1524678606370-a47ad25cb82a?q=80&w=400&auto=format&fit=crop"
-            />
-          </div>
-        </section>
-
-        <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
-          <div className="flex justify-between items-center mb-4 border-b pb-2">
-            <h3 className="font-semibold text-[#003366] text-sm italic">
-              Featured Services
-            </h3>
-            <Link
-              to="/services"
-              className="text-[10px] text-[#FF851B] font-semibold hover:underline"
-            >
-              See All &gt;
-            </Link>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            {/* Note the type="service" prop added here! */}
-            <ProductCard
-              id="design"
-              type="service"
-              name="Graphic Design"
-              imgUrl="https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=400&auto=format&fit=crop"
-            />
-            <ProductCard
-              id="photo"
-              type="service"
-              name="Photography"
-              imgUrl="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=400&auto=format&fit=crop"
-            />
-            <ProductCard
-              id="tutor"
-              type="service"
-              name="Tutoring"
-              imgUrl="https://images.unsplash.com/photo-1434030216411-0b793f4b4173?q=80&w=400&auto=format&fit=crop"
-            />
-          </div>
-        </section>
-      </div>
-
       {/* CATEGORIES */}
       <section className="bg-white border border-gray-100 shadow-sm rounded-sm">
         <div className="bg-gray-50/50 py-3 border-b border-gray-100 text-center">
@@ -315,71 +162,6 @@ export default function CustomerHome() {
         </div>
       </section>
 
-      {/* ON SALE NOW */}
-      <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
-        <div className="flex items-center gap-4 mb-5 border-b pb-2">
-          <h3 className="font-semibold text-[#FF851B] text-sm italic">
-            On Sale Now
-          </h3>
-          <div className="flex gap-1.5">
-            {["12", "50", "10"].map((time, idx) => (
-              <span
-                key={idx}
-                className="bg-[#FF0000] text-white text-[11px] font-bold px-2 py-0.5 rounded-sm shadow-sm"
-              >
-                {time}
-              </span>
-            ))}
-          </div>
-          <Link
-            to="/products?sale=true"
-            className="ml-auto text-[10px] text-[#FF851B] font-semibold hover:underline"
-          >
-            See All &gt;
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <ProductCard
-              key={i}
-              id={`sale-${i}`}
-              name={`Sale Item ${i}`}
-              imgUrl={`https://picsum.photos/seed/${i + 100}/400/400`}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* DAILY DISCOVERY */}
-      <section>
-        <div className="bg-gray-50/50 py-3 border-t border-gray-100 mb-8 text-center rounded-sm">
-          <h3 className="font-semibold text-[#FF851B] text-sm uppercase tracking-[0.2em] italic">
-            DAILY DISCOVERY
-          </h3>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-          {Array.from({ length: discoveryCount }).map((_, i) => (
-            <ProductCard
-              key={i}
-              id={`discovery-${i}`}
-              name={`Discovery Item ${i + 1}`}
-              imgUrl={`https://picsum.photos/seed/${i + 50}/400/400`}
-            />
-          ))}
-        </div>
-
-        {/* Load More Button Logic */}
-        {discoveryCount < 30 && (
-          <div className="mt-12 flex justify-center">
-            <button
-              onClick={() => setDiscoveryCount((prev) => prev + 6)}
-              className="border border-[#FF851B] text-[#FF851B] px-16 py-2.5 text-[11px] font-bold hover:bg-[#FF851B] hover:text-white transition-all uppercase tracking-widest shadow-sm rounded-sm"
-            >
-              Load More
-            </button>
-          </div>
-        )}
-      </section>
     </div>
   );
 }

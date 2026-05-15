@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   Package,
@@ -101,85 +101,39 @@ export default function Orders() {
     receiptWindow.document.close();
   };
 
-  // --- STATEFUL MOCK DATA ---
-  const [orders, setOrders] = useState([
-    {
-      id: "ORD-9921",
-      merchant: "TechHub Electronics",
-      merchantId: "M-101",
-      type: "product",
-      items: [
-        {
-          name: "Mechanical Keyboard",
-          price: 2450,
-          qty: 1,
-          img: "https://images.unsplash.com/photo-1511467687858-23d96c32e4ae?w=200",
-        },
-      ],
-      status: "To ship",
-      payment: "GCash",
-      mode: "Standard delivery",
-      total: 2500,
-      date: "Mar 22, 2026",
-    },
-    {
-      id: "ORD-8842",
-      merchant: "Creative Studio",
-      merchantId: "M-202",
-      type: "service",
-      items: [
-        {
-          name: "Logo Design",
-          price: 5000,
-          qty: 1,
-          img: "https://images.unsplash.com/photo-1626785774573-4b799315345d?w=200",
-        },
-      ],
-      status: "To confirm", // Can be cancelled (FR-26)
-      payment: "GCash",
-      mode: "Online",
-      total: 5000,
-      date: "Mar 22, 2026",
-    },
-    {
-      id: "ORD-6650",
-      merchant: "IskoThreads",
-      merchantId: "M-303",
-      type: "product",
-      items: [
-        {
-          name: "University Hoodie",
-          price: 850,
-          qty: 1,
-          img: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=200",
-        },
-      ],
-      status: "To receive", // Waiting for customer confirmation (FR-25)
-      payment: "GCash",
-      mode: "Standard delivery",
-      total: 900,
-      date: "Mar 20, 2026",
-    },
-    {
-      id: "ORD-1122",
-      merchant: "BU Prints",
-      merchantId: "M-404",
-      type: "product",
-      items: [
-        {
-          name: "Lanyard & ID Lace",
-          price: 150,
-          qty: 2,
-          img: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=200",
-        },
-      ],
-      status: "Completed",
-      payment: "Cash on Delivery",
-      mode: "Campus Meetup",
-      total: 300,
-      date: "Mar 15, 2026",
-    },
-  ]);
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [ordersError, setOrdersError] = useState("");
+  const loadOrders = useCallback(async ({ silent = false } = {}) => {
+    try {
+      if (!silent) {
+        setLoadingOrders(true);
+      }
+      setOrdersError("");
+      const response = await fetch("/api/customer_orders.php", {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to load orders.");
+      }
+
+      setOrders(Array.isArray(payload.orders) ? payload.orders : []);
+      return true;
+    } catch (error) {
+      setOrders([]);
+      setOrdersError(error.message || "Unable to load orders.");
+      return false;
+    } finally {
+      if (!silent) {
+        setLoadingOrders(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
 
   // --- ACTIONS ---
   const showToast = (msg) => {
@@ -188,28 +142,60 @@ export default function Orders() {
   };
 
   // --- FR-26: Cancel Order Logic ---
-  const handleCancelOrder = () => {
-    if (cancelTarget) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === cancelTarget ? { ...o, status: "Cancelled" } : o,
-        ),
-      );
+  const handleCancelOrder = async () => {
+    if (!cancelTarget) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/customer_order_actions.php", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: cancelTarget,
+          action: "cancel",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to cancel this order.");
+      }
+
+      await loadOrders({ silent: true });
       showToast(`Order ${cancelTarget} has been cancelled.`);
       setCancelTarget(null);
+    } catch (error) {
+      showToast(error.message || "Unable to cancel this order.");
     }
   };
 
   // --- FR-25: Confirm Order Logic ---
-  const handleConfirmReceipt = () => {
-    if (confirmTarget) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === confirmTarget ? { ...o, status: "Completed" } : o,
-        ),
-      );
+  const handleConfirmReceipt = async () => {
+    if (!confirmTarget) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/customer_order_actions.php", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: confirmTarget,
+          action: "confirm",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to confirm this order.");
+      }
+
+      await loadOrders({ silent: true });
       showToast(`Order ${confirmTarget} marked as completed!`);
       setConfirmTarget(null);
+    } catch (error) {
+      showToast(error.message || "Unable to confirm this order.");
     }
   };
 
@@ -494,11 +480,22 @@ export default function Orders() {
 
       {/* --- ORDERS LIST --- */}
       <div className="space-y-6 font-sans">
-        {filteredOrders.length === 0 ? (
+        {loadingOrders ? (
+          <div className="text-center py-20 bg-white rounded-[32px] border border-gray-100">
+            <p className="font-bold text-[#003366] text-sm">Loading orders...</p>
+          </div>
+        ) : ordersError ? (
+          <div className="text-center py-20 bg-red-50 rounded-[32px] border border-red-100">
+            <p className="font-bold text-red-600 text-sm">{ordersError}</p>
+          </div>
+        ) : filteredOrders.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[32px] border border-gray-100">
             <Package size={48} className="mx-auto mb-4 text-gray-300" />
             <p className="font-bold text-gray-400 text-sm">
-              No orders found in this category.
+              No orders available yet.
+            </p>
+            <p className="text-xs text-gray-400 mt-2">
+              Your purchases and service bookings will appear here once order history is connected.
             </p>
           </div>
         ) : (

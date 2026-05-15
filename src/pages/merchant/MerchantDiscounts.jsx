@@ -505,7 +505,7 @@ export default function MerchantDiscounts() {
                     onChange={(value) =>
                       setFormData({ ...formData, offeringId: value })
                     }
-                    placeholder="Required for database save"
+                    placeholder="Enter offering ID from your catalog"
                   />
                   <div className="grid grid-cols-2 gap-4">
                     <Field

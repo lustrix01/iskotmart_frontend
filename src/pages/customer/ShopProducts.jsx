@@ -90,7 +90,12 @@ export default function ShopProducts() {
                 <h2 className="text-sm font-bold">Categories</h2>
               </div>
               <div className="p-2">
-                {[1, 2, 3, 4].map((cat) => (
+                {[
+                  "Apparel & Uniforms",
+                  "School Supplies",
+                  "Electronics",
+                  "Food & Drink",
+                ].map((cat) => (
                   <div key={cat} className="mb-1">
                     <button className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group">
                       <span className="flex items-center gap-2">
@@ -98,30 +103,9 @@ export default function ShopProducts() {
                           size={14}
                           className="text-gray-300 group-hover:text-[#FF851B] transition-colors"
                         />
-                        Category {cat}
+                        {cat}
                       </span>
                     </button>
-                    {/* Subcategories */}
-                    <div className="pl-10 pr-4 py-1 space-y-2">
-                      <Link
-                        to="#"
-                        className="block text-[11px] text-gray-500 hover:text-[#FF851B] transition-colors"
-                      >
-                        Subcategory 1
-                      </Link>
-                      <Link
-                        to="#"
-                        className="block text-[11px] text-gray-500 hover:text-[#FF851B] transition-colors"
-                      >
-                        Subcategory 2
-                      </Link>
-                      <Link
-                        to="#"
-                        className="block text-[11px] text-gray-500 hover:text-[#FF851B] transition-colors"
-                      >
-                        Subcategory 3
-                      </Link>
-                    </div>
                   </div>
                 ))}
               </div>

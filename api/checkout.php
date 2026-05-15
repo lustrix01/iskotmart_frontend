@@ -97,6 +97,25 @@ function merchantAllowsPayment(PDO $db, int $merchantId, int $offeringId, string
     return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
+function resolveDeliveryMethodId(PDO $db, int $productId, string $deliveryMethod): ?int {
+    $stmt = $db->prepare(
+        "SELECT DM_ID
+         FROM DELIVERY_METHOD
+         WHERE PROD_ID = :product_id
+         ORDER BY DM_ID ASC
+         LIMIT 1"
+    );
+    $stmt->execute([':product_id' => $productId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row && isset($row['DM_ID'])) {
+        return (int) $row['DM_ID'];
+    }
+
+    $fallbackStmt = $db->query("SELECT DM_ID FROM DELIVERY_METHOD ORDER BY DM_ID ASC LIMIT 1");
+    $fallback = $fallbackStmt->fetch(PDO::FETCH_ASSOC);
+    return $fallback ? (int) $fallback['DM_ID'] : null;
+}
+
 $sessionUser = requireCustomerForCheckout($db);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -109,6 +128,8 @@ $paymentMethod = strtolower(trim((string) ($data['paymentMethod'] ?? '')));
 $deliveryMethod = strtolower(trim((string) ($data['deliveryMethod'] ?? '')));
 $items = $data['items'] ?? [];
 $totals = $data['totals'] ?? [];
+$customer = is_array($data['customer'] ?? null) ? $data['customer'] : [];
+$service = is_array($data['service'] ?? null) ? $data['service'] : [];
 
 if (!in_array($type, ['product', 'service'], true)) {
     jsonResponse(['error' => 'Invalid checkout type.'], 422);
@@ -131,6 +152,7 @@ if (!is_array($items) || count($items) === 0) {
 
 $subtotal = 0.0;
 $dbBackedItems = 0;
+$validatedItems = [];
 
 foreach ($items as $item) {
     $id = (int) ($item['id'] ?? 0);
@@ -159,6 +181,12 @@ foreach ($items as $item) {
         }
 
         $subtotal += moneyValue($dbItem['price']) * $quantity;
+        $validatedItems[] = [
+            'id' => $id,
+            'quantity' => $quantity,
+            'price' => moneyValue($dbItem['price']),
+            'capacity' => (int) $dbItem['capacity'],
+        ];
         continue;
     }
 
@@ -180,9 +208,188 @@ assertClose($shippingFee, moneyValue($totals['shippingFee'] ?? 0), 'Shipping fee
 assertClose($serviceFee, moneyValue($totals['serviceFee'] ?? 0), 'Service fee');
 assertClose($total, moneyValue($totals['total'] ?? -1), 'Total');
 
+$paymentStatus = $paymentMethod === 'gcash' ? 'Paid' : 'Unpaid';
+$validatedBy = $dbBackedItems === count($items) ? 'database' : 'mock-catalog-fallback';
+
+if ($type === 'product' && $validatedBy === 'database') {
+    $recipientName = trim((string) ($customer['recipientName'] ?? ''));
+    $phone = trim((string) ($customer['phone'] ?? ''));
+    $address = trim((string) ($customer['address'] ?? ''));
+    if ($recipientName === '' || $phone === '' || $address === '') {
+        jsonResponse(['error' => 'Recipient name, phone, and address are required.'], 422);
+    }
+
+    $dmId = resolveDeliveryMethodId($db, (int) $validatedItems[0]['id'], $deliveryMethod);
+    if (!$dmId) {
+        jsonResponse(['error' => 'Delivery method is unavailable for this order.'], 422);
+    }
+
+    try {
+        $db->beginTransaction();
+
+        $orderStmt = $db->prepare(
+            "INSERT INTO ORDERS
+                (TOTAL_AMOUNT, ORDER_STATUS, PAYMENT_STATUS, RECIPIENT_NAME, PHONE_NUM, ADDRESS, DISCOUNT_AMT, DELIVERY_STATUS, DISCOUNT_ID, CUSTOMER_ID, DM_ID)
+             VALUES
+                (:total_amount, :order_status, :payment_status, :recipient_name, :phone, :address, :discount_amt, :delivery_status, :discount_id, :customer_id, :dm_id)"
+        );
+        $orderStmt->execute([
+            ':total_amount' => (int) round($total),
+            ':order_status' => 'PENDING',
+            ':payment_status' => strtoupper($paymentStatus),
+            ':recipient_name' => $recipientName,
+            ':phone' => $phone,
+            ':address' => $address,
+            ':discount_amt' => $discountAmount > 0 ? $discountAmount : null,
+            ':delivery_status' => strtoupper($deliveryMethod === 'standard' ? 'TO_SHIP' : 'FOR_MEETUP'),
+            ':discount_id' => null,
+            ':customer_id' => (int) $sessionUser['id'],
+            ':dm_id' => $dmId,
+        ]);
+
+        $orderId = (int) $db->lastInsertId();
+        if ($orderId <= 0) {
+            throw new RuntimeException('Unable to create order record.');
+        }
+
+        $itemStmt = $db->prepare(
+            "INSERT INTO ORDER_ITEM (PRICE, QUANTITY, ORDER_ID, PRODUCT_ID)
+             VALUES (:price, :quantity, :order_id, :product_id)"
+        );
+        $stockStmt = $db->prepare(
+            "UPDATE PRODUCT
+             SET STOCK_QTY = STOCK_QTY - :quantity
+             WHERE PROD_ID = :product_id AND STOCK_QTY >= :quantity"
+        );
+
+        foreach ($validatedItems as $item) {
+            $itemStmt->execute([
+                ':price' => (int) round((float) $item['price']),
+                ':quantity' => (int) $item['quantity'],
+                ':order_id' => $orderId,
+                ':product_id' => (int) $item['id'],
+            ]);
+
+            $stockStmt->execute([
+                ':quantity' => (int) $item['quantity'],
+                ':product_id' => (int) $item['id'],
+            ]);
+
+            if ($stockStmt->rowCount() === 0) {
+                throw new RuntimeException('Insufficient stock during checkout.');
+            }
+        }
+
+        $db->commit();
+
+        jsonResponse([
+            'orderNumber' => 'ORD-' . $orderId,
+            'paymentStatus' => $paymentStatus,
+            'validatedBy' => $validatedBy,
+            'customerId' => (int) $sessionUser['id'],
+        ]);
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        logApiError($e);
+        jsonResponse(['error' => 'Unable to place order. Please try again.'], 500);
+    }
+}
+
+if ($type === 'service' && $validatedBy === 'database') {
+    $recipientName = trim((string) ($customer['recipientName'] ?? ''));
+    $phone = trim((string) ($customer['phone'] ?? ''));
+    $address = trim((string) ($customer['address'] ?? ''));
+    if ($recipientName === '' || $phone === '') {
+        jsonResponse(['error' => 'Recipient name and phone are required.'], 422);
+    }
+
+    $deadlineRaw = trim((string) ($service['deadline'] ?? ''));
+    $deadlineTimestamp = $deadlineRaw !== '' ? strtotime($deadlineRaw) : false;
+    $scheduledDate = $deadlineTimestamp ? date('Y-m-d H:i:s', $deadlineTimestamp) : date('Y-m-d H:i:s');
+    $complexity = trim((string) ($service['complexity'] ?? ''));
+
+    try {
+        $db->beginTransaction();
+
+        $requestStmt = $db->prepare(
+            "INSERT INTO SERVICE_REQUEST
+                (SCHEDULED_DATE, REQ_STATUS, TOTAL_PRICE, CUSTOMER_INFO, NOTE, RECEIPT_NAME, ADDRESS, PHONE_NUM, CUSTOMER_ID, SERVICE_ID, RECIPIENT_NAME)
+             VALUES
+                (:scheduled_date, :req_status, :total_price, :customer_info, :note, :receipt_name, :address, :phone_num, :customer_id, :service_id, :recipient_name)"
+        );
+        $slotsStmt = $db->prepare(
+            "UPDATE SERVICE
+             SET SLOTS = SLOTS - :quantity
+             WHERE SERVICE_ID = :service_id AND SLOTS >= :quantity"
+        );
+
+        $createdIds = [];
+        foreach ($validatedItems as $item) {
+            $qty = max(1, (int) $item['quantity']);
+            $unitPrice = moneyValue($item['price']);
+            $lineTotal = (int) round($unitPrice * $qty);
+            $customerInfo = json_encode([
+                'paymentMethod' => $paymentMethod,
+                'paymentStatus' => $paymentStatus,
+                'complexity' => $complexity,
+                'quantity' => $qty,
+            ]);
+
+            $requestStmt->execute([
+                ':scheduled_date' => $scheduledDate,
+                ':req_status' => 'PENDING',
+                ':total_price' => $lineTotal,
+                ':customer_info' => $customerInfo !== false ? $customerInfo : '{}',
+                ':note' => $qty > 1 ? ('Requested quantity: ' . $qty) : null,
+                ':receipt_name' => $recipientName,
+                ':address' => $address !== '' ? $address : null,
+                ':phone_num' => $phone,
+                ':customer_id' => (int) $sessionUser['id'],
+                ':service_id' => (int) $item['id'],
+                ':recipient_name' => $recipientName,
+            ]);
+
+            $requestId = (int) $db->lastInsertId();
+            if ($requestId <= 0) {
+                throw new RuntimeException('Unable to create service request.');
+            }
+            $createdIds[] = $requestId;
+
+            $slotsStmt->execute([
+                ':quantity' => $qty,
+                ':service_id' => (int) $item['id'],
+            ]);
+            if ($slotsStmt->rowCount() === 0) {
+                throw new RuntimeException('Insufficient service slots during checkout.');
+            }
+        }
+
+        $db->commit();
+
+        $reference = count($createdIds) === 1
+            ? ('SRV-' . $createdIds[0])
+            : ('SRV-' . $createdIds[0] . '+' . (count($createdIds) - 1));
+
+        jsonResponse([
+            'orderNumber' => $reference,
+            'paymentStatus' => $paymentStatus,
+            'validatedBy' => $validatedBy,
+            'customerId' => (int) $sessionUser['id'],
+        ]);
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        logApiError($e);
+        jsonResponse(['error' => 'Unable to place service request. Please try again.'], 500);
+    }
+}
+
 jsonResponse([
     'orderNumber' => sprintf('ORD-%s-%04d', date('ymdHis'), random_int(1000, 9999)),
-    'paymentStatus' => $paymentMethod === 'gcash' ? 'Paid' : 'Unpaid',
-    'validatedBy' => $dbBackedItems === count($items) ? 'database' : 'mock-catalog-fallback',
+    'paymentStatus' => $paymentStatus,
+    'validatedBy' => $validatedBy,
     'customerId' => (int) $sessionUser['id'],
 ]);
