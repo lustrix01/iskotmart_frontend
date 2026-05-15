@@ -1,6 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Minus, Plus, ShoppingCart, Star } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Heart,
+  Info,
+  MessageCircle,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Star,
+  Store,
+} from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { useCart } from "../../context/useCart";
 import { useStorefrontListings } from "../../data/storefrontData";
@@ -20,6 +32,10 @@ export default function ProductDetails() {
   const [quantity, setQuantity] = useState(1);
   const [selectedImg, setSelectedImg] = useState(0);
   const [notification, setNotification] = useState("");
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [messageLoading, setMessageLoading] = useState(false);
 
   const item = useMemo(() => {
     const targetId = Number(id);
@@ -49,6 +65,48 @@ export default function ProductDetails() {
   }, [item]);
 
   const maxQty = Math.max(1, Number(item?.stock ?? 1));
+  const description = String(item?.description || "").trim();
+  const shouldClampDescription = description.length > 220;
+  const visibleDescription =
+    shouldClampDescription && !isDescriptionExpanded
+      ? `${description.slice(0, 220).trim()}...`
+      : description;
+
+  useEffect(() => {
+    setSelectedImg(0);
+    setIsDescriptionExpanded(false);
+  }, [id, isServiceRoute]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadWishlistState = async () => {
+      if (!user || !item) {
+        setIsWishlisted(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/customer_wishlist.php?offeringId=${encodeURIComponent(item.id)}`,
+          { credentials: "include" },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && isMounted) {
+          setIsWishlisted(Boolean(payload.wishlisted));
+        }
+      } catch {
+        if (isMounted) {
+          setIsWishlisted(false);
+        }
+      }
+    };
+
+    loadWishlistState();
+    return () => {
+      isMounted = false;
+    };
+  }, [item, user]);
 
   const showToast = (message) => {
     setNotification(message);
@@ -110,6 +168,69 @@ export default function ProductDetails() {
         ],
       },
     });
+  };
+
+  const handleToggleWishlist = async () => {
+    if (!user) {
+      goToLogin();
+      return;
+    }
+    if (!item || wishlistLoading) {
+      return;
+    }
+
+    setWishlistLoading(true);
+    try {
+      const response = await fetch("/api/customer_wishlist.php", {
+        method: isWishlisted ? "DELETE" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offeringId: Number(item.id) }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update wishlist.");
+      }
+      setIsWishlisted(Boolean(payload.wishlisted));
+      showToast(payload.wishlisted ? "Added to wishlist." : "Removed from wishlist.");
+    } catch (wishlistError) {
+      showToast(wishlistError.message);
+    } finally {
+      setWishlistLoading(false);
+    }
+  };
+
+  const handleMessageMerchant = async () => {
+    if (!user) {
+      goToLogin();
+      return;
+    }
+    if (!item?.merchantId || messageLoading) {
+      showToast("Merchant contact is unavailable.");
+      return;
+    }
+
+    setMessageLoading(true);
+    try {
+      const response = await fetch("/api/customer_messages.php", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchantId: Number(item.merchantId),
+          message: `Hi, I am interested in ${item.name}.`,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to message merchant.");
+      }
+      navigate("/profile/messages");
+    } catch (messageError) {
+      showToast(messageError.message);
+    } finally {
+      setMessageLoading(false);
+    }
   };
 
   if (loading) {
@@ -264,6 +385,86 @@ export default function ProductDetails() {
             >
               {isServiceRoute ? "Book now" : "Buy now"}
             </button>
+            <button
+              onClick={handleToggleWishlist}
+              disabled={wishlistLoading}
+              className={`w-16 border border-gray-200 rounded-md text-xs font-black flex flex-col items-center justify-center gap-1 transition-all ${
+                isWishlisted
+                  ? "text-red-500 bg-red-50 border-red-100"
+                  : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+              }`}
+              title={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+            >
+              <Heart size={18} className={isWishlisted ? "fill-current" : ""} />
+              <span className="text-[9px]">Save</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-100 rounded-xl p-6">
+        <h2 className="text-sm font-black text-[#003366] tracking-wider mb-4 flex items-center gap-2">
+          <Info size={16} className="text-[#FF851B]" />
+          Description
+        </h2>
+        {description ? (
+          <>
+            <p className="text-sm text-gray-600 leading-7 whitespace-pre-line">
+              {visibleDescription}
+            </p>
+            {shouldClampDescription ? (
+              <button
+                onClick={() => setIsDescriptionExpanded((current) => !current)}
+                className="mt-3 text-xs font-black text-[#FF851B] hover:underline"
+              >
+                {isDescriptionExpanded ? "Show less" : "Read more"}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-xs text-gray-400">No description provided yet.</p>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-100 rounded-xl p-6 flex flex-col md:flex-row md:items-center gap-6">
+        <div className="flex items-center gap-4 md:border-r md:pr-8 border-gray-100 shrink-0">
+          <div className="relative">
+            <div className="w-16 h-16 bg-[#F8FAFC] rounded-full flex items-center justify-center border border-gray-100">
+              <Store size={24} className="text-[#003366]" />
+            </div>
+            <CheckCircle2
+              size={20}
+              className="absolute bottom-0 right-0 text-[#0074D9] bg-white rounded-full"
+            />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+              Published by
+            </p>
+            <h3 className="font-black text-[#003366] text-base">
+              {item.merchant || "Merchant"}
+            </h3>
+          </div>
+        </div>
+        <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            onClick={handleMessageMerchant}
+            disabled={messageLoading}
+            className="flex items-center justify-center gap-2 text-[11px] font-black bg-[#FF851B]/10 text-[#FF851B] px-4 py-3 border border-[#FF851B]/20 hover:bg-[#FF851B] hover:text-white transition-all rounded-md"
+          >
+            <MessageCircle size={15} />
+            {messageLoading ? "Opening..." : "Message merchant"}
+          </button>
+          <Link
+            to={item.merchantId ? `/merchant/${item.merchantId}` : "#"}
+            className="flex items-center justify-center gap-2 text-[11px] font-black border border-gray-200 text-[#003366] px-4 py-3 hover:border-[#003366] transition-all rounded-md"
+          >
+            <Store size={15} />
+            View shop
+          </Link>
+          <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-gray-500 bg-[#F8FAFC] border border-gray-100 rounded-md px-4 py-3">
+            <Star size={14} fill="#FF851B" className="text-[#FF851B]" />
+            {Number(item.rating || 0).toFixed(1)} merchant rating
           </div>
         </div>
       </div>

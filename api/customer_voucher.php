@@ -119,7 +119,7 @@ try {
         if ((string) $voucher['EXPIRY_DATE'] < date('Y-m-d')) {
             continue;
         }
-        if ((int) $voucher['used'] >= (int) $voucher['USAGE_LIMIT']) {
+        if ((int) $voucher['used'] > 0) {
             continue;
         }
         if ($eligibleSubtotal < (float) $voucher['MIN_SPEND']) {

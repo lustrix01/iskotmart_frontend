@@ -9,12 +9,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 try {
     $stmt = $db->query(
         "SELECT o.OFFERING_ID AS id, o.OFFERING_TYPE AS type, o.OFFERING_NAME AS name,
+                COALESCE(o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC) AS description,
                 o.AVAIL_STATUS AS status,
                 COALESCE(pc.CAT_NAME, sc.CAT_NAME) AS category,
                 COALESCE(p.PRICE, s.PRICE) AS price,
                 p.STOCK_QTY AS stock,
                 s.DELIVERY_METHOD AS rate,
-                u.USERNAME AS merchant_name,
+                o.MERCHANT_ID AS merchant_id,
+                COALESCE(m.SHOP_NAME, u.USERNAME) AS merchant_name,
                 GROUP_CONCAT(
                     JSON_OBJECT(
                         'id', di.DISPLAY_IMG_ID,
@@ -26,6 +28,7 @@ try {
                 ) AS images_json
          FROM OFFERING o
          INNER JOIN USERS u ON u.USER_ID = o.MERCHANT_ID AND u.STATUS = 'ACTIVE'
+         LEFT JOIN MERCHANT m ON m.MERCHANT_ID = o.MERCHANT_ID
          LEFT JOIN PRODUCT p ON p.PROD_ID = o.OFFERING_ID
          LEFT JOIN PROD_SUBCAT ps ON ps.PRODSUBCAT_ID = p.PRODSUBCAT_ID
          LEFT JOIN PROD_CATEGORY pc ON pc.PRODCAT_ID = ps.PRODCAT_ID
@@ -35,7 +38,9 @@ try {
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = o.OFFERING_ID
          WHERE o.AVAIL_STATUS = 'Active'
          GROUP BY o.OFFERING_ID, o.OFFERING_TYPE, o.OFFERING_NAME, o.AVAIL_STATUS,
-                  pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.DELIVERY_METHOD, u.USERNAME
+                  o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
+                  pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.DELIVERY_METHOD,
+                  o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME
          ORDER BY o.OFFERING_ID DESC"
     );
 
@@ -51,6 +56,8 @@ try {
             'id' => (int) $row['id'],
             'type' => $row['type'] === 'P' ? 'product' : 'service',
             'name' => $row['name'],
+            'description' => $row['description'] ?: '',
+            'merchantId' => (int) $row['merchant_id'],
             'merchant' => $row['merchant_name'] ?: 'Merchant',
             'category' => $row['category'] ?: 'Uncategorized',
             'price' => (float) $row['price'],
@@ -72,4 +79,3 @@ try {
     logApiError($e);
     jsonResponse(['error' => 'Unable to load storefront offerings.'], 500);
 }
-

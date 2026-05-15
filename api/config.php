@@ -5,8 +5,8 @@ ini_set('log_errors', '1');
 ob_start();
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Isko-Client-Session');
+header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
 header('Access-Control-Allow-Credentials: true');
 header('Vary: Origin');
 
@@ -196,6 +196,15 @@ function startApiSession(bool $rememberMe = false): void {
     session_start();
 }
 
+function clientSessionTokenFromRequest(): string {
+    $token = trim((string) ($_SERVER['HTTP_X_ISKO_CLIENT_SESSION'] ?? ''));
+    if ($token === '' || !preg_match('/^[A-Za-z0-9._-]{16,128}$/', $token)) {
+        return '';
+    }
+
+    return $token;
+}
+
 function userPayloadFromRow(array $user): array {
     return [
         'id' => (int) $user['USER_ID'],
@@ -209,13 +218,54 @@ function userPayloadFromRow(array $user): array {
 function issueAuthSession(array $user, bool $rememberMe = false): void {
     startApiSession($rememberMe);
     session_regenerate_id(true);
-    $_SESSION['user_id'] = (int) $user['id'];
+    $clientSession = clientSessionTokenFromRequest();
+    if ($clientSession === '') {
+        jsonResponse(['error' => 'Client session is required. Refresh the page and try again.'], 400);
+    }
+
+    if (!isset($_SESSION['client_auth']) || !is_array($_SESSION['client_auth'])) {
+        $_SESSION['client_auth'] = [];
+    }
+
+    $_SESSION['client_auth'][$clientSession] = [
+        'user_id' => (int) $user['id'],
+        'issued_at' => time(),
+    ];
+
+    unset($_SESSION['user_id'], $_SESSION['client_session_id']);
 }
 
 function currentUser(PDO $db): ?array {
     startApiSession();
-    $userId = $_SESSION['user_id'] ?? null;
+
+    $requestClientSession = clientSessionTokenFromRequest();
+    if ($requestClientSession === '') {
+        return null;
+    }
+
+    $clientAuth = $_SESSION['client_auth'][$requestClientSession] ?? null;
+    $userId = is_array($clientAuth) ? ($clientAuth['user_id'] ?? null) : null;
     if (!$userId) {
+        $legacyUserId = $_SESSION['user_id'] ?? null;
+        $legacyClientSession = (string) ($_SESSION['client_session_id'] ?? '');
+        if ($legacyUserId && $legacyClientSession !== '' && hash_equals($legacyClientSession, $requestClientSession)) {
+            if (!isset($_SESSION['client_auth']) || !is_array($_SESSION['client_auth'])) {
+                $_SESSION['client_auth'] = [];
+            }
+            $_SESSION['client_auth'][$requestClientSession] = [
+                'user_id' => (int) $legacyUserId,
+                'issued_at' => time(),
+            ];
+            unset($_SESSION['user_id'], $_SESSION['client_session_id']);
+            $userId = (int) $legacyUserId;
+        } else {
+            unset($_SESSION['user_id'], $_SESSION['client_session_id']);
+            return null;
+        }
+    }
+
+    if (!is_numeric($userId)) {
+        unset($_SESSION['client_auth'][$requestClientSession]);
         return null;
     }
 
@@ -229,7 +279,7 @@ function currentUser(PDO $db): ?array {
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$user) {
-        unset($_SESSION['user_id']);
+        unset($_SESSION['client_auth'][$requestClientSession]);
         return null;
     }
 

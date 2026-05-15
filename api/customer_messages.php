@@ -24,16 +24,54 @@ function formatMessageTime(?string $value): string {
     return $timestamp ? date('M j, g:i A', $timestamp) : $value;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    jsonResponse(['error' => 'Method not allowed'], 405);
-}
-
 $sessionUser = requireCustomerForMessages($db);
 $customerId = (int) $sessionUser['id'];
 
 try {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $data = jsonInput();
+        $merchantId = (int) ($data['merchantId'] ?? 0);
+        $message = trim((string) ($data['message'] ?? ''));
+
+        if ($merchantId <= 0) {
+            jsonResponse(['error' => 'Merchant is required.'], 422);
+        }
+
+        if ($message === '') {
+            jsonResponse(['error' => 'Message is required.'], 422);
+        }
+
+        $merchantStmt = $db->prepare(
+            "SELECT m.MERCHANT_ID
+             FROM MERCHANT m
+             INNER JOIN USERS u ON u.USER_ID = m.MERCHANT_ID AND u.STATUS = 'ACTIVE'
+             WHERE m.MERCHANT_ID = :merchant_id
+             LIMIT 1"
+        );
+        $merchantStmt->execute([':merchant_id' => $merchantId]);
+        if (!$merchantStmt->fetchColumn()) {
+            jsonResponse(['error' => 'Merchant not found.'], 404);
+        }
+
+        $stmt = $db->prepare(
+            "INSERT INTO MESSAGE (MSG_TEXT, STATUS, MESSAGEcol, MSG_RECEIVER, MSG_SENDER)
+             VALUES (:message, 'SENT', 'customer', :merchant_id, :customer_id)"
+        );
+        $stmt->execute([
+            ':message' => $message,
+            ':merchant_id' => $merchantId,
+            ':customer_id' => $customerId,
+        ]);
+
+        jsonResponse(['message' => 'Message sent.'], 201);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        jsonResponse(['error' => 'Method not allowed'], 405);
+    }
+
     $stmt = $db->prepare(
-        "SELECT msg.MSG_ID, msg.MSG_TEXT, msg.SENT_ON, msg.STATUS, msg.MSG_RECEIVER AS merchant_id,
+        "SELECT msg.MSG_ID, msg.MSG_TEXT, msg.SENT_ON, msg.STATUS, msg.MESSAGEcol, msg.MSG_RECEIVER AS merchant_id,
                 COALESCE(m.SHOP_NAME, TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), 'Merchant') AS merchant_name
          FROM MESSAGE msg
          INNER JOIN MERCHANT m ON m.MERCHANT_ID = msg.MSG_RECEIVER
@@ -65,7 +103,7 @@ try {
         $messageText = trim((string) ($row['MSG_TEXT'] ?? ''));
         $message = [
             'id' => (int) $row['MSG_ID'],
-            'sender' => 'me',
+            'sender' => ($row['MESSAGEcol'] ?? 'customer') === 'merchant' ? 'them' : 'me',
             'text' => $messageText,
             'time' => formatMessageTime($row['SENT_ON'] ?? null),
             'status' => (string) ($row['STATUS'] ?? ''),

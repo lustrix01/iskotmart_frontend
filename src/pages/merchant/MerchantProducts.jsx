@@ -81,6 +81,7 @@ export default function MerchantProducts() {
     stock: 0,
     rate: "Per Hour",
     status: "Active",
+    description: "",
     img: "",
     images: [],
     newImages: [],
@@ -110,6 +111,7 @@ export default function MerchantProducts() {
         stock: 0,
         rate: "Per Hour",
         status: "Active",
+        description: "",
         img: "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=150",
         images: [],
         newImages: [],
@@ -197,7 +199,7 @@ export default function MerchantProducts() {
     payload.append("stock", String(formData.stock || 0));
     payload.append("rate", formData.rate || "Per Project");
     payload.append("status", formData.status);
-    payload.append("description", formData.name);
+    payload.append("description", formData.description || "");
     payload.append(
       "removeImageIds",
       JSON.stringify(formData.removeImageIds || []),
@@ -607,6 +609,25 @@ export default function MerchantProducts() {
                     }
                     className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={formData.description || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                    rows={5}
+                    maxLength={1000}
+                    placeholder={`Describe this ${activeTab === "products" ? "product" : "service"} for customers.`}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all resize-none leading-relaxed"
+                  />
+                  <p className="text-[10px] font-semibold text-gray-400">
+                    {(formData.description || "").length}/1000 characters
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

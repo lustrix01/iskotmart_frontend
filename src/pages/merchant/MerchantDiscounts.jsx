@@ -13,21 +13,41 @@ import {
 
 const paymentScope = "Checkout currently supports GCash and Cash on Delivery only.";
 
+const dateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const todayInputValue = () => dateInputValue(new Date());
+
+const tomorrowInputValue = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return dateInputValue(date);
+};
+
 export default function MerchantDiscounts() {
   const [activeTab, setActiveTab] = useState("vouchers");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [voucherView, setVoucherView] = useState("active");
   const [formError, setFormError] = useState("");
   const [formNotice, setFormNotice] = useState("");
   const [loadError, setLoadError] = useState("");
 
   const [vouchers, setVouchers] = useState([]);
+  const [usedVouchers, setUsedVouchers] = useState([]);
   const [productDiscounts, setProductDiscounts] = useState([]);
+  const [offerings, setOfferings] = useState([]);
 
   const [formData, setFormData] = useState({
     code: "",
     productName: "",
+    offeringName: "",
+    offeringType: "product",
     offeringId: "",
     originalPrice: "",
     discountType: "percentage",
@@ -40,7 +60,8 @@ export default function MerchantDiscounts() {
     expiryDate: "",
   });
 
-  const currentItems = activeTab === "vouchers" ? vouchers : productDiscounts;
+  const currentVouchers = voucherView === "active" ? vouchers : usedVouchers;
+  const currentItems = activeTab === "vouchers" ? currentVouchers : productDiscounts;
 
   const loadDiscounts = useCallback(async () => {
     try {
@@ -52,9 +73,15 @@ export default function MerchantDiscounts() {
         throw new Error(payload.error || "Unable to load discounts.");
       }
       setVouchers(Array.isArray(payload.vouchers) ? payload.vouchers : []);
-      setProductDiscounts(
-        Array.isArray(payload.productDiscounts) ? payload.productDiscounts : [],
+      setUsedVouchers(
+        Array.isArray(payload.usedVouchers) ? payload.usedVouchers : [],
       );
+      setProductDiscounts(
+        Array.isArray(payload.discounts || payload.productDiscounts)
+          ? payload.discounts || payload.productDiscounts
+          : [],
+      );
+      setOfferings(Array.isArray(payload.offerings) ? payload.offerings : []);
       setLoadError("");
     } catch (error) {
       setLoadError(error.message);
@@ -74,6 +101,8 @@ export default function MerchantDiscounts() {
         ? {
             code: item.code || "",
             productName: item.productName || "",
+            offeringName: item.offeringName || item.productName || "",
+            offeringType: item.offeringType || "product",
             offeringId: item.offeringId || "",
             originalPrice: item.originalPrice || "",
             discountType: item.discountType || "percentage",
@@ -88,6 +117,8 @@ export default function MerchantDiscounts() {
         : {
             code: "",
             productName: "",
+            offeringName: "",
+            offeringType: "product",
             offeringId: "",
             originalPrice: "",
             discountType: "percentage",
@@ -130,15 +161,24 @@ export default function MerchantDiscounts() {
       if (!formData.expiryDate) {
         return "Expiry date is required.";
       }
+      if (formData.expiryDate < todayInputValue()) {
+        return "Expiry date cannot be in the past.";
+      }
     } else {
-      if (!formData.productName.trim()) {
-        return "Product name is required.";
+      if (!formData.offeringId) {
+        return "Select a product or service.";
       }
       if (Number(formData.originalPrice) <= 0) {
         return "Original price must be greater than zero.";
       }
       if (!formData.startDate || !formData.endDate) {
         return "Start and end dates are required.";
+      }
+      if (formData.startDate < todayInputValue()) {
+        return "Start date cannot be in the past.";
+      }
+      if (formData.endDate < tomorrowInputValue()) {
+        return "End date must be tomorrow or later.";
       }
       if (formData.endDate < formData.startDate) {
         return "End date cannot be earlier than start date.";
@@ -161,7 +201,7 @@ export default function MerchantDiscounts() {
             expiryDate: formData.expiryDate,
           }
         : {
-            mode: "product-discount",
+            mode: "discount",
             offeringId: Number(formData.offeringId),
             discountType: formData.discountType,
             discountValue: Number(formData.discountValue),
@@ -230,6 +270,18 @@ export default function MerchantDiscounts() {
     setDeleteId(null);
   };
 
+  const handleOfferingSelect = (offeringId) => {
+    const selected = offerings.find((offering) => String(offering.id) === String(offeringId));
+    setFormData({
+      ...formData,
+      offeringId,
+      offeringName: selected?.name || "",
+      productName: selected?.name || "",
+      offeringType: selected?.type || "product",
+      originalPrice: selected?.price ?? "",
+    });
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -239,8 +291,8 @@ export default function MerchantDiscounts() {
           </h2>
           <p className="mt-2 text-xs font-semibold text-gray-500">
             Voucher codes validate minimum spend, usage limits, and expiry.
-            Product discounts validate dates, type, value, and merchant-owned
-            products when an offering ID is provided.
+            Discounts validate dates, type, value, and merchant-owned
+            products or services from your catalog.
           </p>
           <p className="mt-1 text-[10px] font-bold text-[#FF851B]">
             {paymentScope}
@@ -256,16 +308,40 @@ export default function MerchantDiscounts() {
               onClick={() => setActiveTab("products")}
               className={`text-xs font-bold uppercase tracking-widest pb-1 border-b-2 transition-all ${activeTab === "products" ? "border-[#FF851B] text-[#003366]" : "border-transparent text-gray-400 hover:text-gray-600"}`}
             >
-              Product Discounts
+              Discounts
             </button>
           </div>
+          {activeTab === "vouchers" && (
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setVoucherView("active")}
+                className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${
+                  voucherView === "active"
+                    ? "bg-[#003366] text-white"
+                    : "bg-white border border-gray-100 text-gray-400 hover:text-[#003366]"
+                }`}
+              >
+                Active Vouchers ({vouchers.length})
+              </button>
+              <button
+                onClick={() => setVoucherView("used")}
+                className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${
+                  voucherView === "used"
+                    ? "bg-[#003366] text-white"
+                    : "bg-white border border-gray-100 text-gray-400 hover:text-[#003366]"
+                }`}
+              >
+                Used Vouchers ({usedVouchers.length})
+              </button>
+            </div>
+          )}
         </div>
         <button
           onClick={() => openModal()}
           className="flex items-center justify-center gap-2 bg-[#FF851B] text-white px-6 py-3 rounded-2xl font-bold text-xs shadow-lg shadow-orange-500/20 hover:bg-[#E67716] transition-all transform active:scale-95"
         >
           <Plus size={18} />
-          {activeTab === "vouchers" ? "Create Voucher" : "Add Product Discount"}
+          {activeTab === "vouchers" ? "Create Voucher" : "Add Discount"}
         </button>
       </div>
 
@@ -277,8 +353,8 @@ export default function MerchantDiscounts() {
         />
         <InfoCard
           icon={<ShoppingBag size={18} />}
-          title="Product Ownership"
-          text="Database-backed product discounts require a merchant-owned product offering ID."
+          title="Catalog Selection"
+          text="Discounts are created by selecting an existing merchant product or service."
         />
         <InfoCard
           icon={<Tag size={18} />}
@@ -298,7 +374,7 @@ export default function MerchantDiscounts() {
           <thead className="bg-[#F9FAFB] border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
             <tr>
               <th className="px-6 py-4">
-                {activeTab === "vouchers" ? "Voucher Code" : "Product Name"}
+                {activeTab === "vouchers" ? "Voucher Code" : "Offering"}
               </th>
               <th className="px-6 py-4">Discount</th>
               <th className="px-6 py-4">
@@ -329,14 +405,12 @@ export default function MerchantDiscounts() {
                       <p className="text-sm font-bold text-[#003366]">
                         {activeTab === "vouchers"
                           ? item.code
-                          : item.productName}
+                          : item.offeringName || item.productName}
                       </p>
                       <p className="text-[10px] text-gray-400 font-medium">
                         {activeTab === "vouchers"
                           ? `Min spend: PHP ${item.minSpend}`
-            : item.offeringId
-              ? `Offering ID: ${item.offeringId}`
-              : "No database offering ID"}
+                          : `${item.offeringType || "offering"} ID: ${item.offeringId}`}
                       </p>
                     </div>
                   </div>
@@ -353,6 +427,13 @@ export default function MerchantDiscounts() {
                         Used {item.used} / {item.usageLimit}
                       </p>
                       <p>Cap: {item.cap ? `PHP ${item.cap}` : "No cap"}</p>
+                      <p
+                        className={`uppercase ${
+                          item.status === "ACTIVE" ? "text-green-600" : "text-red-500"
+                        }`}
+                      >
+                        {item.status}
+                      </p>
                     </div>
                   ) : (
                     <div>
@@ -395,7 +476,11 @@ export default function MerchantDiscounts() {
                   className="px-6 py-10 text-center text-xs font-bold text-gray-400"
                 >
                   No database-backed{" "}
-                  {activeTab === "vouchers" ? "vouchers" : "product discounts"}{" "}
+                  {activeTab === "vouchers"
+                    ? voucherView === "active"
+                      ? "active vouchers"
+                      : "used vouchers"
+                    : "discounts"}{" "}
                   found.
                 </td>
               </tr>
@@ -410,7 +495,7 @@ export default function MerchantDiscounts() {
             <div className="p-8 border-b border-gray-50 flex justify-between items-center">
               <h3 className="text-xl font-black text-[#003366]">
                 {editingItem ? "Edit" : "New"}{" "}
-                {activeTab === "vouchers" ? "Voucher" : "Product Discount"}
+                {activeTab === "vouchers" ? "Voucher" : "Discount"}
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -481,6 +566,7 @@ export default function MerchantDiscounts() {
                     <Field
                       label="Expiry Date"
                       type="date"
+                      min={todayInputValue()}
                       value={formData.expiryDate}
                       onChange={(value) =>
                         setFormData({ ...formData, expiryDate: value })
@@ -491,30 +577,45 @@ export default function MerchantDiscounts() {
                 </>
               ) : (
                 <>
-                  <Field
-                    label="Product Name"
-                    value={formData.productName}
+                  <SelectField
+                    label="Discount Applies To"
+                    value={formData.offeringType}
                     onChange={(value) =>
-                      setFormData({ ...formData, productName: value })
+                      setFormData({
+                        ...formData,
+                        offeringType: value,
+                        offeringId: "",
+                        offeringName: "",
+                        productName: "",
+                        originalPrice: "",
+                      })
                     }
-                    required
+                    options={[
+                      ["product", "Product"],
+                      ["service", "Service"],
+                    ]}
                   />
-                  <Field
-                    label="Database Offering ID"
+                  <SelectField
+                    label="Select Product or Service"
                     value={formData.offeringId}
-                    onChange={(value) =>
-                      setFormData({ ...formData, offeringId: value })
-                    }
-                    placeholder="Enter offering ID from your catalog"
+                    onChange={handleOfferingSelect}
+                    options={[
+                      ["", "Choose from your catalog"],
+                      ...offerings
+                        .filter((offering) => offering.type === formData.offeringType)
+                        .map((offering) => [
+                          String(offering.id),
+                          `${offering.name} - PHP ${Number(offering.price || 0).toLocaleString()}`,
+                        ]),
+                    ]}
                   />
                   <div className="grid grid-cols-2 gap-4">
                     <Field
                       label="Original Price"
                       type="number"
                       value={formData.originalPrice}
-                      onChange={(value) =>
-                        setFormData({ ...formData, originalPrice: value })
-                      }
+                      onChange={() => {}}
+                      readOnly
                       required
                     />
                     <SelectField
@@ -548,6 +649,7 @@ export default function MerchantDiscounts() {
                     <Field
                       label="Start Date"
                       type="date"
+                      min={todayInputValue()}
                       value={formData.startDate}
                       onChange={(value) =>
                         setFormData({ ...formData, startDate: value })
@@ -557,6 +659,7 @@ export default function MerchantDiscounts() {
                     <Field
                       label="End Date"
                       type="date"
+                      min={tomorrowInputValue()}
                       value={formData.endDate}
                       onChange={(value) =>
                         setFormData({ ...formData, endDate: value })
@@ -629,7 +732,16 @@ function InfoCard({ icon, title, text }) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", required, placeholder }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required,
+  placeholder,
+  min,
+  readOnly,
+}) {
   return (
     <div>
       <label className="text-[10px] font-black text-gray-400 uppercase mb-2 block">
@@ -638,8 +750,10 @@ function Field({ label, value, onChange, type = "text", required, placeholder })
       <input
         required={required}
         type={type}
+        min={min}
+        readOnly={readOnly}
         placeholder={placeholder}
-        className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-sm outline-none"
+        className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl text-sm outline-none read-only:text-gray-500"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

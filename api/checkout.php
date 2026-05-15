@@ -259,8 +259,8 @@ function validateCheckoutVoucher(PDO $db, string $code, array $validatedItems, b
 
         $usageStmt->execute([':voucher_id' => (int) $voucher['VOUCHER_ID']]);
         $used = (int) $usageStmt->fetchColumn();
-        if ($used >= (int) $voucher['USAGE_LIMIT']) {
-            jsonResponse(['error' => 'Voucher usage limit has been reached.'], 422);
+        if ($used > 0) {
+            jsonResponse(['error' => 'Voucher has already been used.'], 422);
         }
 
         if ($eligibleSubtotal < (float) $voucher['MIN_SPEND']) {
@@ -294,6 +294,13 @@ function recordVoucherUsage(PDO $db, array $voucher, float $discountAmount, ?int
         ':request_id' => $requestId,
         ':order_id' => $orderId,
     ]);
+
+    $statusStmt = $db->prepare(
+        "UPDATE VOUCHER
+         SET STATUS = 'INACTIVE'
+         WHERE VOUCHER_ID = :voucher_id"
+    );
+    $statusStmt->execute([':voucher_id' => (int) $voucher['id']]);
 }
 
 $sessionUser = requireCustomerForCheckout($db);

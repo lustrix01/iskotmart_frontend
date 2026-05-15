@@ -114,6 +114,7 @@ function offeringPayloadFromRow(array $row): array {
         'id' => (int) $row['id'],
         'type' => $row['type'] === 'P' ? 'product' : 'service',
         'name' => $row['name'],
+        'description' => $row['description'] ?: '',
         'category' => $row['category'] ?: 'Uncategorized',
         'price' => (float) $row['price'],
         'stock' => isset($row['stock']) ? (int) $row['stock'] : null,
@@ -127,6 +128,7 @@ function offeringPayloadFromRow(array $row): array {
 function listOfferings(PDO $db, int $merchantId): array {
     $stmt = $db->prepare(
         "SELECT o.OFFERING_ID AS id, o.OFFERING_TYPE AS type, o.OFFERING_NAME AS name,
+                COALESCE(o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC) AS description,
                 o.AVAIL_STATUS AS status,
                 COALESCE(pc.CAT_NAME, sc.CAT_NAME) AS category,
                 COALESCE(p.PRICE, s.PRICE) AS price,
@@ -154,6 +156,7 @@ function listOfferings(PDO $db, int $merchantId): array {
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = o.OFFERING_ID
          WHERE o.MERCHANT_ID = :merchant_id
          GROUP BY o.OFFERING_ID, o.OFFERING_TYPE, o.OFFERING_NAME, o.AVAIL_STATUS,
+                  o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
                   pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.DELIVERY_METHOD
          ORDER BY o.OFFERING_ID DESC"
     );

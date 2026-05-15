@@ -115,8 +115,8 @@ function dashboardStats(PDO $db, int $merchantId): array {
 }
 
 function recentMerchantActivity(PDO $db, int $merchantId): array {
-    $stmt = $db->prepare(
-        "(SELECT CONCAT('ORD-', o.ORDER_ID) AS id,
+    $productStmt = $db->prepare(
+        "SELECT CONCAT('ORD-', o.ORDER_ID) AS id,
                 o.ORDER_ID AS raw_id,
                 'product' AS source,
                 COALESCE(NULLIF(TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), ''), c.DISPLAY_NAME, o.RECIPIENT_NAME, 'Customer') AS account,
@@ -131,9 +131,14 @@ function recentMerchantActivity(PDO $db, int $merchantId): array {
          LEFT JOIN USERS u ON u.USER_ID = o.CUSTOMER_ID
          LEFT JOIN CUSTOMER c ON c.CUSTOMER_ID = o.CUSTOMER_ID
          WHERE p.MERCHANT_ID = :merchant_id
-         GROUP BY o.ORDER_ID, o.ORDER_STATUS, o.ORDERED_ON, u.FNAME, u.LNAME, c.DISPLAY_NAME, o.RECIPIENT_NAME)
-         UNION ALL
-        (SELECT CONCAT('SRV-', sr.REQUEST_ID) AS id,
+         GROUP BY o.ORDER_ID, o.ORDER_STATUS, o.ORDERED_ON, u.FNAME, u.LNAME, c.DISPLAY_NAME, o.RECIPIENT_NAME
+         ORDER BY o.ORDERED_ON DESC
+         LIMIT 6"
+    );
+    $productStmt->execute([':merchant_id' => $merchantId]);
+
+    $serviceStmt = $db->prepare(
+        "SELECT CONCAT('SRV-', sr.REQUEST_ID) AS id,
                 sr.REQUEST_ID AS raw_id,
                 'service' AS source,
                 COALESCE(NULLIF(TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), ''), c.DISPLAY_NAME, sr.RECIPIENT_NAME, 'Customer') AS account,
@@ -146,11 +151,21 @@ function recentMerchantActivity(PDO $db, int $merchantId): array {
          JOIN OFFERING off ON off.OFFERING_ID = s.SERVICE_ID
          LEFT JOIN USERS u ON u.USER_ID = sr.CUSTOMER_ID
          LEFT JOIN CUSTOMER c ON c.CUSTOMER_ID = sr.CUSTOMER_ID
-         WHERE s.MERCHANT_ID = :merchant_id)
-         ORDER BY ordered_on DESC
+         WHERE s.MERCHANT_ID = :merchant_id
+         ORDER BY sr.REQUEST_DATE DESC
          LIMIT 6"
     );
-    $stmt->execute([':merchant_id' => $merchantId]);
+    $serviceStmt->execute([':merchant_id' => $merchantId]);
+
+    $rows = array_merge(
+        $productStmt->fetchAll(PDO::FETCH_ASSOC),
+        $serviceStmt->fetchAll(PDO::FETCH_ASSOC),
+    );
+
+    usort($rows, fn (array $a, array $b): int =>
+        strtotime((string) ($b['ordered_on'] ?? '')) <=> strtotime((string) ($a['ordered_on'] ?? ''))
+    );
+    $rows = array_slice($rows, 0, 6);
 
     return array_map(function (array $row): array {
         return [
@@ -214,15 +229,47 @@ function merchantInsights(PDO $db, int $merchantId): array {
     ];
 }
 
+function fallbackDashboardStats(): array {
+    return [
+        'totalSales' => 0,
+        'totalSalesFormatted' => moneyAmount(0),
+        'totalOrders' => 0,
+        'pendingOrders' => 0,
+        'catalogItems' => 0,
+        'activeCatalogItems' => 0,
+        'storeVisitors' => 0,
+    ];
+}
+
+function safeDashboardSection(callable $loader, mixed $fallback): mixed {
+    try {
+        return $loader();
+    } catch (Throwable $e) {
+        logApiError($e);
+        return $fallback;
+    }
+}
+
 try {
     $user = requireMerchantDashboardUser($db);
     $merchantId = (int) $user['id'];
 
     jsonResponse([
-        'profile' => merchantProfile($db, $user),
-        'stats' => dashboardStats($db, $merchantId),
-        'recentOrders' => recentMerchantActivity($db, $merchantId),
-        'insights' => merchantInsights($db, $merchantId),
+        'profile' => safeDashboardSection(fn () => merchantProfile($db, $user), [
+            'id' => $merchantId,
+            'shopName' => $user['name'] ?? 'Merchant Shop',
+            'description' => '',
+            'address' => '',
+            'email' => $user['email'] ?? '',
+            'avatarUrl' => '',
+            'initials' => merchantInitials($user['name'] ?? 'Merchant Shop'),
+        ]),
+        'stats' => safeDashboardSection(fn () => dashboardStats($db, $merchantId), fallbackDashboardStats()),
+        'recentOrders' => safeDashboardSection(fn () => recentMerchantActivity($db, $merchantId), []),
+        'insights' => safeDashboardSection(fn () => merchantInsights($db, $merchantId), [
+            'topProducts' => [],
+            'lowStock' => [],
+        ]),
     ]);
 } catch (Throwable $e) {
     logApiError($e);

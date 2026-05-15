@@ -7,6 +7,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 startApiSession();
+$clientSession = clientSessionTokenFromRequest();
+if ($clientSession !== '' && isset($_SESSION['client_auth']) && is_array($_SESSION['client_auth'])) {
+    unset($_SESSION['client_auth'][$clientSession]);
+}
+
+unset($_SESSION['user_id'], $_SESSION['client_session_id']);
+
+if (!empty($_SESSION['client_auth'])) {
+    jsonResponse(['ok' => true]);
+}
+
 $_SESSION = [];
 
 if (ini_get('session.use_cookies')) {

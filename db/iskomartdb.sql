@@ -70,6 +70,19 @@ CREATE TABLE `customer` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `customer_wishlist`
+--
+
+CREATE TABLE `customer_wishlist` (
+  `WISHLIST_ID` int(11) NOT NULL,
+  `CUSTOMER_ID` int(11) NOT NULL,
+  `OFFERING_ID` int(11) NOT NULL,
+  `ADDED_ON` datetime(1) NOT NULL DEFAULT current_timestamp(1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `delivery_method`
 --
 
@@ -172,7 +185,7 @@ CREATE TABLE `offering` (
   `OFFERING_NAME` varchar(255) NOT NULL,
   `OFFERING_TYPE` char(1) NOT NULL,
   `AVAIL_STATUS` varchar(45) NOT NULL,
-  `OFFERING_DESC` varchar(255) DEFAULT NULL,
+  `OFFERING_DESC` text DEFAULT NULL,
   `MERCHANT_ID` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
@@ -255,7 +268,7 @@ CREATE TABLE `payment_method` (
 CREATE TABLE `product` (
   `PROD_ID` int(11) NOT NULL,
   `PRICE` int(11) NOT NULL,
-  `PROD_DESC` varchar(255) NOT NULL,
+  `PROD_DESC` text NOT NULL,
   `STOCK_QTY` int(11) NOT NULL,
   `IS_PREORDER` tinyint(4) NOT NULL DEFAULT 0,
   `POSTED_ON` datetime(1) NOT NULL DEFAULT current_timestamp(1),
@@ -367,7 +380,7 @@ CREATE TABLE `review_attach` (
 
 CREATE TABLE `service` (
   `SERVICE_ID` int(11) NOT NULL,
-  `SER_DESC` varchar(255) NOT NULL,
+  `SER_DESC` text NOT NULL,
   `PRICE` int(11) NOT NULL,
   `DEPOSIT` int(11) NOT NULL DEFAULT 0,
   `SLOTS` int(11) NOT NULL,
@@ -532,6 +545,14 @@ ALTER TABLE `allowed_payment`
 --
 ALTER TABLE `customer`
   ADD PRIMARY KEY (`CUSTOMER_ID`);
+
+--
+-- Indexes for table `customer_wishlist`
+--
+ALTER TABLE `customer_wishlist`
+  ADD PRIMARY KEY (`WISHLIST_ID`),
+  ADD UNIQUE KEY `CUSTOMER_OFFERING_UNIQUE` (`CUSTOMER_ID`,`OFFERING_ID`),
+  ADD KEY `CUSTOMER_WISHLIST_OFFERING_idx` (`OFFERING_ID`);
 
 --
 -- Indexes for table `delivery_method`
@@ -748,6 +769,12 @@ ALTER TABLE `display_img`
   MODIFY `DISPLAY_IMG_ID` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `customer_wishlist`
+--
+ALTER TABLE `customer_wishlist`
+  MODIFY `WISHLIST_ID` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `message`
 --
 ALTER TABLE `message`
@@ -883,6 +910,13 @@ ALTER TABLE `allowed_payment`
 --
 ALTER TABLE `customer`
   ADD CONSTRAINT `FK_customer_id` FOREIGN KEY (`CUSTOMER_ID`) REFERENCES `users` (`USER_ID`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+--
+-- Constraints for table `customer_wishlist`
+--
+ALTER TABLE `customer_wishlist`
+  ADD CONSTRAINT `FK_CUSTOMER_WISHLIST_CUSTOMER` FOREIGN KEY (`CUSTOMER_ID`) REFERENCES `customer` (`CUSTOMER_ID`) ON DELETE CASCADE ON UPDATE NO ACTION,
+  ADD CONSTRAINT `FK_CUSTOMER_WISHLIST_OFFERING` FOREIGN KEY (`OFFERING_ID`) REFERENCES `offering` (`OFFERING_ID`) ON DELETE CASCADE ON UPDATE NO ACTION;
 
 --
 -- Constraints for table `delivery_method`
