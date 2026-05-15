@@ -8,6 +8,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { CartProvider } from "./context/CartContext";
 import { useAuth } from "./context/useAuth";
 
 // Layouts
@@ -100,8 +101,9 @@ const RequireAuth = ({ roles }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
+      <CartProvider>
+        <Router>
+          <Routes>
           {/* Auth */}
           <Route path="/login" element={withSuspense(LoginPage)} />
           <Route path="/signup" element={withSuspense(SignupPage)} />
@@ -187,8 +189,9 @@ function App() {
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+          </Routes>
+        </Router>
+      </CartProvider>
     </AuthProvider>
   );
 }

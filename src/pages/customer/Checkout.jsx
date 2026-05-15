@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   Link,
   useLocation,
@@ -11,6 +11,7 @@ import {
   Store,
   Wallet,
   Smartphone,
+  Ticket,
   ChevronRight,
   Info,
   Calendar,
@@ -29,45 +30,22 @@ import {
   Upload,
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
+import { useCart } from "../../context/useCart";
 
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { productItems, serviceItems, removeFromCart } = useCart();
   const type = searchParams.get("type") || "product";
   const checkoutState = location.state || {};
-  const fallbackCheckoutItems =
-    type === "product"
-      ? [
-          {
-            id: 1,
-            name: "BU Canvas Tote Bag - Isko Originals",
-            price: 999.0,
-            qty: 1,
-            img: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=100",
-          },
-          {
-            id: 2,
-            name: "Mechanical Keyboard",
-            price: 904.3,
-            qty: 1,
-            img: "https://images.unsplash.com/photo-1591561954557-26941169b49e?q=80&w=100",
-          },
-        ]
-      : [
-          {
-            id: 1,
-            name: "Professional Logo Design",
-            price: 1903.3,
-            qty: 1,
-            img: "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=100",
-          },
-        ];
+  const cartCheckoutItems = type === "product" ? productItems : serviceItems;
   const checkoutItems =
     Array.isArray(checkoutState.items) && checkoutState.items.length > 0
       ? checkoutState.items
-      : fallbackCheckoutItems;
+      : cartCheckoutItems;
+  const hasCheckoutItems = checkoutItems.length > 0;
 
   // --- FR-28 & FR-29: Choose payment options, including COD ---
   const [deliveryMethod, setDeliveryMethod] = useState("standard");
@@ -78,6 +56,10 @@ export default function Checkout() {
   const [isProcessingGCash, setIsProcessingGCash] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [voucherInput, setVoucherInput] = useState("");
+  const [appliedVoucher, setAppliedVoucher] = useState(null);
+  const [voucherMessage, setVoucherMessage] = useState("");
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
 
   const [orderNumber, setOrderNumber] = useState("");
 
@@ -87,12 +69,13 @@ export default function Checkout() {
   // FR-21: Collect customer shipping and contact information
   const [isEditing, setIsEditing] = useState(false);
   const [addressData, setAddressData] = useState({
-    name: "Owhie Lumbang",
-    phone: "09564499020",
-    label: "Home",
-    address:
-      "BRGY 38 GOGON LEGAZPI CITY 1035, Bgy. 38 - Gogon (Bgy. 54), Legazpi, Albay",
+    name: "",
+    phone: "",
+    label: "",
+    address: "",
   });
+  const [isLoadingAddress, setIsLoadingAddress] = useState(type === "product");
+  const [addressError, setAddressError] = useState("");
 
   const [serviceData, setServiceData] = useState({
     deadline: "March 30, 2026",
@@ -109,15 +92,91 @@ export default function Checkout() {
     0,
   );
   const shippingFee =
-    deliveryMethod === "standard" && type === "product" ? 50.0 : 0.0;
-  const serviceFee = type === "service" ? 50.0 : 0.0;
-  const discountAmount = Number(checkoutState.totals?.discountAmount || 0);
-  const total = subtotal + shippingFee + serviceFee - discountAmount;
+    hasCheckoutItems && deliveryMethod === "standard" && type === "product"
+      ? 50.0
+      : 0.0;
+  const serviceFee = hasCheckoutItems && type === "service" ? 50.0 : 0.0;
+  const discountAmount = Number(appliedVoucher?.discountAmount || 0);
+  const total = Math.max(0, subtotal + shippingFee + serviceFee - discountAmount);
+  const hasShippingAddress =
+    type !== "product" ||
+    Boolean(addressData.name && addressData.phone && addressData.address);
+
+  useEffect(() => {
+    if (!user || type !== "product") {
+      setIsLoadingAddress(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadDefaultAddress = async () => {
+      setIsLoadingAddress(true);
+      setAddressError("");
+
+      try {
+        const response = await fetch("/api/addresses.php", {
+          method: "GET",
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load saved addresses.");
+        }
+
+        const addresses = Array.isArray(payload.addresses)
+          ? payload.addresses
+          : [];
+        const selectedAddress =
+          addresses.find((address) => address.isDefault) || addresses[0];
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (selectedAddress) {
+          setAddressData({
+            name: selectedAddress.recipientName || "",
+            phone: selectedAddress.phone || "",
+            label: selectedAddress.category || "Address",
+            address: formatAddressLine(selectedAddress),
+          });
+        } else {
+          setAddressData({ name: "", phone: "", label: "", address: "" });
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAddressError(error.message);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingAddress(false);
+        }
+      }
+    };
+
+    loadDefaultAddress();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [type, user]);
 
   const submitOrder = async ({ gcashReference = "" } = {}) => {
     if (!user) {
       navigate("/login", { state: { from: location } });
-      return;
+      return false;
+    }
+
+    if (!hasCheckoutItems) {
+      setCheckoutError("Your checkout is empty. Add an item to your cart first.");
+      return false;
+    }
+
+    if (!hasShippingAddress) {
+      setCheckoutError("Add a shipping address before placing this order.");
+      return false;
     }
 
     setCheckoutError("");
@@ -133,6 +192,7 @@ export default function Checkout() {
           paymentMethod,
           deliveryMethod,
           referenceNumber: gcashReference,
+          voucherCode: appliedVoucher?.code || "",
           customer: {
             recipientName: addressData.name,
             phone: addressData.phone,
@@ -153,7 +213,7 @@ export default function Checkout() {
           },
         }),
       });
-      const payload = await response.json();
+      const payload = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         throw new Error(payload.error || "Unable to place order.");
@@ -161,9 +221,14 @@ export default function Checkout() {
 
       setOrderNumber(payload.orderNumber);
       setPaymentStatus(payload.paymentStatus);
+      checkoutItems.forEach((item) => {
+        removeFromCart(type, item.id);
+      });
       setShowSuccess(true);
+      return true;
     } catch (error) {
       setCheckoutError(error.message);
+      return false;
     } finally {
       setIsSubmittingOrder(false);
     }
@@ -171,10 +236,61 @@ export default function Checkout() {
 
   // --- FR-30: Record selected payment methods ---
   const handlePlaceOrder = () => {
+    if (!hasShippingAddress) {
+      setCheckoutError("Add a shipping address before placing this order.");
+      return;
+    }
+
     if (paymentMethod === "gcash") {
       setShowGCashModal(true);
     } else {
       submitOrder();
+    }
+  };
+
+  const handleApplyVoucher = async () => {
+    const code = voucherInput.trim().toUpperCase();
+
+    if (!code) {
+      setAppliedVoucher(null);
+      setVoucherMessage("");
+      return;
+    }
+
+    setIsApplyingVoucher(true);
+    setVoucherMessage("");
+
+    try {
+      const response = await fetch("/api/customer_voucher.php", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          code,
+          items: checkoutItems.map((item) => ({
+            id: Number(item.id),
+            quantity: Number(item.qty || 1),
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Invalid voucher code.");
+      }
+
+      setAppliedVoucher({
+        code: payload.code || code,
+        discountAmount: Number(payload.discountAmount || 0),
+      });
+      setVoucherInput(payload.code || code);
+      setVoucherMessage(payload.message || `Voucher ${code} applied.`);
+    } catch (error) {
+      setAppliedVoucher(null);
+      setVoucherMessage(error.message);
+    } finally {
+      setIsApplyingVoucher(false);
     }
   };
 
@@ -187,10 +303,15 @@ export default function Checkout() {
     }
 
     setIsProcessingGCash(true);
-    submitOrder({ gcashReference: referenceNumber }).finally(() => {
-      setIsProcessingGCash(false);
-      setShowGCashModal(false);
-    });
+    submitOrder({ gcashReference: referenceNumber })
+      .then((placed) => {
+        if (placed) {
+          setShowGCashModal(false);
+        }
+      })
+      .finally(() => {
+        setIsProcessingGCash(false);
+      });
   };
 
   // Added handler for the screenshot
@@ -233,10 +354,16 @@ export default function Checkout() {
                   : "Service requirements"}
               </h3>
               <button
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={() =>
+                  type === "product"
+                    ? navigate("/profile/addresses", { state: { from: location } })
+                    : setIsEditing(!isEditing)
+                }
                 className="text-[10px] text-[#FF851B] font-bold hover:underline flex items-center gap-1"
               >
-                {isEditing ? (
+                {type === "product" ? (
+                  addressData.address ? "Manage" : "Add address"
+                ) : isEditing ? (
                   <>
                     <Save size={12} /> Save
                   </>
@@ -248,62 +375,11 @@ export default function Checkout() {
 
             <div className="p-6">
               {type === "product" ? (
-                isEditing ? (
-                  <div className="space-y-3 animate-in fade-in">
-                    <div className="flex gap-3">
-                      <input
-                        type="text"
-                        value={addressData.name}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            name: e.target.value,
-                          })
-                        }
-                        className="flex-1 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Full Name"
-                      />
-                      <input
-                        type="text"
-                        value={addressData.phone}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            phone: e.target.value,
-                          })
-                        }
-                        className="flex-1 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Phone Number"
-                      />
-                    </div>
-                    <div className="flex gap-3">
-                      <input
-                        type="text"
-                        value={addressData.label}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            label: e.target.value,
-                          })
-                        }
-                        className="w-1/3 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Label (e.g. Home)"
-                      />
-                      <input
-                        type="text"
-                        value={addressData.address}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            address: e.target.value,
-                          })
-                        }
-                        className="w-2/3 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Full Address"
-                      />
-                    </div>
+                isLoadingAddress ? (
+                  <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-5 text-xs font-bold text-gray-400">
+                    Loading saved address...
                   </div>
-                ) : (
+                ) : addressData.address ? (
                   <div className="space-y-1 animate-in fade-in">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="font-bold text-gray-800 text-sm">
@@ -320,6 +396,37 @@ export default function Checkout() {
                       <p className="text-gray-500 text-xs leading-relaxed">
                         {addressData.address}
                       </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-orange-100 bg-orange-50 px-5 py-5">
+                    <div className="flex items-start gap-3">
+                      <MapPin className="text-[#FF851B] shrink-0 mt-0.5" size={18} />
+                      <div className="flex-grow">
+                        <p className="text-xs font-bold text-[#003366]">
+                          Add a shipping address to continue.
+                        </p>
+                        <p className="mt-1 text-[10px] font-semibold text-gray-500 leading-relaxed">
+                          Checkout uses your saved address book. Add one in your
+                          profile, then return to place this order.
+                        </p>
+                        {addressError && (
+                          <p className="mt-2 text-[10px] font-bold text-red-500">
+                            {addressError}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate("/profile/addresses", {
+                              state: { from: location },
+                            })
+                          }
+                          className="mt-4 rounded-md bg-[#003366] px-4 py-2 text-[10px] font-bold text-white hover:bg-[#002244]"
+                        >
+                          Add address
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -528,6 +635,16 @@ export default function Checkout() {
                   </span>
                 </div>
               ))}
+              {!hasCheckoutItems && (
+                <div className="rounded-md border border-orange-100 bg-orange-50 px-4 py-5 text-center">
+                  <p className="text-[11px] font-bold text-[#003366]">
+                    No checkout items found.
+                  </p>
+                  <p className="mt-1 text-[10px] font-semibold text-gray-500">
+                    Add a {type} to your cart before placing an order.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4 border-t border-gray-50 pt-6 mb-8 text-[11px] font-bold text-gray-400 tracking-wider">
@@ -548,6 +665,60 @@ export default function Checkout() {
                   </span>
                 </span>
               </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-green-500">
+                  <span>Voucher discount</span>
+                  <span>- PHP {discountAmount.toFixed(1)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mb-8 rounded-md border border-gray-200/50 bg-[#F8FAFC] p-5">
+              <label className="mb-2 block text-[8px] font-bold tracking-widest text-gray-400">
+                Voucher Code
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-grow">
+                  <Ticket
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
+                  />
+                  <input
+                    type="text"
+                    value={voucherInput}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setVoucherInput(nextValue);
+                      setVoucherMessage("");
+                      if (
+                        appliedVoucher &&
+                        nextValue.trim().toUpperCase() !== appliedVoucher.code
+                      ) {
+                        setAppliedVoucher(null);
+                      }
+                    }}
+                    placeholder="Enter voucher code"
+                    className="w-full rounded-sm border border-gray-200 py-2.5 pl-9 pr-2 text-[11px] focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleApplyVoucher}
+                  disabled={isApplyingVoucher || !hasCheckoutItems}
+                  className="rounded-sm bg-[#003366] px-5 py-2.5 text-[10px] font-bold text-white transition-colors hover:bg-[#002244] disabled:bg-gray-300"
+                >
+                  {isApplyingVoucher ? "Checking" : "Apply"}
+                </button>
+              </div>
+              {voucherMessage && (
+                <p
+                  className={`mt-2 text-[10px] font-bold ${
+                    appliedVoucher ? "text-green-600" : "text-red-500"
+                  }`}
+                >
+                  {voucherMessage}
+                </p>
+              )}
             </div>
 
             <div className="border-t-2 border-gray-50 pt-6 mb-8 flex justify-between items-baseline">
@@ -567,7 +738,12 @@ export default function Checkout() {
 
             <button
               onClick={handlePlaceOrder}
-              disabled={isSubmittingOrder}
+              disabled={
+                isSubmittingOrder ||
+                !hasCheckoutItems ||
+                isLoadingAddress ||
+                !hasShippingAddress
+              }
               className="w-full bg-[#FF851B] text-white py-4 rounded-md font-bold text-xs tracking-wide hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
             >
               {isSubmittingOrder
@@ -784,9 +960,10 @@ export default function Checkout() {
 
 function MethodCard({ id, selected, onClick, icon, title, desc, price }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={() => onClick(id)}
-      className={`p-4 border-2 rounded-md flex items-center justify-between cursor-pointer transition-all ${
+      className={`w-full p-4 border-2 rounded-md flex items-center justify-between cursor-pointer transition-all text-left ${
         selected
           ? "border-[#FF851B] bg-[#FFF7F0]"
           : "border-gray-100 bg-gray-50/30 hover:border-gray-200"
@@ -806,6 +983,19 @@ function MethodCard({ id, selected, onClick, icon, title, desc, price }) {
       {price && (
         <span className="font-bold text-[#FF851B] text-sm">{price}</span>
       )}
-    </div>
+    </button>
   );
+}
+
+function formatAddressLine(address) {
+  return [
+    address.unitFloor,
+    address.specific,
+    address.city,
+    address.province,
+    address.region,
+    address.postalCode,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Minus, Plus, ShoppingCart, Star } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
+import { useCart } from "../../context/useCart";
 import { useStorefrontListings } from "../../data/storefrontData";
 
 const FALLBACK_IMAGE =
@@ -12,6 +13,7 @@ export default function ProductDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { addToCart } = useCart();
   const { products, services, loading, error } = useStorefrontListings();
 
   const isServiceRoute = location.pathname.startsWith("/service/");
@@ -62,6 +64,24 @@ export default function ProductDetails() {
       goToLogin();
       return;
     }
+    if (!item) {
+      return;
+    }
+
+    const cartType = isServiceRoute ? "service" : "product";
+    addToCart(
+      cartType,
+      {
+        id: Number(item.id),
+        name: item.name,
+        img: imageUrls[0],
+        price: Number(item.price || 0),
+        merchant: item.merchant || "Merchant",
+        category: item.category || "",
+        rateType: item.rateType || "",
+      },
+      quantity,
+    );
     showToast(`${quantity} ${isServiceRoute ? "booking" : "item"}${quantity > 1 ? "s" : ""} added.`);
   };
 
