@@ -13,6 +13,22 @@ import {
   AlertCircle, // Added AlertCircle for the delete modal
 } from "lucide-react";
 
+const PRODUCT_CATEGORIES = [
+  "Electronics & Technology",
+  "Fashion & Apparel",
+  "Home & Living",
+  "Health & Beauty",
+  "Books & Media",
+  "Groceries & Essentials",
+];
+
+const SERVICE_CATEGORIES = [
+  "Creative Services",
+  "Academics & Tutoring",
+  "Tech Support",
+  "Errands & Tasks",
+];
+
 export default function MerchantProducts() {
   const [activeTab, setActiveTab] = useState("products");
   const [searchTerm, setSearchTerm] = useState("");
@@ -76,9 +92,10 @@ export default function MerchantProducts() {
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
-    category: "Food",
+    category: PRODUCT_CATEGORIES[0],
     price: 0,
     stock: 0,
+    slots: 1,
     rate: "Per Hour",
     status: "Active",
     description: "",
@@ -106,9 +123,11 @@ export default function MerchantProducts() {
     } else {
       setFormData({
         name: "",
-        category: activeTab === "products" ? "Food" : "Creative",
+        category:
+          activeTab === "products" ? PRODUCT_CATEGORIES[0] : SERVICE_CATEGORIES[0],
         price: 0,
         stock: 0,
+        slots: 1,
         rate: "Per Hour",
         status: "Active",
         description: "",
@@ -197,6 +216,7 @@ export default function MerchantProducts() {
     payload.append("category", formData.category);
     payload.append("price", String(formData.price));
     payload.append("stock", String(formData.stock || 0));
+    payload.append("slots", String(formData.slots || 1));
     payload.append("rate", formData.rate || "Per Project");
     payload.append("status", formData.status);
     payload.append("description", formData.description || "");
@@ -234,8 +254,21 @@ export default function MerchantProducts() {
       return;
     }
 
-    if (Number(formData.price) < 0) {
-      setFormError("Price must be zero or greater.");
+    if (Number(formData.price) < 0 || !Number.isInteger(Number(formData.price))) {
+      setFormError("Price must be a whole number of pesos.");
+      return;
+    }
+
+    if (activeTab === "products" && Number(formData.stock) < 0) {
+      setFormError("Stock must be zero or greater.");
+      return;
+    }
+
+    if (
+      activeTab === "services" &&
+      (!Number.isInteger(Number(formData.slots)) || Number(formData.slots) < 1)
+    ) {
+      setFormError("Service slots must be at least 1.");
       return;
     }
 
@@ -351,9 +384,9 @@ export default function MerchantProducts() {
                 <th className="p-5 pl-8">Item Info</th>
                 <th className="p-5">Category</th>
                 <th className="p-5">Price</th>
-                <th className="p-5">
-                  {activeTab === "products" ? "Stock" : "Rate"}
-                </th>
+	                <th className="p-5">
+	                  {activeTab === "products" ? "Stock" : "Slots / Rate"}
+	                </th>
                 <th className="p-5">Status</th>
                 <th className="p-5 pr-8 text-right">Actions</th>
               </tr>
@@ -413,9 +446,17 @@ export default function MerchantProducts() {
                             units
                           </span>
                         </span>
-                      ) : (
-                        <span className="text-gray-500">{item.rate}</span>
-                      )}
+	                      ) : (
+	                        <span className="font-bold text-gray-500">
+	                          {item.slots || 0}{" "}
+	                          <span className="text-[10px] font-normal text-gray-400 ml-1">
+	                            slots
+	                          </span>
+	                          <span className="block text-[10px] font-normal text-gray-400 mt-1">
+	                            {item.rate}
+	                          </span>
+	                        </span>
+	                      )}
                     </td>
                     <td className="p-5">
                       <span
@@ -642,27 +683,23 @@ export default function MerchantProducts() {
                       }
                       className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none"
                     >
-                      {activeTab === "products" ? (
-                        <>
-                          <option>Food</option>
-                          <option>Electronics</option>
-                          <option>Apparel</option>
-                        </>
-                      ) : (
-                        <>
-                          <option>Creative</option>
-                          <option>Academics</option>
-                        </>
-                      )}
+	                      {(activeTab === "products"
+	                        ? PRODUCT_CATEGORIES
+	                        : SERVICE_CATEGORIES
+	                      ).map((category) => (
+	                        <option key={category}>{category}</option>
+	                      ))}
                     </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
                       Price (₱)
                     </label>
-                    <input
-                      type="number"
-                      value={formData.price}
+	                    <input
+	                      type="number"
+	                      min="0"
+	                      step="1"
+	                      value={formData.price}
                       onChange={(e) =>
                         setFormData({ ...formData, price: e.target.value })
                       }
@@ -685,23 +722,40 @@ export default function MerchantProducts() {
                       className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                     />
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
-                      Rate Type
-                    </label>
-                    <select
-                      value={formData.rate}
-                      onChange={(e) =>
-                        setFormData({ ...formData, rate: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none"
-                    >
-                      <option>Per Hour</option>
-                      <option>Per Project</option>
-                    </select>
-                  </div>
-                )}
+	                ) : (
+	                  <div className="grid grid-cols-2 gap-4">
+	                    <div className="space-y-2">
+	                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
+	                        Open Slots
+	                      </label>
+	                      <input
+	                        type="number"
+	                        min="1"
+	                        step="1"
+	                        value={formData.slots || 1}
+	                        onChange={(e) =>
+	                          setFormData({ ...formData, slots: e.target.value })
+	                        }
+	                        className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
+	                      />
+	                    </div>
+	                    <div className="space-y-2">
+	                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
+	                        Rate Type
+	                      </label>
+	                      <select
+	                        value={formData.rate}
+	                        onChange={(e) =>
+	                          setFormData({ ...formData, rate: e.target.value })
+	                        }
+	                        className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none"
+	                      >
+	                        <option>Per Hour</option>
+	                        <option>Per Project</option>
+	                      </select>
+	                    </div>
+	                  </div>
+	                )}
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
