@@ -29,21 +29,15 @@ export default function Navbar() {
       cart: "/merchant/orders",
       profile: "/merchant",
     },
-    moderator: {
-      messages: "/moderator",
-      wishlist: "/moderator/listings",
-      cart: "/moderator/reports",
-      profile: "/moderator",
-    },
-    admin: {
-      messages: "/admin/reports",
-      wishlist: "/admin/listings",
-      cart: "/admin/logs",
-      profile: "/admin",
+    unsupported: {
+      messages: "/",
+      wishlist: "/products",
+      cart: "/",
+      profile: "/",
     },
   };
 
-  const links = navByRole[role] || navByRole.guest;
+  const links = navByRole[role] || (user ? navByRole.unsupported : navByRole.guest);
 
   const guestLink = (path) =>
     user ? { to: path } : { to: "/login", state: { from: { pathname: path } } };
