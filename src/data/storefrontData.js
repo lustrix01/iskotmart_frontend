@@ -6,16 +6,30 @@ export const serviceListings = [];
 
 export const normalizeText = (value) => String(value || "").toLowerCase();
 
+const categoryAliases = {
+  apparel: "fashion",
+  clothing: "fashion",
+  food: "groceries",
+  drink: "groceries",
+  dorm: "household",
+  stationery: "stationary",
+  tutoring: "academics",
+  design: "creative",
+  photo: "creative",
+  errands: "errands",
+};
+
 export function matchesListing(listing, query, category) {
   const normalizedQuery = normalizeText(query).trim();
   const normalizedCategory = normalizeText(category).trim();
+  const categoryNeedle = categoryAliases[normalizedCategory] || normalizedCategory;
   const haystack = normalizeText(
     `${listing.name} ${listing.merchant} ${listing.category}`,
   );
 
   const categoryMatches =
-    !normalizedCategory ||
-    normalizeText(listing.category).includes(normalizedCategory);
+    !categoryNeedle ||
+    normalizeText(listing.category).includes(categoryNeedle);
 
   return categoryMatches && (!normalizedQuery || haystack.includes(normalizedQuery));
 }
