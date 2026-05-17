@@ -4,8 +4,6 @@ import { useAuth } from "../context/useAuth";
 import logo from "../assets/logo.png";
 
 const redirectByRole = {
-  admin: "/admin",
-  moderator: "/moderator",
   merchant: "/merchant",
   customer: "/",
 };
