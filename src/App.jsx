@@ -15,8 +15,6 @@ import { useAuth } from "./context/useAuth";
 const CustomerLayout = lazy(() => import("./layouts/CustomerLayout"));
 const ProfileLayout = lazy(() => import("./layouts/ProfileLayout"));
 const MerchantLayout = lazy(() => import("./layouts/MerchantLayout"));
-const AdminLayout = lazy(() => import("./layouts/AdminLayout"));
-const IskoModLayout = lazy(() => import("./layouts/IskoModLayout"));
 
 // Customer Pages
 const CustomerHome = lazy(() => import("./pages/customer/CustomerHome"));
@@ -44,28 +42,6 @@ const MerchantMessages = lazy(() => import("./pages/merchant/MerchantMessages"))
 const MerchantDiscounts = lazy(() => import("./pages/merchant/MerchantDiscounts"));
 const MerchantAnalytics = lazy(() => import("./pages/merchant/MerchantAnalytics"));
 const MerchantEarnings = lazy(() => import("./pages/merchant/MerchantEarnings"));
-
-// Admin Pages
-const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const MerchantVerification = lazy(() =>
-  import("./pages/admin/MerchantVerification"),
-);
-const AccountManagement = lazy(() => import("./pages/admin/AccountManagement"));
-const OperationalCosts = lazy(() => import("./pages/admin/OperationalCosts"));
-const Moderators = lazy(() => import("./pages/admin/Moderators"));
-const ReportLogs = lazy(() => import("./pages/admin/ReportLogs"));
-const AccountLogs = lazy(() => import("./pages/admin/AccountLogs"));
-const ListingManagement = lazy(() => import("./pages/admin/ListingManagement"));
-const ReviewModeration = lazy(() => import("./pages/admin/ReviewModeration"));
-
-// Moderator Pages
-const ModDashboard = lazy(() => import("./pages/moderator/ModDashboard"));
-const AccountModeration = lazy(() =>
-  import("./pages/moderator/AccountModeration"),
-);
-const PromotedServices = lazy(() =>
-  import("./pages/moderator/PromotedServices"),
-);
 
 // Auth Pages
 const LoginPage = lazy(() => import("./auth/LoginPage"));
@@ -157,33 +133,6 @@ function App() {
               <Route path="discounts" element={withSuspense(MerchantDiscounts)} />
               <Route path="analytics" element={withSuspense(MerchantAnalytics)} />
               <Route path="earnings" element={withSuspense(MerchantEarnings)} />
-            </Route>
-          </Route>
-
-          {/* Moderator Console Routes */}
-          <Route element={<RequireAuth roles={["moderator"]} />}>
-            <Route path="/moderator" element={withSuspense(IskoModLayout)}>
-              <Route index element={withSuspense(ModDashboard)} />
-              <Route path="reports" element={withSuspense(ReportLogs)} />
-              <Route path="listings" element={withSuspense(ListingManagement)} />
-              <Route path="reviews" element={withSuspense(ReviewModeration)} />
-              <Route path="accounts" element={withSuspense(AccountModeration)} />
-              <Route path="promotions" element={withSuspense(PromotedServices)} />
-            </Route>
-          </Route>
-
-          {/* Admin Command Center Routes */}
-          <Route element={<RequireAuth roles={["admin"]} />}>
-            <Route path="/admin" element={withSuspense(AdminLayout)}>
-              <Route index element={withSuspense(AdminDashboard)} />
-              <Route path="verify" element={withSuspense(MerchantVerification)} />
-              <Route path="accounts" element={withSuspense(AccountManagement)} />
-              <Route path="costs" element={withSuspense(OperationalCosts)} />
-              <Route path="moderators" element={withSuspense(Moderators)} />
-              <Route path="reports" element={withSuspense(ReportLogs)} />
-              <Route path="logs" element={withSuspense(AccountLogs)} />
-              <Route path="listings" element={withSuspense(ListingManagement)} />
-              <Route path="reviews" element={withSuspense(ReviewModeration)} />
             </Route>
           </Route>
 
