@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronRight,
@@ -14,16 +14,37 @@ import {
   useStorefrontListings,
 } from "../../data/storefrontData";
 
+const PAGE_SIZE = 20;
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
+const PRODUCT_CATEGORIES = [
+  { label: "Apparel & Uniforms", value: "Fashion & Apparel" },
+  { label: "School Supplies", value: "Books & Media" },
+  { label: "Electronics", value: "Electronics & Technology" },
+  { label: "Food & Drink", value: "Groceries & Essentials" },
+];
+
 export default function ShopProducts() {
   const [activeSort, setActiveSort] = useState("Popular");
+  const [currentPage, setCurrentPage] = useState(1);
   const [searchParams] = useSearchParams();
   const searchTerm = searchParams.get("q") || "";
   const category = searchParams.get("category") || "";
   const saleOnly = searchParams.get("sale") === "true";
 
-  const merchants = [];
-
   const { products: storefrontProducts, loading, error } = useStorefrontListings();
+  const merchants = useMemo(() => {
+    const byId = new Map();
+    storefrontProducts.forEach((item) => {
+      if (!item.merchantId || byId.has(item.merchantId)) return;
+      byId.set(item.merchantId, {
+        id: item.merchantId,
+        name: item.merchant || "Merchant",
+        img: item.img || item.images?.[0]?.url || FALLBACK_IMAGE,
+      });
+    });
+    return Array.from(byId.values()).slice(0, 12);
+  }, [storefrontProducts]);
   const products = storefrontProducts
     .filter((item) => matchesListing(item, searchTerm, category))
     .filter((item) => !saleOnly || item.isOnSale)
@@ -35,9 +56,25 @@ export default function ShopProducts() {
       if (activeSort === "Latest") {
         return Number(b.id || 0) - Number(a.id || 0);
       }
+      if (activeSort === "Price: Low to High") {
+        return Number(a.price || 0) - Number(b.price || 0);
+      }
+      if (activeSort === "Price: High to Low") {
+        return Number(b.price || 0) - Number(a.price || 0);
+      }
       return (Number(b.reviewCount || 0) - Number(a.reviewCount || 0))
         || (Number(b.weeklySold || 0) - Number(a.weeklySold || 0));
     });
+  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+  const page = Math.min(currentPage, totalPages);
+  const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const togglePriceSort = () => {
+    setCurrentPage(1);
+    setActiveSort((current) =>
+      current === "Price: Low to High" ? "Price: High to Low" : "Price: Low to High",
+    );
+  };
 
   return (
     <div className="bg-[#F5F7F9] min-h-screen pb-12 font-sans animate-in fade-in duration-500">
@@ -60,7 +97,7 @@ export default function ShopProducts() {
               <h2 className="text-sm font-bold">Verified merchants</h2>
             </div>
             <Link
-              to="#"
+              to="/products"
               className="text-[11px] font-bold text-[#FF851B] flex items-center gap-1 hover:underline"
             >
               See all <ChevronRight size={12} />
@@ -102,22 +139,21 @@ export default function ShopProducts() {
                 <h2 className="text-sm font-bold">Categories</h2>
               </div>
               <div className="p-2">
-                {[
-                  "Apparel & Uniforms",
-                  "School Supplies",
-                  "Electronics",
-                  "Food & Drink",
-                ].map((cat) => (
-                  <div key={cat} className="mb-1">
-                    <button className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group">
+                {PRODUCT_CATEGORIES.map((cat) => (
+                  <div key={cat.value} className="mb-1">
+                    <Link
+                      to={`/products?category=${encodeURIComponent(cat.value)}`}
+                      onClick={() => setCurrentPage(1)}
+                      className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group"
+                    >
                       <span className="flex items-center gap-2">
                         <ChevronRight
                           size={14}
                           className="text-gray-300 group-hover:text-[#FF851B] transition-colors"
                         />
-                        {cat}
+                        {cat.label}
                       </span>
-                    </button>
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -136,7 +172,10 @@ export default function ShopProducts() {
                   {["Popular", "Latest", "Top sales"].map((sort) => (
                     <button
                       key={sort}
-                      onClick={() => setActiveSort(sort)}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setActiveSort(sort);
+                      }}
                       className={`px-5 py-2 text-xs font-bold rounded-md transition-all ${
                         activeSort === sort
                           ? "bg-[#FF851B] text-white shadow-md shadow-orange-100"
@@ -146,8 +185,16 @@ export default function ShopProducts() {
                       {sort}
                     </button>
                   ))}
-                  <button className="px-4 py-2 bg-white text-gray-600 border border-gray-200 text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all">
-                    Price <ChevronDown size={14} />
+                  <button
+                    onClick={togglePriceSort}
+                    className={`px-4 py-2 border text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all ${
+                      activeSort.startsWith("Price:")
+                        ? "bg-[#FF851B] text-white border-[#FF851B]"
+                        : "bg-white text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    {activeSort.startsWith("Price:") ? activeSort : "Price"}{" "}
+                    <ChevronDown size={14} />
                   </button>
                 </div>
               </div>
@@ -155,13 +202,21 @@ export default function ShopProducts() {
               {/* Pagination (Top) */}
               <div className="flex items-center gap-3 mr-2">
                 <span className="text-[11px] font-bold">
-                  <span className="text-[#FF851B]">1</span> / 8
+                  <span className="text-[#FF851B]">{page}</span> / {totalPages}
                 </span>
                 <div className="flex gap-1">
-                  <button className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-400 hover:bg-gray-50 transition-colors">
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+                    className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                  >
                     <ChevronLeft size={14} />
                   </button>
-                  <button className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors">
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+                    className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                  >
                     <ChevronRight size={14} />
                   </button>
                 </div>
@@ -202,7 +257,7 @@ export default function ShopProducts() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {products.map((item) => (
+                {pagedProducts.map((item) => (
                 <Link
                   to={`/product/${item.id}`}
                   key={item.id}
@@ -211,9 +266,12 @@ export default function ShopProducts() {
                   {/* Image */}
                   <div className="aspect-square bg-gray-50 relative overflow-hidden">
                     <img
-                      src={item.img}
+                      src={item.img || item.images?.[0]?.url || FALLBACK_IMAGE}
                       alt={item.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(event) => {
+                        event.currentTarget.src = FALLBACK_IMAGE;
+                      }}
                     />
                   </div>
 
