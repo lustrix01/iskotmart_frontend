@@ -36,16 +36,18 @@ try {
                 COALESCE(o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC) AS description,
                 o.AVAIL_STATUS AS status,
                 COALESCE(pc.CAT_NAME, sc.CAT_NAME) AS category,
-                COALESCE(p.PRICE, s.PRICE) AS price,
-                p.STOCK_QTY AS stock,
-                s.DELIVERY_METHOD AS rate,
+	                COALESCE(p.PRICE, s.PRICE) AS price,
+	                p.STOCK_QTY AS stock,
+	                s.SLOTS AS slots,
+	                s.DELIVERY_METHOD AS rate,
                 o.MERCHANT_ID AS merchant_id,
                 COALESCE(m.SHOP_NAME, u.USERNAME) AS merchant_name,
                 AVG(r.RATING) AS average_rating,
                 COUNT(DISTINCT r.REVIEW_ID) AS review_count,
-                COALESCE(MAX(weekly_sales.quantity), 0) AS weekly_sold,
-                COALESCE(MAX(weekly_sales.revenue), 0) AS weekly_revenue,
-                discount.DISCOUNT_ID AS discount_id,
+	                COALESCE(MAX(weekly_sales.quantity), 0) AS weekly_sold,
+	                COALESCE(MAX(weekly_sales.revenue), 0) AS weekly_revenue,
+	                COALESCE(MAX(service_completed.quantity), 0) AS service_completed,
+	                discount.DISCOUNT_ID AS discount_id,
                 discount.TYPE AS discount_type,
                 discount.VALUE AS discount_value,
                 GROUP_CONCAT(DISTINCT
@@ -68,8 +70,8 @@ try {
          LEFT JOIN SERVICE_CAT sc ON sc.SERCAT_ID = ss.SERCAT_ID
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = o.OFFERING_ID
          LEFT JOIN REVIEW r ON r.OFFERING_ID = o.OFFERING_ID
-         LEFT JOIN (
-             SELECT p2.PROD_ID AS offering_id,
+	         LEFT JOIN (
+	             SELECT p2.PROD_ID AS offering_id,
                     COALESCE(SUM(oi.QUANTITY), 0) AS quantity,
                     COALESCE(SUM(oi.PRICE * oi.QUANTITY), 0) AS revenue
              FROM PRODUCT p2
@@ -78,8 +80,23 @@ try {
              WHERE UPPER(ord.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED')
                AND UPPER(ord.PAYMENT_STATUS) = 'PAID'
                AND ord.ORDERED_ON >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-             GROUP BY p2.PROD_ID
-         ) weekly_sales ON weekly_sales.offering_id = o.OFFERING_ID
+	             GROUP BY p2.PROD_ID
+	         ) weekly_sales ON weekly_sales.offering_id = o.OFFERING_ID
+	         LEFT JOIN (
+	             SELECT sr.SERVICE_ID AS offering_id,
+	                    COALESCE(SUM(
+	                        CAST(
+	                            CASE
+	                                WHEN JSON_VALID(sr.CUSTOMER_INFO)
+	                                THEN COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(sr.CUSTOMER_INFO, '$.quantity')), ''), '1')
+	                                ELSE '1'
+	                            END AS UNSIGNED
+	                        )
+	                    ), 0) AS quantity
+	             FROM SERVICE_REQUEST sr
+	             WHERE UPPER(sr.REQ_STATUS) IN ('COMPLETED', 'DELIVERED')
+	             GROUP BY sr.SERVICE_ID
+	         ) service_completed ON service_completed.offering_id = o.OFFERING_ID
          LEFT JOIN (
              SELECT d.*
              FROM DISCOUNT d
@@ -93,7 +110,7 @@ try {
          WHERE UPPER(o.AVAIL_STATUS) IN ('ACTIVE', 'AVAILABLE', 'APPROVED')
          GROUP BY o.OFFERING_ID, o.OFFERING_TYPE, o.OFFERING_NAME, o.AVAIL_STATUS,
                   o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
-                  pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.DELIVERY_METHOD,
+	                  pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.SLOTS, s.DELIVERY_METHOD,
                   o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME,
                   discount.DISCOUNT_ID, discount.TYPE, discount.VALUE
          ORDER BY o.OFFERING_ID DESC"
@@ -126,8 +143,8 @@ try {
             'merchant' => $row['merchant_name'] ?: 'Merchant',
             'category' => $row['category'] ?: 'Uncategorized',
             'price' => $discount !== '' ? $discountedPrice : $originalPrice,
-            'stock' => $row['stock'] !== null ? (int) $row['stock'] : null,
-            'rateType' => $row['rate'] ?: 'per project',
+	            'stock' => $row['stock'] !== null ? (int) $row['stock'] : null,
+	            'rateType' => $row['rate'] ?: 'per project',
             'img' => $images[0]['url'] ?? '',
             'images' => $images,
             'rating' => $row['average_rating'] !== null ? round((float) $row['average_rating'], 1) : null,
@@ -138,8 +155,8 @@ try {
             'sold' => (string) ((int) ($row['weekly_sold'] ?? 0)),
             'oldPrice' => $originalPrice,
             'discount' => $discount,
-            'completed' => '0',
-            'slots' => 0,
+	            'completed' => (int) ($row['service_completed'] ?? 0),
+	            'slots' => $row['slots'] !== null ? (int) $row['slots'] : 0,
         ];
     }, $rows);
 
