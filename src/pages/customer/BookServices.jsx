@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronRight,
@@ -15,18 +15,64 @@ import {
   useStorefrontListings,
 } from "../../data/storefrontData";
 
+const PAGE_SIZE = 20;
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
+const SERVICE_CATEGORIES = [
+  { label: "Academics & Tutoring", value: "Academics & Tutoring" },
+  { label: "Graphic Design", value: "Creative Services" },
+  { label: "Tech Support", value: "Tech Support" },
+  { label: "Errands & Tasks", value: "Errands & Tasks" },
+];
+
 export default function BookServices() {
   const [activeSort, setActiveSort] = useState("Highest Rated");
+  const [currentPage, setCurrentPage] = useState(1);
   const [searchParams] = useSearchParams();
   const searchTerm = searchParams.get("q") || "";
   const category = searchParams.get("category") || "";
 
-  const merchants = [];
-
   const { services: storefrontServices, loading, error } = useStorefrontListings();
-  const services = storefrontServices.filter((item) =>
-    matchesListing(item, searchTerm, category),
-  );
+  const merchants = useMemo(() => {
+    const byId = new Map();
+    storefrontServices.forEach((item) => {
+      if (!item.merchantId || byId.has(item.merchantId)) return;
+      byId.set(item.merchantId, {
+        id: item.merchantId,
+        name: item.merchant || "Merchant",
+        img: item.img || item.images?.[0]?.url || FALLBACK_IMAGE,
+      });
+    });
+    return Array.from(byId.values()).slice(0, 12);
+  }, [storefrontServices]);
+  const services = storefrontServices
+    .filter((item) => matchesListing(item, searchTerm, category))
+    .sort((a, b) => {
+      if (activeSort === "Most Booked") {
+        return Number(b.completed || 0) - Number(a.completed || 0);
+      }
+      if (activeSort === "Newest") {
+        return Number(b.id || 0) - Number(a.id || 0);
+      }
+      if (activeSort === "Rate: Low to High") {
+        return Number(a.price || 0) - Number(b.price || 0);
+      }
+      if (activeSort === "Rate: High to Low") {
+        return Number(b.price || 0) - Number(a.price || 0);
+      }
+      return (Number(b.rating || 0) - Number(a.rating || 0))
+        || (Number(b.reviewCount || 0) - Number(a.reviewCount || 0));
+    });
+  const totalPages = Math.max(1, Math.ceil(services.length / PAGE_SIZE));
+  const page = Math.min(currentPage, totalPages);
+  const pagedServices = services.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const toggleRateSort = () => {
+    setCurrentPage(1);
+    setActiveSort((current) =>
+      current === "Rate: Low to High" ? "Rate: High to Low" : "Rate: Low to High",
+    );
+  };
 
   return (
     <div className="bg-[#F5F7F9] min-h-screen pb-12 font-sans animate-in fade-in duration-500">
@@ -51,7 +97,7 @@ export default function BookServices() {
               </h2>
             </div>
             <Link
-              to="#"
+              to="/services"
               className="text-[11px] font-bold text-[#0074D9] flex items-center gap-1 hover:underline"
             >
               See all <ChevronRight size={12} />
@@ -62,7 +108,7 @@ export default function BookServices() {
             {merchants.map((person) => (
               <Link
                 key={person.id}
-                to="#"
+                to={`/merchant/${person.id}`}
                 className="flex flex-col items-center gap-2 min-w-[100px] group"
               >
                 <div className="w-20 h-20 rounded-full border-2 border-transparent group-hover:border-[#0074D9] p-0.5 transition-all duration-300">
@@ -93,22 +139,21 @@ export default function BookServices() {
                 <h2 className="text-sm font-bold">Service categories</h2>
               </div>
               <div className="p-2">
-                {[
-                  "Academics & Tutoring",
-                  "Graphic Design",
-                  "Tech Support",
-                  "Errands & Tasks",
-                ].map((cat) => (
-                  <div key={cat} className="mb-1">
-                    <button className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group">
+                {SERVICE_CATEGORIES.map((cat) => (
+                  <div key={cat.value} className="mb-1">
+                    <Link
+                      to={`/services?category=${encodeURIComponent(cat.value)}`}
+                      onClick={() => setCurrentPage(1)}
+                      className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group"
+                    >
                       <span className="flex items-center gap-2">
                         <ChevronRight
                           size={14}
                           className="text-gray-300 group-hover:text-[#0074D9] transition-colors"
                         />
-                        {cat}
+                        {cat.label}
                       </span>
-                    </button>
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -127,7 +172,10 @@ export default function BookServices() {
                   {["Highest Rated", "Most Booked", "Newest"].map((sort) => (
                     <button
                       key={sort}
-                      onClick={() => setActiveSort(sort)}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setActiveSort(sort);
+                      }}
                       className={`px-5 py-2 text-xs font-bold rounded-md transition-all ${
                         activeSort === sort
                           ? "bg-[#0074D9] text-white shadow-md shadow-blue-100"
@@ -137,8 +185,16 @@ export default function BookServices() {
                       {sort}
                     </button>
                   ))}
-                  <button className="px-4 py-2 bg-white text-gray-600 border border-gray-200 text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all">
-                    Rate <ChevronDown size={14} />
+                  <button
+                    onClick={toggleRateSort}
+                    className={`px-4 py-2 border text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all ${
+                      activeSort.startsWith("Rate:")
+                        ? "bg-[#0074D9] text-white border-[#0074D9]"
+                        : "bg-white text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    {activeSort.startsWith("Rate:") ? activeSort : "Rate"}{" "}
+                    <ChevronDown size={14} />
                   </button>
                 </div>
               </div>
@@ -146,13 +202,21 @@ export default function BookServices() {
               {/* Pagination */}
               <div className="flex items-center gap-3 mr-2">
                 <span className="text-[11px] font-bold">
-                  <span className="text-[#0074D9]">1</span> / 5
+                  <span className="text-[#0074D9]">{page}</span> / {totalPages}
                 </span>
                 <div className="flex gap-1">
-                  <button className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-400 hover:bg-gray-50">
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+                    className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-400 hover:bg-gray-50 disabled:opacity-40"
+                  >
                     <ChevronLeft size={14} />
                   </button>
-                  <button className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50">
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+                    className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                  >
                     <ChevronRight size={14} />
                   </button>
                 </div>
@@ -192,7 +256,7 @@ export default function BookServices() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {services.map((item) => (
+                {pagedServices.map((item) => (
                 <Link
                   to={`/service/${item.id}`}
                   key={item.id}
@@ -201,9 +265,12 @@ export default function BookServices() {
                   {/* Image with Tool Icon Badge */}
                   <div className="aspect-square bg-gray-50 relative overflow-hidden">
                     <img
-                      src={item.img}
+                      src={item.img || item.images?.[0]?.url || FALLBACK_IMAGE}
                       alt={item.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(event) => {
+                        event.currentTarget.src = FALLBACK_IMAGE;
+                      }}
                     />
                     <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-md shadow-sm">
                       <Wrench size={14} className="text-[#0074D9]" />
