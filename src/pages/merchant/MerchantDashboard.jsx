@@ -15,6 +15,20 @@ const formatMoney = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const chartKeyForFilter = (filter) =>
+  filter === "Last 30 Days" ? "last30Days" : "last7Days";
+
+const compactMoney = (value) => {
+  const amount = Number(value || 0);
+  if (amount >= 1000000) {
+    return `PHP ${(amount / 1000000).toFixed(1)}M`;
+  }
+  if (amount >= 1000) {
+    return `PHP ${(amount / 1000).toFixed(1)}K`;
+  }
+  return `PHP ${amount.toFixed(0)}`;
+};
+
 export default function MerchantDashboard() {
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState("Last 7 Days");
@@ -86,10 +100,32 @@ export default function MerchantDashboard() {
   );
 
   const recentOrders = summary?.recentOrders || [];
-  const chartData =
-    activeFilter === "Last 7 Days"
-      ? "M0 180 C 60 140, 100 120, 133 130 C 200 150, 230 180, 266 170 C 330 150, 360 80, 400 70 C 460 50, 500 120, 533 110 C 600 90, 630 30, 666 20 C 720 10, 760 40, 800 50"
-      : "M0 150 C 60 160, 100 180, 133 140 C 200 100, 230 60, 266 80 C 330 120, 360 160, 400 140 C 460 90, 500 50, 533 70 C 600 100, 630 130, 666 90 C 720 40, 760 20, 800 30";
+  const trendData = Array.isArray(summary?.salesTrend?.[chartKeyForFilter(activeFilter)])
+    ? summary.salesTrend[chartKeyForFilter(activeFilter)]
+    : [];
+  const maxSales = Math.max(...trendData.map((point) => Number(point.sales || 0)), 0);
+  const chartWidth = 800;
+  const chartHeight = 220;
+  const chartPadding = 18;
+  const usableHeight = chartHeight - chartPadding * 2;
+  const xStep = trendData.length > 1 ? chartWidth / (trendData.length - 1) : chartWidth;
+  const chartPoints = trendData.map((point, index) => {
+    const sales = Number(point.sales || 0);
+    const x = index * xStep;
+    const y = maxSales > 0
+      ? chartPadding + usableHeight - (sales / maxSales) * usableHeight
+      : chartPadding + usableHeight;
+    return { ...point, x, y, sales };
+  });
+  const linePath = chartPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(" ");
+  const areaPath = chartPoints.length > 0
+    ? `${linePath} L ${chartPoints[chartPoints.length - 1].x.toFixed(2)} ${chartHeight - chartPadding} L 0 ${chartHeight - chartPadding} Z`
+    : "";
+  const totalChartSales = trendData.reduce((sum, point) => sum + Number(point.sales || 0), 0);
+  const totalChartOrders = trendData.reduce((sum, point) => sum + Number(point.orders || 0), 0);
+  const labelInterval = activeFilter === "Last 30 Days" ? 5 : 1;
 
   return (
     <div className="animate-in fade-in duration-500 max-w-7xl mx-auto space-y-6">
@@ -172,24 +208,88 @@ export default function MerchantDashboard() {
             </div>
           </div>
           <div className="p-6 relative">
-            <div className="ml-12 h-64 relative">
-              <svg
-                className="w-full h-full transition-all duration-500"
-                preserveAspectRatio="none"
-                viewBox="0 0 800 200"
-              >
-                <path
-                  d={chartData}
-                  stroke="#FF851B"
-                  strokeWidth="3"
-                  fill="none"
-                  className="transition-all duration-500"
-                />
-              </svg>
+            <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl bg-orange-50 border border-orange-100 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400">Revenue</p>
+                <p className="text-lg font-black text-[#FF851B]">{formatMoney(totalChartSales)}</p>
+              </div>
+              <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Paid orders</p>
+                <p className="text-lg font-black text-[#003366]">{totalChartOrders}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Peak day</p>
+                <p className="text-lg font-black text-[#003366]">
+                  {maxSales > 0
+                    ? chartPoints.reduce((peak, point) => point.sales > peak.sales ? point : peak, chartPoints[0]).label
+                    : "No sales"}
+                </p>
+              </div>
             </div>
-            <div className="ml-12 mt-4 flex justify-between text-[10px] font-bold text-gray-400 px-1">
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-                <span key={day}>{day}</span>
+
+            <div className="h-72 relative">
+              <div className="absolute left-0 top-0 bottom-8 w-20 flex flex-col justify-between text-[10px] font-bold text-gray-400">
+                {[1, 0.75, 0.5, 0.25, 0].map((ratio) => (
+                  <span key={ratio}>{compactMoney(maxSales * ratio)}</span>
+                ))}
+              </div>
+              <div className="ml-20 h-64 relative">
+                {trendData.length === 0 || maxSales === 0 ? (
+                  <div className="h-full border border-dashed border-gray-200 rounded-xl flex items-center justify-center text-xs font-bold text-gray-400">
+                    No paid completed sales in this period.
+                  </div>
+                ) : (
+                  <svg
+                    className="w-full h-full transition-all duration-500"
+                    preserveAspectRatio="none"
+                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                  >
+                    {[0.25, 0.5, 0.75, 1].map((ratio) => (
+                      <line
+                        key={ratio}
+                        x1="0"
+                        x2={chartWidth}
+                        y1={chartPadding + usableHeight * (1 - ratio)}
+                        y2={chartPadding + usableHeight * (1 - ratio)}
+                        stroke="#E5E7EB"
+                        strokeWidth="1"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                    <path d={areaPath} fill="#FF851B" opacity="0.12" />
+                    <path
+                      d={linePath}
+                      stroke="#FF851B"
+                      strokeWidth="3"
+                      fill="none"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    {chartPoints.map((point) => (
+                      <circle
+                        key={point.date}
+                        cx={point.x}
+                        cy={point.y}
+                        r="4"
+                        fill="#FFFFFF"
+                        stroke="#FF851B"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                      >
+                        <title>{`${point.label}: ${formatMoney(point.sales)} from ${point.orders} order${point.orders === 1 ? "" : "s"}`}</title>
+                      </circle>
+                    ))}
+                  </svg>
+                )}
+              </div>
+            </div>
+            <div className="ml-20 mt-2 grid text-[10px] font-bold text-gray-400" style={{ gridTemplateColumns: `repeat(${Math.max(trendData.length, 1)}, minmax(0, 1fr))` }}>
+              {trendData.map((point, index) => (
+                <span
+                  key={point.date}
+                  className={`${index % labelInterval === 0 || index === trendData.length - 1 ? "opacity-100" : "opacity-0"} ${index === trendData.length - 1 ? "text-right" : ""}`}
+                >
+                  {point.label}
+                </span>
               ))}
             </div>
           </div>

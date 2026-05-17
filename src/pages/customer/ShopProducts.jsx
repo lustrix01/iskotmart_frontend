@@ -19,13 +19,25 @@ export default function ShopProducts() {
   const [searchParams] = useSearchParams();
   const searchTerm = searchParams.get("q") || "";
   const category = searchParams.get("category") || "";
+  const saleOnly = searchParams.get("sale") === "true";
 
   const merchants = [];
 
   const { products: storefrontProducts, loading, error } = useStorefrontListings();
-  const products = storefrontProducts.filter((item) =>
-    matchesListing(item, searchTerm, category),
-  );
+  const products = storefrontProducts
+    .filter((item) => matchesListing(item, searchTerm, category))
+    .filter((item) => !saleOnly || item.isOnSale)
+    .sort((a, b) => {
+      if (activeSort === "Top sales") {
+        return (Number(b.weeklySold || 0) - Number(a.weeklySold || 0))
+          || (Number(b.weeklyRevenue || 0) - Number(a.weeklyRevenue || 0));
+      }
+      if (activeSort === "Latest") {
+        return Number(b.id || 0) - Number(a.id || 0);
+      }
+      return (Number(b.reviewCount || 0) - Number(a.reviewCount || 0))
+        || (Number(b.weeklySold || 0) - Number(a.weeklySold || 0));
+    });
 
   return (
     <div className="bg-[#F5F7F9] min-h-screen pb-12 font-sans animate-in fade-in duration-500">
@@ -161,6 +173,7 @@ export default function ShopProducts() {
                 {products.length} product{products.length === 1 ? "" : "s"}
                 {searchTerm ? ` matching "${searchTerm}"` : ""}
                 {category ? ` in ${category}` : ""}
+                {saleOnly ? " on sale" : ""}
               </p>
               <p className="max-w-2xl text-[10px] font-semibold text-gray-400">
                 {storefrontDataDecision}

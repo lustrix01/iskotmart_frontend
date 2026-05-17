@@ -172,8 +172,18 @@ export default function MerchantProfile() {
         </div>
 
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm mb-8 overflow-hidden">
-          <div className="h-48 bg-[#003366] w-full relative">
-            <div className="absolute inset-0 opacity-15 bg-[radial-gradient(circle_at_20%_20%,#ffffff_0,transparent_32%),radial-gradient(circle_at_80%_30%,#FF851B_0,transparent_28%)]"></div>
+          <div className="h-48 bg-[#003366] w-full relative overflow-hidden">
+            {merchant.bannerUrl ? (
+              <img
+                src={merchant.bannerUrl}
+                alt={`${merchant.name} banner`}
+                className="w-full h-full object-cover"
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+            ) : null}
+            <div className={`absolute inset-0 ${merchant.bannerUrl ? "bg-black/20" : "opacity-15 bg-[radial-gradient(circle_at_20%_20%,#ffffff_0,transparent_32%),radial-gradient(circle_at_80%_30%,#FF851B_0,transparent_28%)]"}`}></div>
           </div>
 
           <div className="px-8 pb-8 relative">

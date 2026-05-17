@@ -13,7 +13,9 @@ import {
   ShoppingBag,
   Home,
   Paperclip,
+  Star,
 } from "lucide-react";
+import { useStorefrontListings } from "../../data/storefrontData";
 
 const slides = [
   "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1200&auto=format&fit=crop",
@@ -35,8 +37,97 @@ const categories = [
   { name: "Stationery", icon: Paperclip, path: "/products?category=stationery" },
 ];
 
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
+
+function ProductCard({ item }) {
+  const image = item.img || item.images?.[0]?.url || FALLBACK_IMAGE;
+  const hasDiscount = Boolean(item.discount);
+
+  return (
+    <Link to={`/product/${item.id}`} className="block h-full">
+      <div className="bg-white p-2 rounded-sm border border-transparent hover:border-gray-100 hover:shadow-md transition-all cursor-pointer group h-full flex flex-col">
+        <div className="bg-gray-50 aspect-square mb-2 overflow-hidden rounded-sm shrink-0 relative">
+          <img
+            src={image}
+            alt={item.name}
+            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            onError={(event) => {
+              event.currentTarget.src = FALLBACK_IMAGE;
+            }}
+          />
+          {hasDiscount ? (
+            <span className="absolute left-2 top-2 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded-sm">
+              {item.discount}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-col flex-grow justify-between">
+          <div>
+            <p className="text-[10px] text-gray-400 mb-0.5 font-normal truncate">
+              {item.merchant || "Merchant"}
+            </p>
+            <h4 className="text-[11px] font-medium text-gray-800 leading-tight line-clamp-2 uppercase">
+              {item.name}
+            </h4>
+          </div>
+          <div>
+            <div className="flex items-baseline gap-1.5 mt-1">
+              <p className="text-[#FF851B] font-semibold text-xs">
+                PHP {Number(item.price || 0).toFixed(2)}
+              </p>
+              {hasDiscount ? (
+                <p className="text-[9px] text-gray-300 line-through">
+                  PHP {Number(item.oldPrice || 0).toFixed(2)}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-1 text-[9px] mt-1">
+              <Star size={10} fill="#FF851B" stroke="none" />
+              <span className="text-gray-400">
+                {item.rating !== null ? `${item.rating} (${item.reviewCount || 0})` : "No ratings"}
+              </span>
+              {Number(item.weeklySold || 0) > 0 ? (
+                <span className="ml-auto text-gray-300">{item.weeklySold} sold/week</span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function ProductSection({ title, titleClassName = "text-[#003366]", to, products, empty }) {
+  return (
+    <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
+      <div className="flex justify-between items-center mb-4 border-b pb-2">
+        <h3 className={`font-semibold text-sm italic ${titleClassName}`}>{title}</h3>
+        <Link
+          to={to}
+          className="text-[10px] text-[#FF851B] font-semibold hover:underline"
+        >
+          See All &gt;
+        </Link>
+      </div>
+      {products.length > 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          {products.slice(0, 10).map((item) => (
+            <ProductCard key={item.id} item={item} />
+          ))}
+        </div>
+      ) : (
+        <div className="border border-dashed border-gray-200 rounded-sm p-8 text-center">
+          <p className="text-xs font-bold text-gray-400">{empty}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function CustomerHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const { featuredProducts, onSaleProducts, loading, error } = useStorefrontListings();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -133,6 +224,18 @@ export default function CustomerHome() {
         </div>
       </div>
 
+      {/* FEATURED PRODUCTS */}
+      <ProductSection
+        title="Featured Products"
+        to="/products"
+        products={featuredProducts}
+        empty={
+          loading
+            ? "Loading featured products..."
+            : error || "No products have enough paid weekly sales to be featured yet."
+        }
+      />
+
       {/* CATEGORIES */}
       <section className="bg-white border border-gray-100 shadow-sm rounded-sm">
         <div className="bg-gray-50/50 py-3 border-b border-gray-100 text-center">
@@ -162,6 +265,18 @@ export default function CustomerHome() {
         </div>
       </section>
 
+      {/* ON SALE NOW */}
+      <ProductSection
+        title="On Sale Now"
+        titleClassName="text-[#FF851B]"
+        to="/products?sale=true"
+        products={onSaleProducts}
+        empty={
+          loading
+            ? "Loading on-sale products..."
+            : error || "No discounted products have paid weekly sales yet."
+        }
+      />
     </div>
   );
 }

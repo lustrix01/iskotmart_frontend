@@ -6,6 +6,30 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     jsonResponse(['error' => 'Method not allowed'], 405);
 }
 
+function storefrontDiscountedPrice(float $price, ?string $type, mixed $value): float {
+    $discountValue = (float) ($value ?? 0);
+    if ($discountValue <= 0 || $type === null) {
+        return $price;
+    }
+
+    $discounted = strtolower($type) === 'percentage'
+        ? $price - ($price * ($discountValue / 100))
+        : $price - $discountValue;
+
+    return round(max(0, $discounted), 2);
+}
+
+function storefrontDiscountLabel(?string $type, mixed $value): string {
+    $discountValue = (float) ($value ?? 0);
+    if ($discountValue <= 0 || $type === null) {
+        return '';
+    }
+
+    return strtolower($type) === 'percentage'
+        ? '-' . rtrim(rtrim(number_format($discountValue, 2), '0'), '.') . '%'
+        : '-PHP ' . rtrim(rtrim(number_format($discountValue, 2), '0'), '.');
+}
+
 try {
     $stmt = $db->query(
         "SELECT o.OFFERING_ID AS id, o.OFFERING_TYPE AS type, o.OFFERING_NAME AS name,
@@ -19,7 +43,12 @@ try {
                 COALESCE(m.SHOP_NAME, u.USERNAME) AS merchant_name,
                 AVG(r.RATING) AS average_rating,
                 COUNT(DISTINCT r.REVIEW_ID) AS review_count,
-                GROUP_CONCAT(
+                COALESCE(MAX(weekly_sales.quantity), 0) AS weekly_sold,
+                COALESCE(MAX(weekly_sales.revenue), 0) AS weekly_revenue,
+                discount.DISCOUNT_ID AS discount_id,
+                discount.TYPE AS discount_type,
+                discount.VALUE AS discount_value,
+                GROUP_CONCAT(DISTINCT
                     JSON_OBJECT(
                         'id', di.DISPLAY_IMG_ID,
                         'url', di.IMAGE_URL,
@@ -39,11 +68,34 @@ try {
          LEFT JOIN SERVICE_CAT sc ON sc.SERCAT_ID = ss.SERCAT_ID
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = o.OFFERING_ID
          LEFT JOIN REVIEW r ON r.OFFERING_ID = o.OFFERING_ID
-         WHERE o.AVAIL_STATUS = 'Active'
+         LEFT JOIN (
+             SELECT p2.PROD_ID AS offering_id,
+                    COALESCE(SUM(oi.QUANTITY), 0) AS quantity,
+                    COALESCE(SUM(oi.PRICE * oi.QUANTITY), 0) AS revenue
+             FROM PRODUCT p2
+             INNER JOIN ORDER_ITEM oi ON oi.PRODUCT_ID = p2.PROD_ID
+             INNER JOIN ORDERS ord ON ord.ORDER_ID = oi.ORDER_ID
+             WHERE UPPER(ord.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED')
+               AND UPPER(ord.PAYMENT_STATUS) = 'PAID'
+               AND ord.ORDERED_ON >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+             GROUP BY p2.PROD_ID
+         ) weekly_sales ON weekly_sales.offering_id = o.OFFERING_ID
+         LEFT JOIN (
+             SELECT d.*
+             FROM DISCOUNT d
+             INNER JOIN (
+                 SELECT OFFERING_ID, MAX(DISCOUNT_ID) AS DISCOUNT_ID
+                 FROM DISCOUNT
+                 WHERE START_DATE <= NOW(1) AND END_DATE >= NOW(1)
+                 GROUP BY OFFERING_ID
+             ) latest_discount ON latest_discount.DISCOUNT_ID = d.DISCOUNT_ID
+         ) discount ON discount.OFFERING_ID = o.OFFERING_ID
+         WHERE UPPER(o.AVAIL_STATUS) IN ('ACTIVE', 'AVAILABLE', 'APPROVED')
          GROUP BY o.OFFERING_ID, o.OFFERING_TYPE, o.OFFERING_NAME, o.AVAIL_STATUS,
                   o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
                   pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.DELIVERY_METHOD,
-                  o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME
+                  o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME,
+                  discount.DISCOUNT_ID, discount.TYPE, discount.VALUE
          ORDER BY o.OFFERING_ID DESC"
     );
 
@@ -57,6 +109,14 @@ try {
                 : [];
         }
 
+        $originalPrice = (float) $row['price'];
+        $discountedPrice = storefrontDiscountedPrice(
+            $originalPrice,
+            $row['discount_type'] ?? null,
+            $row['discount_value'] ?? null
+        );
+        $discount = storefrontDiscountLabel($row['discount_type'] ?? null, $row['discount_value'] ?? null);
+
         return [
             'id' => (int) $row['id'],
             'type' => $row['type'] === 'P' ? 'product' : 'service',
@@ -65,22 +125,40 @@ try {
             'merchantId' => (int) $row['merchant_id'],
             'merchant' => $row['merchant_name'] ?: 'Merchant',
             'category' => $row['category'] ?: 'Uncategorized',
-            'price' => (float) $row['price'],
+            'price' => $discount !== '' ? $discountedPrice : $originalPrice,
             'stock' => $row['stock'] !== null ? (int) $row['stock'] : null,
             'rateType' => $row['rate'] ?: 'per project',
             'img' => $images[0]['url'] ?? '',
             'images' => $images,
             'rating' => $row['average_rating'] !== null ? round((float) $row['average_rating'], 1) : null,
             'reviewCount' => (int) ($row['review_count'] ?? 0),
-            'sold' => '0',
-            'oldPrice' => (float) $row['price'],
-            'discount' => '',
+            'weeklySold' => (int) ($row['weekly_sold'] ?? 0),
+            'weeklyRevenue' => round((float) ($row['weekly_revenue'] ?? 0), 2),
+            'isOnSale' => $discount !== '',
+            'sold' => (string) ((int) ($row['weekly_sold'] ?? 0)),
+            'oldPrice' => $originalPrice,
+            'discount' => $discount,
             'completed' => '0',
             'slots' => 0,
         ];
     }, $rows);
 
-    jsonResponse(['offerings' => $offerings]);
+    $products = array_values(array_filter($offerings, fn (array $item): bool => $item['type'] === 'product'));
+    $weeklyProducts = array_values(array_filter($products, fn (array $item): bool => (int) ($item['weeklySold'] ?? 0) > 0));
+    usort($weeklyProducts, fn (array $a, array $b): int =>
+        ($b['weeklySold'] <=> $a['weeklySold'])
+        ?: ($b['weeklyRevenue'] <=> $a['weeklyRevenue'])
+        ?: (($b['reviewCount'] ?? 0) <=> ($a['reviewCount'] ?? 0))
+        ?: ($b['id'] <=> $a['id'])
+    );
+
+    $onSaleProducts = array_values(array_filter($weeklyProducts, fn (array $item): bool => !empty($item['isOnSale'])));
+
+    jsonResponse([
+        'offerings' => $offerings,
+        'featuredProducts' => array_slice($weeklyProducts, 0, 10),
+        'onSaleProducts' => array_slice($onSaleProducts, 0, 10),
+    ]);
 } catch (Throwable $e) {
     logApiError($e);
     jsonResponse(['error' => 'Unable to load storefront offerings.'], 500);

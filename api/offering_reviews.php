@@ -6,6 +6,9 @@ require_once(__DIR__ . '/review_helpers.php');
 
 ensureReviewContextColumns($db);
 
+const REVIEW_UPLOAD_DIR = __DIR__ . '/uploads/reviews';
+const REVIEW_UPLOAD_URL = '/api/uploads/reviews';
+
 function offeringReviewSummary(PDO $db, int $offeringId): array {
     $summaryStmt = $db->prepare(
         "SELECT AVG(RATING) AS average_rating, COUNT(REVIEW_ID) AS review_count
@@ -26,6 +29,11 @@ function offeringReviewSummary(PDO $db, int $offeringId): array {
          LIMIT 20"
     );
     $reviewsStmt->execute([':offering_id' => $offeringId]);
+    $reviews = $reviewsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $attachmentsByReview = reviewAttachmentsByReview($db, array_map(
+        fn (array $row): int => (int) $row['REVIEW_ID'],
+        $reviews
+    ));
 
     return [
         'average' => $summary['average_rating'] !== null ? round((float) $summary['average_rating'], 1) : null,
@@ -36,8 +44,87 @@ function offeringReviewSummary(PDO $db, int $offeringId): array {
             'description' => (string) ($row['DESCRIPTION'] ?? ''),
             'reviewedOn' => (string) ($row['REVIEWED_ON'] ?? ''),
             'customerName' => $row['customer_name'] ?: 'Customer',
-        ], $reviewsStmt->fetchAll(PDO::FETCH_ASSOC)),
+            'attachments' => $attachmentsByReview[(int) $row['REVIEW_ID']] ?? [],
+        ], $reviews),
     ];
+}
+
+function reviewAttachmentsByReview(PDO $db, array $reviewIds): array {
+    $reviewIds = array_values(array_unique(array_filter($reviewIds, fn (int $id): bool => $id > 0)));
+    if (!$reviewIds) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($reviewIds), '?'));
+    $stmt = $db->prepare(
+        "SELECT ATTACH_ID, ATTACH_URL, FILE_TYPE, REVIEW_ID
+         FROM REVIEW_ATTACH
+         WHERE REVIEW_ID IN ({$placeholders})
+         ORDER BY ATTACH_ID ASC"
+    );
+    $stmt->execute($reviewIds);
+
+    $byReview = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $reviewId = (int) $row['REVIEW_ID'];
+        $byReview[$reviewId][] = [
+            'id' => (int) $row['ATTACH_ID'],
+            'url' => (string) $row['ATTACH_URL'],
+            'fileType' => (string) $row['FILE_TYPE'],
+        ];
+    }
+
+    return $byReview;
+}
+
+function storeReviewImage(PDO $db, int $reviewId, string $dataUrl): void {
+    $dataUrl = trim($dataUrl);
+    if ($dataUrl === '') {
+        return;
+    }
+
+    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
+        jsonResponse(['error' => 'Review image must be a PNG, JPG, WebP, or GIF file.'], 422);
+    }
+
+    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
+    if ($binary === false || strlen($binary) === 0) {
+        jsonResponse(['error' => 'Review image could not be read.'], 422);
+    }
+
+    if (strlen($binary) > 5 * 1024 * 1024) {
+        jsonResponse(['error' => 'Review image must be 5MB or smaller.'], 422);
+    }
+
+    if (!is_dir(REVIEW_UPLOAD_DIR) && !mkdir(REVIEW_UPLOAD_DIR, 0775, true)) {
+        jsonResponse(['error' => 'Unable to prepare review image storage.'], 500);
+    }
+
+    $extension = match ($matches[1]) {
+        'image/jpeg', 'image/jpg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+        default => 'img',
+    };
+    $fileName = sprintf('review-%d-%s.%s', $reviewId, bin2hex(random_bytes(8)), $extension);
+    $targetPath = REVIEW_UPLOAD_DIR . '/' . $fileName;
+    if (file_put_contents($targetPath, $binary) === false) {
+        jsonResponse(['error' => 'Unable to store review image.'], 500);
+    }
+
+    $deleteStmt = $db->prepare("DELETE FROM REVIEW_ATTACH WHERE REVIEW_ID = :review_id");
+    $deleteStmt->execute([':review_id' => $reviewId]);
+
+    $insertStmt = $db->prepare(
+        "INSERT INTO REVIEW_ATTACH (ATTACH_URL, FILE_TYPE, REVIEW_ID)
+         VALUES (:attach_url, :file_type, :review_id)"
+    );
+    $insertStmt->execute([
+        ':attach_url' => REVIEW_UPLOAD_URL . '/' . $fileName,
+        ':file_type' => $matches[1],
+        ':review_id' => $reviewId,
+    ]);
 }
 
 function requireCustomerForReview(PDO $db): array {
@@ -222,6 +309,7 @@ if ($method === 'GET') {
             'rating' => (int) $existing['RATING'],
             'description' => (string) ($existing['DESCRIPTION'] ?? ''),
             'reviewedOn' => (string) ($existing['REVIEWED_ON'] ?? ''),
+            'attachments' => reviewAttachmentsByReview($db, [(int) $existing['REVIEW_ID']])[(int) $existing['REVIEW_ID']] ?? [],
         ] : null;
         $payload['canReview'] = customerCanReviewOffering($db, (int) $user['id'], $offeringId);
     }
@@ -239,6 +327,7 @@ $data = jsonInput();
 $offeringId = (int) ($data['offeringId'] ?? 0);
 $rating = (int) ($data['rating'] ?? 0);
 $description = trim((string) ($data['description'] ?? ''));
+$reviewImage = trim((string) ($data['reviewImage'] ?? ''));
 $context = reviewContextFromInput($data);
 
 if ($offeringId <= 0 || $rating < 1 || $rating > 5) {
@@ -251,6 +340,7 @@ if (!customerCanReviewContext($db, $customerId, $offeringId, $context)) {
 try {
     $existing = customerExistingReview($db, $customerId, $offeringId, $context);
     if ($existing) {
+        $reviewId = (int) $existing['REVIEW_ID'];
         $stmt = $db->prepare(
             "UPDATE REVIEW
              SET RATING = :rating,
@@ -261,7 +351,7 @@ try {
         $stmt->execute([
             ':rating' => $rating,
             ':description' => $description !== '' ? $description : null,
-            ':review_id' => (int) $existing['REVIEW_ID'],
+            ':review_id' => $reviewId,
             ':customer_id' => $customerId,
         ]);
     } else {
@@ -277,6 +367,11 @@ try {
             ':order_id' => $context['orderId'],
             ':request_id' => $context['requestId'],
         ]);
+        $reviewId = (int) $db->lastInsertId();
+    }
+
+    if ($reviewImage !== '') {
+        storeReviewImage($db, $reviewId, $reviewImage);
     }
 
     jsonResponse(offeringReviewSummary($db, $offeringId));

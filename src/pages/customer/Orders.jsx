@@ -207,6 +207,11 @@ export default function Orders() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        showToast("Review image must be 5MB or smaller.");
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setReviewImage(reader.result);
@@ -246,6 +251,7 @@ export default function Orders() {
           requestId: ratingTarget.item.requestId,
           rating: ratingValue,
           description: reviewComment,
+          reviewImage,
         }),
       });
       const payload = await response.json().catch(() => ({}));

@@ -530,6 +530,26 @@ export default function ProductDetails() {
                 {review.description ? (
                   <p className="mt-2 text-xs text-gray-500 leading-6">{review.description}</p>
                 ) : null}
+                {Array.isArray(review.attachments) && review.attachments.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {review.attachments.map((attachment) => (
+                      <a
+                        key={attachment.id || attachment.url}
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block w-20 h-20 rounded-lg overflow-hidden border border-gray-100 bg-gray-50"
+                        title="Open review image"
+                      >
+                        <img
+                          src={attachment.url}
+                          alt="Review attachment"
+                          className="w-full h-full object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Camera,
   Save,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 
 export default function ShopSettings() {
+  const bannerInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState("profile"); // 'profile', 'fulfillment', or 'security'
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -43,6 +44,7 @@ export default function ShopSettings() {
     address: "",
     banner:
       "https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=1200",
+    bannerImage: "",
     avatar:
       "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=250",
   });
@@ -82,6 +84,8 @@ export default function ShopSettings() {
             name: profile.shopName || "",
             bio: profile.shopDescription || "",
             address: profile.address || "",
+            banner: profile.bannerUrl || current.banner,
+            bannerImage: "",
             avatar: profile.avatarUrl || current.avatar,
           }));
           setAccountInfo({
@@ -123,6 +127,7 @@ export default function ShopSettings() {
           shopName: shopData.name,
           shopDescription: shopData.bio,
           address: shopData.address,
+          bannerImage: shopData.bannerImage,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -136,6 +141,8 @@ export default function ShopSettings() {
         name: profile.shopName || "",
         bio: profile.shopDescription || "",
         address: profile.address || "",
+        banner: profile.bannerUrl || current.banner,
+        bannerImage: "",
       }));
       setIsSaving(false);
       setShowToast(true);
@@ -144,6 +151,35 @@ export default function ShopSettings() {
       setLoadError(error.message);
       setIsSaving(false);
     }
+  };
+
+  const handleBannerUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setLoadError("Banner image must be 5MB or smaller.");
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setLoadError("Banner must be a JPG, PNG, or WebP image.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = String(reader.result || "");
+      setShopData((current) => ({
+        ...current,
+        banner: result,
+        bannerImage: result,
+      }));
+      setLoadError("");
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -202,12 +238,23 @@ export default function ShopSettings() {
               alt="Banner"
               className="w-full h-full object-cover opacity-80"
             />
-            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 cursor-pointer">
+            <button
+              type="button"
+              onClick={() => bannerInputRef.current?.click()}
+              className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 cursor-pointer"
+            >
               <Camera size={24} className="text-white" />
               <span className="text-[10px] text-white font-bold uppercase tracking-widest">
                 Update Banner
               </span>
-            </div>
+            </button>
+            <input
+              ref={bannerInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleBannerUpload}
+              className="hidden"
+            />
           </div>
 
           <div className="px-10 pb-10 relative">

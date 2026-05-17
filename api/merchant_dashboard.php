@@ -138,6 +138,84 @@ function dashboardStats(PDO $db, int $merchantId): array {
     ];
 }
 
+function emptySalesBuckets(int $days): array {
+    $buckets = [];
+    for ($i = $days - 1; $i >= 0; $i--) {
+        $date = date('Y-m-d', strtotime("-{$i} days"));
+        $buckets[$date] = [
+            'date' => $date,
+            'label' => $days <= 7 ? date('D', strtotime($date)) : date('M j', strtotime($date)),
+            'sales' => 0.0,
+            'orders' => 0,
+        ];
+    }
+
+    return $buckets;
+}
+
+function merchantSalesTrend(PDO $db, int $merchantId, int $days): array {
+    $buckets = emptySalesBuckets($days);
+    $start = array_key_first($buckets) . ' 00:00:00';
+    $end = date('Y-m-d 23:59:59');
+
+    $productStmt = $db->prepare(
+        "SELECT DATE(o.ORDERED_ON) AS sale_date,
+                COALESCE(SUM(oi.PRICE * oi.QUANTITY), 0) AS sales,
+                COUNT(DISTINCT o.ORDER_ID) AS orders
+         FROM ORDERS o
+         INNER JOIN ORDER_ITEM oi ON oi.ORDER_ID = o.ORDER_ID
+         INNER JOIN PRODUCT p ON p.PROD_ID = oi.PRODUCT_ID
+         WHERE p.MERCHANT_ID = :merchant_id
+           AND UPPER(o.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED')
+           AND UPPER(o.PAYMENT_STATUS) = 'PAID'
+           AND o.ORDERED_ON BETWEEN :start_at AND :end_at
+         GROUP BY DATE(o.ORDERED_ON)"
+    );
+    $productStmt->execute([
+        ':merchant_id' => $merchantId,
+        ':start_at' => $start,
+        ':end_at' => $end,
+    ]);
+    foreach ($productStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $date = (string) ($row['sale_date'] ?? '');
+        if (isset($buckets[$date])) {
+            $buckets[$date]['sales'] += (float) ($row['sales'] ?? 0);
+            $buckets[$date]['orders'] += (int) ($row['orders'] ?? 0);
+        }
+    }
+
+    $serviceStmt = $db->prepare(
+        "SELECT sr.REQUEST_DATE, sr.TOTAL_PRICE, sr.CUSTOMER_INFO
+         FROM SERVICE_REQUEST sr
+         INNER JOIN SERVICE s ON s.SERVICE_ID = sr.SERVICE_ID
+         WHERE s.MERCHANT_ID = :merchant_id
+           AND UPPER(sr.REQ_STATUS) IN ('COMPLETED', 'DELIVERED')
+           AND sr.REQUEST_DATE BETWEEN :start_at AND :end_at"
+    );
+    $serviceStmt->execute([
+        ':merchant_id' => $merchantId,
+        ':start_at' => $start,
+        ':end_at' => $end,
+    ]);
+    foreach ($serviceStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        if (servicePaymentStatus((string) ($row['CUSTOMER_INFO'] ?? '')) !== PAYMENT_STATUS_PAID) {
+            continue;
+        }
+        $date = date('Y-m-d', strtotime((string) ($row['REQUEST_DATE'] ?? 'now')));
+        if (isset($buckets[$date])) {
+            $buckets[$date]['sales'] += (float) ($row['TOTAL_PRICE'] ?? 0);
+            $buckets[$date]['orders']++;
+        }
+    }
+
+    return array_values(array_map(fn (array $bucket): array => [
+        'date' => $bucket['date'],
+        'label' => $bucket['label'],
+        'sales' => round((float) $bucket['sales'], 2),
+        'orders' => (int) $bucket['orders'],
+    ], $buckets));
+}
+
 function recentMerchantActivity(PDO $db, int $merchantId): array {
     $productStmt = $db->prepare(
         "SELECT CONCAT('ORD-', o.ORDER_ID) AS id,
@@ -291,6 +369,10 @@ try {
             'initials' => merchantInitials($user['name'] ?? 'Merchant Shop'),
         ]),
         'stats' => safeDashboardSection(fn () => dashboardStats($db, $merchantId), fallbackDashboardStats()),
+        'salesTrend' => [
+            'last7Days' => safeDashboardSection(fn () => merchantSalesTrend($db, $merchantId, 7), array_values(emptySalesBuckets(7))),
+            'last30Days' => safeDashboardSection(fn () => merchantSalesTrend($db, $merchantId, 30), array_values(emptySalesBuckets(30))),
+        ],
         'recentOrders' => safeDashboardSection(fn () => recentMerchantActivity($db, $merchantId), []),
         'insights' => safeDashboardSection(fn () => merchantInsights($db, $merchantId), [
             'topProducts' => [],
