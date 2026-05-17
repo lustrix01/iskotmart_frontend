@@ -234,7 +234,7 @@ export default function BookServices() {
                             className="text-[#FF851B]"
                           />
                           <span className="text-[10px] font-bold text-gray-700">
-                            {item.rating}
+                            {item.rating !== null ? item.rating : "No ratings"}
                           </span>
                         </div>
                         <span className="text-[9px] text-gray-400 font-medium">

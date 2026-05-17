@@ -56,14 +56,14 @@ export default function MerchantDashboard() {
       {
         title: "Total Sales",
         value: summary?.stats?.totalSalesFormatted || formatMoney(0),
-        trend: `${summary?.stats?.totalOrders || 0} database orders`,
+        trend: `${summary?.stats?.totalOrders || 0} paid completed orders`,
         icon: DollarSign,
         path: "/merchant/earnings",
       },
       {
-        title: "Pending Orders",
-        value: String(summary?.stats?.pendingOrders || 0),
-        trend: "Awaiting merchant action",
+        title: "Active Orders",
+        value: String(summary?.stats?.activeOrders ?? summary?.stats?.pendingOrders ?? 0),
+        trend: "Not completed or cancelled",
         icon: ShoppingBag,
         path: "/merchant/orders",
       },
@@ -231,7 +231,7 @@ export default function MerchantDashboard() {
             ))}
             {recentOrders.length === 0 && (
               <div className="border border-dashed border-gray-200 rounded-xl p-8 text-center text-xs font-bold text-gray-400">
-                No database orders for this merchant yet.
+                No active orders right now.
               </div>
             )}
           </div>

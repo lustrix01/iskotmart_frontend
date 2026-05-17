@@ -1,6 +1,10 @@
 <?php
 
 require_once(__DIR__ . '/config.php');
+require_once(__DIR__ . '/payment_helpers.php');
+require_once(__DIR__ . '/review_helpers.php');
+
+ensureReviewContextColumns($db);
 
 function requireCustomerForOrders(PDO $db): array {
     $user = currentUser($db);
@@ -47,11 +51,6 @@ function mapOrderStatus(string $status): string {
     return $map[$normalized] ?? 'To confirm';
 }
 
-function decodeServiceRequestInfo(string $payload): array {
-    $decoded = json_decode($payload, true);
-    return is_array($decoded) ? $decoded : [];
-}
-
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     jsonResponse(['error' => 'Method not allowed'], 405);
 }
@@ -67,10 +66,15 @@ try {
                 COALESCE(m.SHOP_NAME, TRIM(CONCAT(mu.FNAME, ' ', mu.LNAME)), 'Merchant') AS merchant_name,
                 GROUP_CONCAT(
                     CONCAT(
+                        p.PROD_ID,
+                        '||',
                         COALESCE(o.OFFERING_NAME, 'Item'),
                         '||', oi.QUANTITY,
                         '||', oi.PRICE,
-                        '||', COALESCE(di.IMAGE_URL, '')
+                        '||', COALESCE(di.IMAGE_URL, ''),
+                        '||', COALESCE(r.REVIEW_ID, ''),
+                        '||', COALESCE(r.RATING, ''),
+                        '||', COALESCE(REPLACE(REPLACE(r.DESCRIPTION, '\r', ' '), '\n', ' '), '')
                     )
                     ORDER BY oi.ORDERITEM_ID
                     SEPARATOR '##'
@@ -83,6 +87,7 @@ try {
          INNER JOIN USERS mu ON mu.USER_ID = m.MERCHANT_ID
          LEFT JOIN DELIVERY_METHOD dm ON dm.DM_ID = ord.DM_ID
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = o.OFFERING_ID AND di.IS_DEFAULT = 1
+         LEFT JOIN REVIEW r ON r.OFFERING_ID = p.PROD_ID AND r.CUSTOMER_ID = ord.CUSTOMER_ID AND r.ORDER_ID = ord.ORDER_ID
          WHERE ord.CUSTOMER_ID = :customer_id
          GROUP BY ord.ORDER_ID, ord.ORDERED_ON, ord.TOTAL_AMOUNT, ord.ORDER_STATUS, ord.PAYMENT_STATUS,
                   dm.DM_NAME, m.MERCHANT_ID, m.SHOP_NAME, mu.FNAME, mu.LNAME
@@ -93,13 +98,22 @@ try {
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $productOrders = array_map(function (array $row): array {
-        $items = array_map(function (string $encoded): array {
-            [$name, $qty, $price, $img] = array_pad(explode('||', $encoded), 4, '');
+        $orderId = (int) $row['ORDER_ID'];
+        $items = array_map(function (string $encoded) use ($orderId): array {
+            [$offeringId, $name, $qty, $price, $img, $reviewId, $reviewRating, $reviewDescription] = array_pad(explode('||', $encoded), 8, '');
             return [
+                'offeringId' => (int) $offeringId,
+                'orderId' => $orderId,
+                'source' => 'product',
                 'name' => trim($name) !== '' ? trim($name) : 'Item',
                 'qty' => max(1, (int) $qty),
                 'price' => moneyValue($price),
                 'img' => trim($img),
+                'review' => trim($reviewId) !== '' ? [
+                    'id' => (int) $reviewId,
+                    'rating' => (int) $reviewRating,
+                    'description' => trim($reviewDescription),
+                ] : null,
             ];
         }, array_filter(explode('##', (string) ($row['item_blob'] ?? ''))));
 
@@ -112,7 +126,8 @@ try {
             'type' => 'product',
             'items' => $items,
             'status' => mapOrderStatus((string) ($row['ORDER_STATUS'] ?? '')),
-            'payment' => ((string) ($row['PAYMENT_STATUS'] ?? '')) !== '' ? (string) $row['PAYMENT_STATUS'] : 'Unpaid',
+            'payment' => paymentStatusLabel($row['PAYMENT_STATUS'] ?? null),
+            'paymentStatusCode' => canonicalPaymentStatus($row['PAYMENT_STATUS'] ?? null),
             'mode' => (string) ($row['delivery_mode'] ?? 'Meet-up'),
             'total' => moneyValue($row['TOTAL_AMOUNT'] ?? 0),
             'date' => formatOrderDate($row['ORDERED_ON'] ?? null),
@@ -125,13 +140,15 @@ try {
                 s.SERVICE_ID, m.MERCHANT_ID,
                 COALESCE(m.SHOP_NAME, TRIM(CONCAT(mu.FNAME, ' ', mu.LNAME)), 'Merchant') AS merchant_name,
                 COALESCE(o.OFFERING_NAME, 'Service Request') AS service_name,
-                COALESCE(di.IMAGE_URL, '') AS service_image
+                COALESCE(di.IMAGE_URL, '') AS service_image,
+                r.REVIEW_ID, r.RATING AS REVIEW_RATING, r.DESCRIPTION AS REVIEW_DESCRIPTION
          FROM SERVICE_REQUEST sr
          INNER JOIN SERVICE s ON s.SERVICE_ID = sr.SERVICE_ID
          INNER JOIN MERCHANT m ON m.MERCHANT_ID = s.MERCHANT_ID
          INNER JOIN USERS mu ON mu.USER_ID = m.MERCHANT_ID
          LEFT JOIN OFFERING o ON o.OFFERING_ID = s.SERVICE_ID
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = s.SERVICE_ID AND di.IS_DEFAULT = 1
+         LEFT JOIN REVIEW r ON r.OFFERING_ID = s.SERVICE_ID AND r.CUSTOMER_ID = sr.CUSTOMER_ID AND r.REQUEST_ID = sr.REQUEST_ID
          WHERE sr.CUSTOMER_ID = :customer_id
          ORDER BY sr.REQUEST_DATE DESC, sr.REQUEST_ID DESC
          LIMIT 50"
@@ -140,14 +157,11 @@ try {
     $serviceRows = $serviceStmt->fetchAll(PDO::FETCH_ASSOC);
 
     $serviceOrders = array_map(function (array $row): array {
-        $info = decodeServiceRequestInfo((string) ($row['CUSTOMER_INFO'] ?? ''));
-        $quantity = max(1, (int) ($info['quantity'] ?? 1));
+        $info = decodeServicePaymentInfo((string) ($row['CUSTOMER_INFO'] ?? ''));
+        $quantity = serviceQuantityFromInfo((string) ($row['CUSTOMER_INFO'] ?? ''));
         $total = moneyValue($row['TOTAL_PRICE'] ?? 0);
         $unitPrice = $quantity > 0 ? $total / $quantity : $total;
-        $payment = trim((string) ($info['paymentStatus'] ?? ''));
-        if ($payment === '') {
-            $payment = 'Unpaid';
-        }
+        $paymentCode = servicePaymentStatus((string) ($row['CUSTOMER_INFO'] ?? ''));
 
         return [
             'id' => 'SRV-' . (int) $row['REQUEST_ID'],
@@ -158,12 +172,21 @@ try {
             'type' => 'service',
             'items' => [[
                 'name' => $row['service_name'] ?: 'Service Request',
+                'offeringId' => (int) $row['SERVICE_ID'],
+                'requestId' => (int) $row['REQUEST_ID'],
+                'source' => 'service',
                 'qty' => $quantity,
                 'price' => moneyValue($unitPrice),
                 'img' => trim((string) ($row['service_image'] ?? '')),
+                'review' => !empty($row['REVIEW_ID']) ? [
+                    'id' => (int) $row['REVIEW_ID'],
+                    'rating' => (int) $row['REVIEW_RATING'],
+                    'description' => trim((string) ($row['REVIEW_DESCRIPTION'] ?? '')),
+                ] : null,
             ]],
             'status' => mapOrderStatus((string) ($row['REQ_STATUS'] ?? '')),
-            'payment' => $payment,
+            'payment' => paymentStatusLabel($paymentCode),
+            'paymentStatusCode' => $paymentCode,
             'mode' => 'Service booking',
             'total' => $total,
             'date' => formatOrderDate($row['REQUEST_DATE'] ?? null),

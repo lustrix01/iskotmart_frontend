@@ -1,6 +1,8 @@
 <?php
 
 require_once(__DIR__ . '/config.php');
+require_once(__DIR__ . '/payment_helpers.php');
+require_once(__DIR__ . '/order_inventory_helpers.php');
 
 function requireCustomerForOrderActions(PDO $db): array {
     $user = currentUser($db);
@@ -51,7 +53,7 @@ if ($parsed['id'] <= 0 || $parsed['type'] === '') {
 try {
     if ($parsed['type'] === 'product') {
         $lookup = $db->prepare(
-            "SELECT ORDER_ID, ORDER_STATUS
+            "SELECT ORDER_ID, ORDER_STATUS, PAYMENT_STATUS
              FROM ORDERS
              WHERE ORDER_ID = :order_id AND CUSTOMER_ID = :customer_id
              LIMIT 1"
@@ -71,21 +73,34 @@ try {
                 jsonResponse(['error' => 'Order can no longer be cancelled.'], 409);
             }
 
-            $stmt = $db->prepare(
-                "UPDATE ORDERS
-                 SET ORDER_STATUS = 'CANCELLED',
-                     DELIVERY_STATUS = 'CANCELLED'
-                 WHERE ORDER_ID = :order_id AND CUSTOMER_ID = :customer_id"
-            );
-            $stmt->execute([
-                ':order_id' => $parsed['id'],
-                ':customer_id' => $customerId,
-            ]);
+            $db->beginTransaction();
+            try {
+                $stmt = $db->prepare(
+                    "UPDATE ORDERS
+                     SET ORDER_STATUS = 'CANCELLED',
+                         DELIVERY_STATUS = 'CANCELLED'
+                     WHERE ORDER_ID = :order_id AND CUSTOMER_ID = :customer_id"
+                );
+                $stmt->execute([
+                    ':order_id' => $parsed['id'],
+                    ':customer_id' => $customerId,
+                ]);
+                restoreProductOrderInventory($db, $parsed['id']);
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                throw $e;
+            }
             jsonResponse(['ok' => true, 'status' => 'Cancelled']);
         }
 
         if (!in_array($currentStatus, ['SHIPPED', 'IN_TRANSIT', 'TO_RECEIVE'], true)) {
             jsonResponse(['error' => 'Order is not ready for confirmation.'], 409);
+        }
+        if (canonicalPaymentStatus($order['PAYMENT_STATUS'] ?? null) !== PAYMENT_STATUS_PAID) {
+            jsonResponse(['error' => 'Payment must be marked paid before confirming receipt.'], 409);
         }
 
         $stmt = $db->prepare(
@@ -103,7 +118,7 @@ try {
     }
 
     $lookup = $db->prepare(
-        "SELECT REQUEST_ID, REQ_STATUS
+        "SELECT REQUEST_ID, REQ_STATUS, CUSTOMER_INFO
          FROM SERVICE_REQUEST
          WHERE REQUEST_ID = :request_id AND CUSTOMER_ID = :customer_id
          LIMIT 1"
@@ -123,20 +138,33 @@ try {
             jsonResponse(['error' => 'Service request can no longer be cancelled.'], 409);
         }
 
-        $stmt = $db->prepare(
-            "UPDATE SERVICE_REQUEST
-             SET REQ_STATUS = 'CANCELLED'
-             WHERE REQUEST_ID = :request_id AND CUSTOMER_ID = :customer_id"
-        );
-        $stmt->execute([
-            ':request_id' => $parsed['id'],
-            ':customer_id' => $customerId,
-        ]);
+        $db->beginTransaction();
+        try {
+            $stmt = $db->prepare(
+                "UPDATE SERVICE_REQUEST
+                 SET REQ_STATUS = 'CANCELLED'
+                 WHERE REQUEST_ID = :request_id AND CUSTOMER_ID = :customer_id"
+            );
+            $stmt->execute([
+                ':request_id' => $parsed['id'],
+                ':customer_id' => $customerId,
+            ]);
+            restoreServiceRequestSlots($db, $parsed['id'], serviceQuantityFromInfo((string) ($request['CUSTOMER_INFO'] ?? '')));
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
         jsonResponse(['ok' => true, 'status' => 'Cancelled']);
     }
 
     if (!in_array($currentStatus, ['SHIPPED', 'IN_TRANSIT', 'TO_RECEIVE'], true)) {
         jsonResponse(['error' => 'Service request is not ready for confirmation.'], 409);
+    }
+    if (servicePaymentStatus((string) ($request['CUSTOMER_INFO'] ?? '')) !== PAYMENT_STATUS_PAID) {
+        jsonResponse(['error' => 'Payment must be marked paid before confirming receipt.'], 409);
     }
 
     $stmt = $db->prepare(
@@ -150,6 +178,9 @@ try {
     ]);
     jsonResponse(['ok' => true, 'status' => 'Completed']);
 } catch (Throwable $e) {
+    if ($db->inTransaction()) {
+        $db->rollBack();
+    }
     logApiError($e);
     jsonResponse(['error' => 'Unable to update order status. Please try again.'], 500);
 }

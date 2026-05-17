@@ -1,6 +1,7 @@
 <?php
 
 require_once(__DIR__ . '/config.php');
+require_once(__DIR__ . '/payment_helpers.php');
 
 function requireMerchantDashboardUser(PDO $db): array {
     $user = currentUser($db);
@@ -61,8 +62,17 @@ function merchantProfile(PDO $db, array $user): array {
 
 function dashboardStats(PDO $db, int $merchantId): array {
     $productSalesStmt = $db->prepare(
-        "SELECT COALESCE(SUM(oi.PRICE * oi.QUANTITY), 0) AS total_sales,
-                COUNT(DISTINCT o.ORDER_ID) AS total_orders,
+        "SELECT COALESCE(SUM(CASE
+                    WHEN UPPER(o.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED')
+                     AND UPPER(o.PAYMENT_STATUS) = 'PAID'
+                    THEN oi.PRICE * oi.QUANTITY
+                    ELSE 0
+                END), 0) AS total_sales,
+                COUNT(DISTINCT CASE
+                    WHEN UPPER(o.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED')
+                     AND UPPER(o.PAYMENT_STATUS) = 'PAID'
+                    THEN o.ORDER_ID
+                END) AS total_orders,
                 COUNT(DISTINCT CASE
                     WHEN UPPER(o.ORDER_STATUS) NOT IN ('COMPLETED', 'DELIVERED', 'CANCELLED')
                     THEN o.ORDER_ID
@@ -76,18 +86,31 @@ function dashboardStats(PDO $db, int $merchantId): array {
     $productSales = $productSalesStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
     $serviceSalesStmt = $db->prepare(
-        "SELECT COALESCE(SUM(sr.TOTAL_PRICE), 0) AS total_sales,
-                COUNT(sr.REQUEST_ID) AS total_orders,
-                COUNT(CASE
+        "SELECT sr.TOTAL_PRICE, sr.REQ_STATUS, sr.CUSTOMER_INFO,
+                CASE
                     WHEN UPPER(sr.REQ_STATUS) NOT IN ('COMPLETED', 'DELIVERED', 'CANCELLED')
                     THEN sr.REQUEST_ID
-                END) AS pending_orders
+                    ELSE NULL
+                END AS active_request_id
          FROM SERVICE_REQUEST sr
          JOIN SERVICE s ON s.SERVICE_ID = sr.SERVICE_ID
          WHERE s.MERCHANT_ID = :merchant_id"
     );
     $serviceSalesStmt->execute([':merchant_id' => $merchantId]);
-    $serviceSales = $serviceSalesStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $serviceRows = $serviceSalesStmt->fetchAll(PDO::FETCH_ASSOC);
+    $serviceSales = 0.0;
+    $serviceOrders = 0;
+    $serviceActiveOrders = [];
+    foreach ($serviceRows as $row) {
+        $status = strtoupper((string) ($row['REQ_STATUS'] ?? ''));
+        if (in_array($status, ['COMPLETED', 'DELIVERED'], true) && servicePaymentStatus((string) ($row['CUSTOMER_INFO'] ?? '')) === PAYMENT_STATUS_PAID) {
+            $serviceSales += (float) ($row['TOTAL_PRICE'] ?? 0);
+            $serviceOrders++;
+        }
+        if ($row['active_request_id'] !== null) {
+            $serviceActiveOrders[(int) $row['active_request_id']] = true;
+        }
+    }
 
     $catalogStmt = $db->prepare(
         "SELECT
@@ -99,15 +122,16 @@ function dashboardStats(PDO $db, int $merchantId): array {
     $catalogStmt->execute([':merchant_id' => $merchantId]);
     $catalog = $catalogStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-    $totalSales = (float) ($productSales['total_sales'] ?? 0) + (float) ($serviceSales['total_sales'] ?? 0);
-    $totalOrders = (int) ($productSales['total_orders'] ?? 0) + (int) ($serviceSales['total_orders'] ?? 0);
-    $pendingOrders = (int) ($productSales['pending_orders'] ?? 0) + (int) ($serviceSales['pending_orders'] ?? 0);
+    $totalSales = (float) ($productSales['total_sales'] ?? 0) + $serviceSales;
+    $totalOrders = (int) ($productSales['total_orders'] ?? 0) + $serviceOrders;
+    $activeOrders = (int) ($productSales['pending_orders'] ?? 0) + count($serviceActiveOrders);
 
     return [
         'totalSales' => $totalSales,
         'totalSalesFormatted' => moneyAmount($totalSales),
         'totalOrders' => $totalOrders,
-        'pendingOrders' => $pendingOrders,
+        'pendingOrders' => $activeOrders,
+        'activeOrders' => $activeOrders,
         'catalogItems' => (int) ($catalog['total'] ?? 0),
         'activeCatalogItems' => (int) ($catalog['active'] ?? 0),
         'storeVisitors' => 0,
@@ -131,9 +155,10 @@ function recentMerchantActivity(PDO $db, int $merchantId): array {
          LEFT JOIN USERS u ON u.USER_ID = o.CUSTOMER_ID
          LEFT JOIN CUSTOMER c ON c.CUSTOMER_ID = o.CUSTOMER_ID
          WHERE p.MERCHANT_ID = :merchant_id
+           AND UPPER(o.ORDER_STATUS) NOT IN ('COMPLETED', 'DELIVERED', 'CANCELLED')
          GROUP BY o.ORDER_ID, o.ORDER_STATUS, o.ORDERED_ON, u.FNAME, u.LNAME, c.DISPLAY_NAME, o.RECIPIENT_NAME
          ORDER BY o.ORDERED_ON DESC
-         LIMIT 6"
+         LIMIT 50"
     );
     $productStmt->execute([':merchant_id' => $merchantId]);
 
@@ -152,8 +177,9 @@ function recentMerchantActivity(PDO $db, int $merchantId): array {
          LEFT JOIN USERS u ON u.USER_ID = sr.CUSTOMER_ID
          LEFT JOIN CUSTOMER c ON c.CUSTOMER_ID = sr.CUSTOMER_ID
          WHERE s.MERCHANT_ID = :merchant_id
+           AND UPPER(sr.REQ_STATUS) NOT IN ('COMPLETED', 'DELIVERED', 'CANCELLED')
          ORDER BY sr.REQUEST_DATE DESC
-         LIMIT 6"
+         LIMIT 50"
     );
     $serviceStmt->execute([':merchant_id' => $merchantId]);
 
@@ -165,7 +191,7 @@ function recentMerchantActivity(PDO $db, int $merchantId): array {
     usort($rows, fn (array $a, array $b): int =>
         strtotime((string) ($b['ordered_on'] ?? '')) <=> strtotime((string) ($a['ordered_on'] ?? ''))
     );
-    $rows = array_slice($rows, 0, 6);
+    $rows = array_slice($rows, 0, 10);
 
     return array_map(function (array $row): array {
         return [
@@ -178,7 +204,7 @@ function recentMerchantActivity(PDO $db, int $merchantId): array {
             'status' => $row['status'],
             'date' => $row['ordered_on'] ? date('M d, Y', strtotime($row['ordered_on'])) : '',
         ];
-    }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+    }, $rows);
 }
 
 function merchantInsights(PDO $db, int $merchantId): array {

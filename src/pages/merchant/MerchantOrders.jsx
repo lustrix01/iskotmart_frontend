@@ -101,6 +101,37 @@ export default function MerchantOrders() {
     }
   };
 
+  const markPaymentPaid = async (id) => {
+    const order = orders.find((item) => item.id === id);
+    if (!order) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/merchant_orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          source: order.source,
+          rawId: order.rawId,
+          action: "mark_paid",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to mark payment as paid.");
+      }
+
+      const nextOrders = payload.orders || [];
+      setOrders(nextOrders);
+      setSelectedOrder(nextOrders.find((item) => item.id === id) || null);
+      setLoadError("");
+    } catch (error) {
+      setLoadError(error.message);
+    }
+  };
+
   const getStatusStyle = (status) => {
     switch (status) {
       case "Pending":
@@ -117,6 +148,8 @@ export default function MerchantOrders() {
         return "bg-gray-100 text-gray-500 border-gray-200";
     }
   };
+
+  const isPaid = (order) => order?.paymentStatusCode === "PAID";
 
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
@@ -345,16 +378,54 @@ export default function MerchantOrders() {
                         </button>
                       )}
                       {selectedOrder.status === "Shipped" && (
-                        <button
-                          onClick={() =>
-                            updateStatus(selectedOrder.id, "Completed")
-                          }
-                          className="flex-1 bg-green-500 text-white py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
-                        >
-                          <CheckCircle2 size={16} /> Complete Delivery
-                        </button>
+                        <>
+                          <button
+                            onClick={() =>
+                              updateStatus(selectedOrder.id, "Completed")
+                            }
+                            disabled={!isPaid(selectedOrder)}
+                            className="flex-1 bg-green-500 text-white py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <CheckCircle2 size={16} /> Complete Delivery
+                          </button>
+                          {!isPaid(selectedOrder) && (
+                            <p className="w-full text-[10px] font-bold text-red-500">
+                              Payment must be marked paid before completion.
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
+                  </div>
+                )}
+
+              {selectedOrder.status !== "Completed" &&
+                selectedOrder.status !== "Cancelled" &&
+                !isPaid(selectedOrder) && (
+                  <div className="bg-white p-6 rounded-3xl border border-orange-100 shadow-sm space-y-3">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                      Payment confirmation
+                    </p>
+                    <p className="text-xs text-gray-500 font-semibold">
+                      {selectedOrder.paymentStatusCode ===
+                      "PENDING_PAYMENT_REVIEW"
+                        ? "Review the GCash reference before marking this payment as paid."
+                        : "Mark COD as paid after collecting cash from the buyer."}
+                    </p>
+                    {selectedOrder.paymentReference && (
+                      <p className="text-[11px] font-bold text-[#003366]">
+                        Reference: {selectedOrder.paymentReference}
+                      </p>
+                    )}
+                    <button
+                      onClick={() => markPaymentPaid(selectedOrder.id)}
+                      className="w-full bg-[#FF851B] text-white py-3 rounded-xl text-xs font-bold hover:shadow-lg transition-all"
+                    >
+                      {selectedOrder.paymentStatusCode ===
+                      "PENDING_PAYMENT_REVIEW"
+                        ? "Confirm GCash as paid"
+                        : "Mark COD as paid"}
+                    </button>
                   </div>
                 )}
 
@@ -386,10 +457,10 @@ export default function MerchantOrders() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 text-xs font-bold text-[#003366]">
                       <CreditCard size={14} className="text-gray-300" />{" "}
-                      {selectedOrder.method}
+                      {selectedOrder.paymentMethod || selectedOrder.method}
                     </div>
                     <div
-                      className={`w-fit px-2 py-1 rounded text-[9px] font-black uppercase ${selectedOrder.paymentStatus === "Paid" ? "bg-green-50 text-green-500" : "bg-red-50 text-red-500"}`}
+                      className={`w-fit px-2 py-1 rounded text-[9px] font-black uppercase ${isPaid(selectedOrder) ? "bg-green-50 text-green-500" : "bg-red-50 text-red-500"}`}
                     >
                       {selectedOrder.paymentStatus}
                     </div>

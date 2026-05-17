@@ -36,6 +36,11 @@ export default function ProductDetails() {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
+  const [reviewSummary, setReviewSummary] = useState({
+    average: null,
+    count: 0,
+    reviews: [],
+  });
 
   const item = useMemo(() => {
     const targetId = Number(id);
@@ -76,6 +81,41 @@ export default function ProductDetails() {
     setSelectedImg(0);
     setIsDescriptionExpanded(false);
   }, [id, isServiceRoute]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadReviews = async () => {
+      if (!item?.id) {
+        setReviewSummary({ average: null, count: 0, reviews: [] });
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `/api/offering_reviews.php?offeringId=${encodeURIComponent(item.id)}`,
+          { credentials: "include" },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && isMounted) {
+          setReviewSummary({
+            average: payload.average ?? null,
+            count: payload.count || 0,
+            reviews: Array.isArray(payload.reviews) ? payload.reviews : [],
+          });
+        }
+      } catch {
+        if (isMounted) {
+          setReviewSummary({ average: null, count: 0, reviews: [] });
+        }
+      }
+    };
+
+    loadReviews();
+    return () => {
+      isMounted = false;
+    };
+  }, [item]);
 
   useEffect(() => {
     let isMounted = true;
@@ -338,8 +378,10 @@ export default function ProductDetails() {
 
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <span className="font-bold text-[#FF851B] flex items-center gap-1">
-              <Star size={14} fill="#FF851B" stroke="none" /> {Number(item.rating || 0).toFixed(1)}
+              <Star size={14} fill="#FF851B" stroke="none" />{" "}
+              {reviewSummary.average !== null ? reviewSummary.average.toFixed(1) : "No ratings"}
             </span>
+            <span>{reviewSummary.count} review{reviewSummary.count === 1 ? "" : "s"}</span>
             <span>Merchant: {item.merchant || "Merchant"}</span>
           </div>
 
@@ -464,9 +506,36 @@ export default function ProductDetails() {
           </Link>
           <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-gray-500 bg-[#F8FAFC] border border-gray-100 rounded-md px-4 py-3">
             <Star size={14} fill="#FF851B" className="text-[#FF851B]" />
-            {Number(item.rating || 0).toFixed(1)} merchant rating
+            {reviewSummary.average !== null ? reviewSummary.average.toFixed(1) : "No"} listing rating
           </div>
         </div>
+      </div>
+
+      <div className="bg-white border border-gray-100 rounded-xl p-6">
+        <h2 className="text-sm font-black text-[#003366] tracking-wider mb-4 flex items-center gap-2">
+          <Star size={16} className="text-[#FF851B]" fill="#FF851B" />
+          Ratings and reviews
+        </h2>
+        {reviewSummary.reviews.length > 0 ? (
+          <div className="space-y-4">
+            {reviewSummary.reviews.map((review) => (
+              <div key={review.id} className="border-b border-gray-50 pb-4 last:border-0">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-xs font-bold text-[#003366]">{review.customerName}</p>
+                  <span className="flex items-center gap-1 text-xs font-black text-[#FF851B]">
+                    <Star size={13} fill="#FF851B" stroke="none" />
+                    {review.rating}
+                  </span>
+                </div>
+                {review.description ? (
+                  <p className="mt-2 text-xs text-gray-500 leading-6">{review.description}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">No ratings yet.</p>
+        )}
       </div>
     </div>
   );

@@ -30,6 +30,11 @@ export default function ShopSettings() {
     username: "",
     email: "",
   });
+  const [shopMetrics, setShopMetrics] = useState({
+    rating: { average: null, count: 0 },
+    sold: 0,
+    joined: "",
+  });
 
   // Shop Data State (FR-47: Customize product page / shop profile)
   const [shopData, setShopData] = useState({
@@ -56,9 +61,15 @@ export default function ShopSettings() {
 
     const loadProfile = async () => {
       try {
-        const response = await fetch("/api/merchant_profile.php", {
-          credentials: "include",
-        });
+        const [profileResponse, metricsResponse] = await Promise.all([
+          fetch("/api/merchant_profile.php", { credentials: "include" }),
+          fetch("/api/merchant_shop_metrics.php", { credentials: "include" }),
+        ]);
+        const metricsPayload = await metricsResponse.json().catch(() => ({}));
+        if (!metricsResponse.ok) {
+          throw new Error(metricsPayload.error || "Unable to load shop metrics.");
+        }
+        const response = profileResponse;
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(payload.error || "Unable to load shop profile.");
@@ -77,6 +88,13 @@ export default function ShopSettings() {
             username: profile.username || "",
             email: profile.businessEmail || profile.email || "",
           });
+          setShopMetrics(
+            metricsPayload.metrics || {
+              rating: { average: null, count: 0 },
+              sold: 0,
+              joined: "",
+            },
+          );
         }
       } catch (error) {
         if (isMounted) {
@@ -254,12 +272,25 @@ export default function ShopSettings() {
             </div>
 
             {/* Public Stats Preview */}
-            <div className="flex flex-wrap gap-12 border-t border-gray-100 pt-8 opacity-60">
+            <div className="flex flex-wrap gap-12 border-t border-gray-100 pt-8 opacity-80">
               {[
-                { label: "Rating", val: "4.9" },
-                { label: "Sold", val: "1.2k+" },
-                { label: "Response", val: "98%" },
-                { label: "Joined", val: "Aug 2024" },
+                {
+                  label: "Rating",
+                  val:
+                    shopMetrics.rating?.average !== null
+                      ? `${shopMetrics.rating.average} (${shopMetrics.rating.count})`
+                      : "No reviews yet",
+                },
+                { label: "Sold", val: String(shopMetrics.sold || 0) },
+                {
+                  label: "Joined",
+                  val: shopMetrics.joined
+                    ? new Date(`${shopMetrics.joined}T00:00:00`).toLocaleDateString(
+                        undefined,
+                        { month: "short", year: "numeric" },
+                      )
+                    : "Not available",
+                },
               ].map((s, i) => (
                 <div key={i}>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">

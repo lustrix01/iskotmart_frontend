@@ -230,29 +230,9 @@ export default function ShopProducts() {
                             fill="#FF851B"
                             className="text-[#FF851B]"
                           />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
                         </div>
                         <span className="text-[9px] text-gray-400 font-medium">
-                          {item.sold} sold
+                          {item.rating !== null ? `${item.rating} (${item.reviewCount || 0})` : "No ratings"}
                         </span>
                       </div>
                     </div>

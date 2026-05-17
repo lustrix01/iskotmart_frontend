@@ -1,6 +1,8 @@
 <?php
 
 require_once(__DIR__ . '/config.php');
+require_once(__DIR__ . '/payment_helpers.php');
+require_once(__DIR__ . '/order_inventory_helpers.php');
 
 function requireMerchantForOrders(PDO $db): array {
     $user = currentUser($db);
@@ -64,6 +66,18 @@ function productOrderRows(PDO $db, int $merchantId): array {
         "SELECT ord.ORDER_ID, ord.ORDERED_ON, ord.TOTAL_AMOUNT, ord.ORDER_STATUS,
                 ord.PAYMENT_STATUS, ord.RECIPIENT_NAME, ord.PHONE_NUM, ord.ADDRESS,
                 COALESCE(dm.DM_NAME, 'Meet-up') AS method,
+                (SELECT pm.SERVICE
+                 FROM PAYMENT pay
+                 INNER JOIN ALLOWED_PAYMENT ap ON ap.ALLOWED_PM_ID = pay.ALLOWED_PM_ID
+                 INNER JOIN PAYMENT_METHOD pm ON pm.PM_ID = ap.PM_ID
+                 WHERE pay.ORDER_ID = ord.ORDER_ID
+                 ORDER BY pay.PAYMENT_ID DESC
+                 LIMIT 1) AS payment_method,
+                (SELECT pay.REF_NUM
+                 FROM PAYMENT pay
+                 WHERE pay.ORDER_ID = ord.ORDER_ID
+                 ORDER BY pay.PAYMENT_ID DESC
+                 LIMIT 1) AS payment_reference,
                 u.FNAME, u.LNAME, u.EMAIL,
                 GROUP_CONCAT(
                     CONCAT(o.OFFERING_NAME, '||', oi.QUANTITY, '||', oi.PRICE)
@@ -116,6 +130,7 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             ];
         }, array_filter(explode('##', (string) ($row['item_names'] ?? ''))));
 
+        $paymentStatus = canonicalPaymentStatus($row['PAYMENT_STATUS'] ?? null);
         return [
             'source' => 'order',
             'id' => 'ORD-' . (int) $row['ORDER_ID'],
@@ -126,7 +141,10 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             'items' => $items,
             'total' => moneyValue($row['TOTAL_AMOUNT'] ?? 0),
             'method' => $row['method'] ?: 'Meet-up',
-            'paymentStatus' => $row['PAYMENT_STATUS'] ?: 'UNPAID',
+            'paymentStatus' => paymentStatusLabel($paymentStatus),
+            'paymentStatusCode' => $paymentStatus,
+            'paymentMethod' => $row['payment_method'] ?: ($paymentStatus === PAYMENT_STATUS_PENDING_REVIEW ? 'GCash' : 'COD / Cash'),
+            'paymentReference' => $row['payment_reference'] ?: '',
             'status' => mapDbStatusToUi((string) ($row['ORDER_STATUS'] ?? '')),
             'date' => formatOrderDate($row['ORDERED_ON'] ?? null),
             'phone' => $row['PHONE_NUM'] ?: '',
@@ -135,11 +153,13 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
     }, productOrderRows($db, $merchantId));
 
     $serviceOrders = array_map(function (array $row): array {
-        $info = json_decode((string) ($row['CUSTOMER_INFO'] ?? ''), true);
-        $quantity = max(1, (int) (($info['quantity'] ?? 1)));
+        $info = decodeServicePaymentInfo((string) ($row['CUSTOMER_INFO'] ?? ''));
+        $quantity = serviceQuantityFromInfo((string) ($row['CUSTOMER_INFO'] ?? ''));
         $total = moneyValue($row['TOTAL_PRICE'] ?? 0);
         $unitPrice = $quantity > 0 ? $total / $quantity : $total;
         $customerName = trim((string) ($row['RECIPIENT_NAME'] ?: $row['RECEIPT_NAME'] ?: 'Customer'));
+        $paymentStatus = servicePaymentStatus((string) ($row['CUSTOMER_INFO'] ?? ''));
+        $paymentMethod = servicePaymentMethod((string) ($row['CUSTOMER_INFO'] ?? ''));
 
         return [
             'source' => 'service_request',
@@ -155,7 +175,10 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             ]],
             'total' => $total,
             'method' => 'Service booking',
-            'paymentStatus' => strtoupper((string) ($info['paymentStatus'] ?? 'UNPAID')),
+            'paymentStatus' => paymentStatusLabel($paymentStatus),
+            'paymentStatusCode' => $paymentStatus,
+            'paymentMethod' => $paymentMethod === 'gcash' ? 'GCash' : 'COD / Cash',
+            'paymentReference' => (string) ($info['referenceNumber'] ?? ''),
             'status' => mapDbStatusToUi((string) ($row['REQ_STATUS'] ?? '')),
             'date' => formatOrderDate($row['REQUEST_DATE'] ?? null),
             'phone' => $row['PHONE_NUM'] ?: '',
@@ -193,6 +216,23 @@ function merchantOwnsProductOrder(PDO $db, int $merchantId, int $orderId): bool 
     return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
+function productOrderPaymentStatus(PDO $db, int $merchantId, int $orderId): ?array {
+    $stmt = $db->prepare(
+        "SELECT ord.ORDER_ID, ord.PAYMENT_STATUS, ord.TOTAL_AMOUNT
+         FROM ORDERS ord
+         INNER JOIN ORDER_ITEM oi ON oi.ORDER_ID = ord.ORDER_ID
+         INNER JOIN PRODUCT p ON p.PROD_ID = oi.PRODUCT_ID
+         WHERE ord.ORDER_ID = :order_id AND p.MERCHANT_ID = :merchant_id
+         LIMIT 1"
+    );
+    $stmt->execute([
+        ':order_id' => $orderId,
+        ':merchant_id' => $merchantId,
+    ]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
 function merchantOwnsServiceRequest(PDO $db, int $merchantId, int $requestId): bool {
     $stmt = $db->prepare(
         "SELECT sr.REQUEST_ID
@@ -207,6 +247,39 @@ function merchantOwnsServiceRequest(PDO $db, int $merchantId, int $requestId): b
     ]);
 
     return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function serviceRequestPaymentStatus(PDO $db, int $merchantId, int $requestId): ?array {
+    $stmt = $db->prepare(
+        "SELECT sr.REQUEST_ID, sr.REQ_STATUS, sr.CUSTOMER_INFO, sr.TOTAL_PRICE, sr.SERVICE_ID
+         FROM SERVICE_REQUEST sr
+         INNER JOIN SERVICE s ON s.SERVICE_ID = sr.SERVICE_ID
+         WHERE sr.REQUEST_ID = :request_id AND s.MERCHANT_ID = :merchant_id
+         LIMIT 1"
+    );
+    $stmt->execute([
+        ':request_id' => $requestId,
+        ':merchant_id' => $merchantId,
+    ]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function productOrderCurrentStatus(PDO $db, int $merchantId, int $orderId): ?string {
+    $stmt = $db->prepare(
+        "SELECT ord.ORDER_STATUS
+         FROM ORDERS ord
+         INNER JOIN ORDER_ITEM oi ON oi.ORDER_ID = ord.ORDER_ID
+         INNER JOIN PRODUCT p ON p.PROD_ID = oi.PRODUCT_ID
+         WHERE ord.ORDER_ID = :order_id AND p.MERCHANT_ID = :merchant_id
+         LIMIT 1"
+    );
+    $stmt->execute([
+        ':order_id' => $orderId,
+        ':merchant_id' => $merchantId,
+    ]);
+    $status = $stmt->fetchColumn();
+    return $status !== false ? strtoupper((string) $status) : null;
 }
 
 $sessionUser = requireMerchantForOrders($db);
@@ -229,10 +302,71 @@ if ($method !== 'POST' && $method !== 'PATCH') {
 $data = jsonInput();
 $source = strtolower(trim((string) ($data['source'] ?? '')));
 $rawId = (int) ($data['rawId'] ?? ($data['orderId'] ?? 0));
+$action = strtolower(trim((string) ($data['action'] ?? '')));
 $status = trim((string) ($data['status'] ?? ''));
 $allowed = ['Pending', 'Confirmed', 'Shipped', 'Completed', 'Cancelled'];
 
-if ($rawId <= 0 || !in_array($status, $allowed, true)) {
+if ($rawId <= 0) {
+    jsonResponse(['error' => 'Invalid order status update.'], 422);
+}
+
+if ($action === 'mark_paid') {
+    try {
+        if ($source === 'service_request') {
+            $request = serviceRequestPaymentStatus($db, $merchantId, $rawId);
+            if (!$request) {
+                jsonResponse(['error' => 'Service request not found for this merchant.'], 404);
+            }
+
+            $method = servicePaymentMethod((string) ($request['CUSTOMER_INFO'] ?? '')) ?: 'cod';
+            $allowedPaymentId = resolveAllowedPaymentId($db, $merchantId, (int) $request['SERVICE_ID'], $method);
+            updateServicePaymentInfo($db, $rawId, PAYMENT_STATUS_PAID, $method);
+            if ($allowedPaymentId !== null) {
+                ensurePaymentRecord(
+                    $db,
+                    null,
+                    $rawId,
+                    $allowedPaymentId,
+                    moneyValue($request['TOTAL_PRICE'] ?? 0),
+                    strtoupper($method) . '-SRV-' . $rawId . '-' . date('YmdHis')
+                );
+            }
+        } else {
+            $order = productOrderPaymentStatus($db, $merchantId, $rawId);
+            if (!$order) {
+                jsonResponse(['error' => 'Order not found for this merchant.'], 404);
+            }
+
+            $primaryOfferingId = orderPrimaryOffering($db, $rawId, $merchantId);
+            if ($primaryOfferingId !== null) {
+                $allowedPaymentId = resolveAllowedPaymentId($db, $merchantId, $primaryOfferingId, 'cod');
+                if ($allowedPaymentId !== null) {
+                    ensurePaymentRecord($db, $rawId, null, $allowedPaymentId, moneyValue($order['TOTAL_AMOUNT'] ?? 0), 'COD-ORD-' . $rawId . '-' . date('YmdHis'));
+                }
+            }
+
+            $stmt = $db->prepare(
+                "UPDATE ORDERS
+                 SET PAYMENT_STATUS = :payment_status
+                 WHERE ORDER_ID = :order_id"
+            );
+            $stmt->execute([
+                ':payment_status' => PAYMENT_STATUS_PAID,
+                ':order_id' => $rawId,
+            ]);
+        }
+
+        jsonResponse([
+            'ok' => true,
+            'orders' => merchantOrderPayloads($db, $merchantId),
+        ]);
+    } catch (Throwable $e) {
+        logApiError($e);
+        jsonResponse(['error' => 'Unable to mark payment as paid.'], 500);
+    }
+}
+
+if (!in_array($status, $allowed, true)) {
     jsonResponse(['error' => 'Invalid order status update.'], 422);
 }
 
@@ -246,7 +380,16 @@ try {
         if (!merchantOwnsServiceRequest($db, $merchantId, $rawId)) {
             jsonResponse(['error' => 'Service request not found for this merchant.'], 404);
         }
+        $request = serviceRequestPaymentStatus($db, $merchantId, $rawId);
+        if ($dbStatus === 'COMPLETED' && (!$request || servicePaymentStatus((string) ($request['CUSTOMER_INFO'] ?? '')) !== PAYMENT_STATUS_PAID)) {
+            jsonResponse(['error' => 'Payment must be marked paid before completion.'], 409);
+        }
+        $currentStatus = strtoupper((string) ($request['REQ_STATUS'] ?? ''));
+        if ($dbStatus === 'CANCELLED' && in_array($currentStatus, ['COMPLETED', 'DELIVERED', 'CANCELLED'], true)) {
+            jsonResponse(['error' => 'Service request can no longer be cancelled.'], 409);
+        }
 
+        $db->beginTransaction();
         $stmt = $db->prepare(
             "UPDATE SERVICE_REQUEST
              SET REQ_STATUS = :status
@@ -256,11 +399,24 @@ try {
             ':status' => $dbStatus,
             ':request_id' => $rawId,
         ]);
+        if ($dbStatus === 'CANCELLED') {
+            restoreServiceRequestSlots($db, $rawId, serviceQuantityFromInfo((string) ($request['CUSTOMER_INFO'] ?? '')));
+        }
+        $db->commit();
     } else {
         if (!merchantOwnsProductOrder($db, $merchantId, $rawId)) {
             jsonResponse(['error' => 'Order not found for this merchant.'], 404);
         }
+        $order = productOrderPaymentStatus($db, $merchantId, $rawId);
+        if ($dbStatus === 'COMPLETED' && (!$order || canonicalPaymentStatus($order['PAYMENT_STATUS'] ?? null) !== PAYMENT_STATUS_PAID)) {
+            jsonResponse(['error' => 'Payment must be marked paid before completion.'], 409);
+        }
+        $currentStatus = productOrderCurrentStatus($db, $merchantId, $rawId);
+        if ($dbStatus === 'CANCELLED' && in_array((string) $currentStatus, ['COMPLETED', 'DELIVERED', 'CANCELLED'], true)) {
+            jsonResponse(['error' => 'Order can no longer be cancelled.'], 409);
+        }
 
+        $db->beginTransaction();
         $stmt = $db->prepare(
             "UPDATE ORDERS
              SET ORDER_STATUS = :status,
@@ -274,6 +430,10 @@ try {
             ':completed' => $dbStatus === 'COMPLETED' ? 1 : 0,
             ':order_id' => $rawId,
         ]);
+        if ($dbStatus === 'CANCELLED') {
+            restoreProductOrderInventory($db, $rawId);
+        }
+        $db->commit();
     }
 
     jsonResponse([
@@ -281,6 +441,9 @@ try {
         'orders' => merchantOrderPayloads($db, $merchantId),
     ]);
 } catch (Throwable $e) {
+    if ($db->inTransaction()) {
+        $db->rollBack();
+    }
     logApiError($e);
     jsonResponse(['error' => 'Unable to update order status.'], 500);
 }

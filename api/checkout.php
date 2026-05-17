@@ -1,6 +1,7 @@
 <?php
 
 require_once(__DIR__ . '/config.php');
+require_once(__DIR__ . '/payment_helpers.php');
 
 function requireCustomerForCheckout(PDO $db): array {
     $user = currentUser($db);
@@ -409,7 +410,7 @@ assertClose($serviceFee, moneyValue($totals['serviceFee'] ?? 0), 'Service fee');
 assertClose($discountAmount, moneyValue($totals['discountAmount'] ?? 0), 'Discount');
 assertClose($total, moneyValue($totals['total'] ?? -1), 'Total');
 
-$paymentStatus = $paymentMethod === 'gcash' ? 'Paid' : 'Unpaid';
+$paymentStatus = $paymentMethod === 'gcash' ? PAYMENT_STATUS_PENDING_REVIEW : PAYMENT_STATUS_UNPAID;
 $validatedBy = $dbBackedItems === count($items) ? 'database' : 'mock-catalog-fallback';
 
 if ($type === 'product' && $validatedBy === 'database') {
@@ -441,7 +442,7 @@ if ($type === 'product' && $validatedBy === 'database') {
         $orderStmt->execute([
             ':total_amount' => (int) round($total),
             ':order_status' => 'PENDING',
-            ':payment_status' => strtoupper($paymentStatus),
+            ':payment_status' => $paymentStatus,
             ':recipient_name' => $recipientName,
             ':phone' => $phone,
             ':address' => $address,
@@ -490,11 +491,18 @@ if ($type === 'product' && $validatedBy === 'database') {
             recordVoucherUsage($db, $voucher, $discountAmount, $orderId, null);
         }
 
+        if ($paymentMethod === 'gcash') {
+            $allowedPaymentId = resolveAllowedPaymentId($db, (int) $validatedItems[0]['merchant_id'], (int) $validatedItems[0]['id'], 'gcash');
+            if ($allowedPaymentId !== null) {
+                ensurePaymentRecord($db, $orderId, null, $allowedPaymentId, $total, $reference);
+            }
+        }
+
         $db->commit();
 
         jsonResponse([
             'orderNumber' => 'ORD-' . $orderId,
-            'paymentStatus' => $paymentStatus,
+            'paymentStatus' => paymentStatusLabel($paymentStatus),
             'validatedBy' => $validatedBy,
             'customerId' => (int) $sessionUser['id'],
         ]);
@@ -547,6 +555,7 @@ if ($type === 'service' && $validatedBy === 'database') {
             $customerInfo = json_encode([
                 'paymentMethod' => $paymentMethod,
                 'paymentStatus' => $paymentStatus,
+                'referenceNumber' => $paymentMethod === 'gcash' ? $reference : '',
                 'complexity' => $complexity,
                 'quantity' => $qty,
             ]);
@@ -579,6 +588,13 @@ if ($type === 'service' && $validatedBy === 'database') {
             if ($slotsStmt->rowCount() === 0) {
                 throw new RuntimeException('Insufficient service slots during checkout.');
             }
+
+            if ($paymentMethod === 'gcash') {
+                $allowedPaymentId = resolveAllowedPaymentId($db, (int) $item['merchant_id'], (int) $item['id'], 'gcash');
+                if ($allowedPaymentId !== null) {
+                    ensurePaymentRecord($db, null, $requestId, $allowedPaymentId, $lineTotal, $reference);
+                }
+            }
         }
 
         if ($voucher && $createdIds) {
@@ -593,7 +609,7 @@ if ($type === 'service' && $validatedBy === 'database') {
 
         jsonResponse([
             'orderNumber' => $reference,
-            'paymentStatus' => $paymentStatus,
+            'paymentStatus' => paymentStatusLabel($paymentStatus),
             'validatedBy' => $validatedBy,
             'customerId' => (int) $sessionUser['id'],
         ]);
@@ -608,7 +624,7 @@ if ($type === 'service' && $validatedBy === 'database') {
 
 jsonResponse([
     'orderNumber' => sprintf('ORD-%s-%04d', date('ymdHis'), random_int(1000, 9999)),
-    'paymentStatus' => $paymentStatus,
+    'paymentStatus' => paymentStatusLabel($paymentStatus),
     'validatedBy' => $validatedBy,
     'customerId' => (int) $sessionUser['id'],
 ]);

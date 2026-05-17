@@ -32,7 +32,7 @@ export default function Orders() {
   const [confirmTarget, setConfirmTarget] = useState(null);
 
   // --- FR-15: Rating & Review States ---
-  const [ratingTarget, setRatingTarget] = useState(null); // For the Review Modal
+  const [ratingTarget, setRatingTarget] = useState(null); // { order, item }
   const [ratingValue, setRatingValue] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewImage, setReviewImage] = useState(null); // Holds the uploaded picture
@@ -215,15 +215,53 @@ export default function Orders() {
     }
   };
 
-  const handleSubmitReview = (e) => {
-    e.preventDefault();
-    // In a real app, you would send ratingTarget.id, ratingValue, reviewComment, and reviewImage to the server.
-    showToast(`Review submitted for ${ratingTarget.merchant}! Thank you.`);
-    // Reset states
-    setRatingTarget(null);
-    setRatingValue(5);
-    setReviewComment("");
+  const openReviewModal = (order) => {
+    const reviewItem = order.items.find((item) => item.offeringId) || order.items[0];
+    if (!reviewItem?.offeringId) {
+      showToast("This order item cannot be rated yet.");
+      return;
+    }
+
+    setRatingTarget({ order, item: reviewItem });
+    setRatingValue(reviewItem.review?.rating || 5);
+    setReviewComment(reviewItem.review?.description || "");
     setReviewImage(null);
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!ratingTarget?.item?.offeringId) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/offering_reviews.php", {
+        method: ratingTarget.item.review ? "PATCH" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offeringId: ratingTarget.item.offeringId,
+          source: ratingTarget.item.source,
+          orderId: ratingTarget.item.orderId,
+          requestId: ratingTarget.item.requestId,
+          rating: ratingValue,
+          description: reviewComment,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to save rating.");
+      }
+
+      await loadOrders({ silent: true });
+      showToast(ratingTarget.item.review ? "Rating updated." : "Rating submitted. Thank you.");
+      setRatingTarget(null);
+      setRatingValue(5);
+      setReviewComment("");
+      setReviewImage(null);
+    } catch (error) {
+      showToast(error.message || "Unable to save rating.");
+    }
   };
 
   const filteredOrders = useMemo(
@@ -233,6 +271,8 @@ export default function Orders() {
         : orders.filter((o) => o.status === activeTab),
     [activeTab, orders],
   );
+
+  const isPaid = (order) => order?.paymentStatusCode === "PAID";
 
   // Helper for dynamic tracking text
   const getLiveUpdateText = (status) => {
@@ -353,9 +393,11 @@ export default function Orders() {
               <div className="w-20 h-20 bg-orange-50 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-orange-100">
                 <ImageIcon size={32} className="text-[#FF851B]" />
               </div>
-              <h3 className="text-xl font-bold text-[#003366]">Rate Product</h3>
+              <h3 className="text-xl font-bold text-[#003366]">
+                {ratingTarget.item.review ? "Edit Rating" : "Rate Item"}
+              </h3>
               <p className="text-xs text-gray-400 font-medium mt-1">
-                Your feedback helps the Bicol U community!
+                {ratingTarget.item.name}
               </p>
             </div>
 
@@ -387,7 +429,6 @@ export default function Orders() {
                   Tell us more
                 </label>
                 <textarea
-                  required
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
                   placeholder="What did you like or dislike about the product/service?"
@@ -440,7 +481,7 @@ export default function Orders() {
                 type="submit"
                 className="w-full py-4 bg-[#FF851B] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100"
               >
-                Submit Review
+                {ratingTarget.item.review ? "Update Rating" : "Submit Rating"}
               </button>
             </form>
           </div>
@@ -593,21 +634,30 @@ export default function Orders() {
 
                   {/* FR-25: Confirm Receipt Button (Only if "To receive") */}
                   {order.status === "To receive" && (
-                    <button
-                      onClick={() => setConfirmTarget(order.id)}
-                      className="flex-grow px-6 py-3 bg-green-600 text-white text-xs font-bold rounded-2xl hover:bg-green-700 transition-all shadow-md"
-                    >
-                      Confirm receipt
-                    </button>
+                    isPaid(order) ? (
+                      <button
+                        onClick={() => setConfirmTarget(order.id)}
+                        className="flex-grow px-6 py-3 bg-green-600 text-white text-xs font-bold rounded-2xl hover:bg-green-700 transition-all shadow-md"
+                      >
+                        Confirm receipt
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="flex-grow px-6 py-3 bg-gray-100 text-gray-400 text-xs font-bold rounded-2xl cursor-not-allowed"
+                      >
+                        Awaiting payment confirmation
+                      </button>
+                    )
                   )}
 
                   {/* FR-15: Rate Button (Now launches the review popup) */}
                   {order.status === "Completed" && (
                     <button
-                      onClick={() => setRatingTarget(order)}
+                      onClick={() => openReviewModal(order)}
                       className="flex-grow px-6 py-3 bg-[#FF851B] text-white text-xs font-bold rounded-2xl hover:bg-[#e67616] transition-all"
                     >
-                      Rate product
+                      {order.items[0]?.review ? "Edit rating" : "Rate item"}
                     </button>
                   )}
 

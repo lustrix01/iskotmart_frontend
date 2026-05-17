@@ -17,6 +17,8 @@ try {
                 s.DELIVERY_METHOD AS rate,
                 o.MERCHANT_ID AS merchant_id,
                 COALESCE(m.SHOP_NAME, u.USERNAME) AS merchant_name,
+                AVG(r.RATING) AS average_rating,
+                COUNT(DISTINCT r.REVIEW_ID) AS review_count,
                 GROUP_CONCAT(
                     JSON_OBJECT(
                         'id', di.DISPLAY_IMG_ID,
@@ -36,6 +38,7 @@ try {
          LEFT JOIN SERVICE_SUBCAT ss ON ss.SERSUBCAT_ID = s.SERSUBCAT_ID
          LEFT JOIN SERVICE_CAT sc ON sc.SERCAT_ID = ss.SERCAT_ID
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = o.OFFERING_ID
+         LEFT JOIN REVIEW r ON r.OFFERING_ID = o.OFFERING_ID
          WHERE o.AVAIL_STATUS = 'Active'
          GROUP BY o.OFFERING_ID, o.OFFERING_TYPE, o.OFFERING_NAME, o.AVAIL_STATUS,
                   o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
@@ -49,7 +52,9 @@ try {
         $images = [];
         if (!empty($row['images_json'])) {
             $decoded = json_decode('[' . $row['images_json'] . ']', true);
-            $images = is_array($decoded) ? $decoded : [];
+            $images = is_array($decoded)
+                ? array_values(array_filter($decoded, fn ($image): bool => is_array($image) && !empty($image['url'])))
+                : [];
         }
 
         return [
@@ -65,7 +70,8 @@ try {
             'rateType' => $row['rate'] ?: 'per project',
             'img' => $images[0]['url'] ?? '',
             'images' => $images,
-            'rating' => 0,
+            'rating' => $row['average_rating'] !== null ? round((float) $row['average_rating'], 1) : null,
+            'reviewCount' => (int) ($row['review_count'] ?? 0),
             'sold' => '0',
             'oldPrice' => (float) $row['price'],
             'discount' => '',
