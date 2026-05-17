@@ -57,34 +57,119 @@ function numericField(string $name, float $min = 0): float {
     return (float) $value;
 }
 
-function firstSubcategoryId(PDO $db, string $type): int {
-    $table = $type === 'product' ? 'PROD_SUBCAT' : 'SERVICE_SUBCAT';
-    $column = $type === 'product' ? 'PRODSUBCAT_ID' : 'SERSUBCAT_ID';
-    $stmt = $db->query("SELECT {$column} AS id FROM {$table} ORDER BY {$column} ASC LIMIT 1");
+function integerField(string $name, int $min = 0): int {
+    $value = $_POST[$name] ?? null;
+    if ($value === null || !is_numeric($value) || (int) $value < $min || (float) $value !== (float) (int) $value) {
+        jsonResponse(['error' => "{$name} must be a whole number."], 422);
+    }
+
+    return (int) $value;
+}
+
+function normalizeCategoryLabel(string $category): string {
+    return strtolower(trim(preg_replace('/\s+/', ' ', $category)));
+}
+
+function resolveProductSubcategoryId(PDO $db, string $category): int {
+    $normalized = normalizeCategoryLabel($category);
+    $aliases = [
+        'food' => 'Eats',
+        'food & drink' => 'Eats',
+        'electronics' => 'Peripherals',
+        'apparel' => 'Unisex Clothing',
+        'fashion' => 'Unisex Clothing',
+        'books' => 'Non-fiction',
+        'school supplies' => 'Stationary',
+        'stationery' => 'Stationary',
+        'stationary' => 'Stationary',
+        'dorm needs' => 'Household supplies',
+    ];
+    $target = $aliases[$normalized] ?? $category;
+
+    $stmt = $db->prepare(
+	     "SELECT ps.PRODSUBCAT_ID AS id
+	      FROM PROD_SUBCAT ps
+	      INNER JOIN PROD_CATEGORY pc ON pc.PRODCAT_ID = ps.PRODCAT_ID
+	      WHERE LOWER(ps.SUBCAT_NAME) = LOWER(:target_subcat)
+	         OR LOWER(pc.CAT_NAME) = LOWER(:target_cat)
+	         OR LOWER(pc.CAT_NAME) LIKE LOWER(:like_target)
+	      ORDER BY
+	         CASE WHEN LOWER(ps.SUBCAT_NAME) = LOWER(:target_order) THEN 0 ELSE 1 END,
+	         ps.PRODSUBCAT_ID ASC
+	      LIMIT 1"
+	 );
+	 $stmt->execute([
+	     ':target_subcat' => $target,
+	     ':target_cat' => $target,
+	     ':target_order' => $target,
+	     ':like_target' => '%' . $target . '%',
+	 ]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($row) {
         return (int) $row['id'];
     }
 
-    if ($type === 'service') {
-        $catStmt = $db->prepare("INSERT INTO SERVICE_CAT (CAT_NAME) VALUES (:name)");
-        $catStmt->execute([':name' => 'General Services']);
-        $catId = (int) $db->lastInsertId();
+    jsonResponse(['error' => 'Selected product category is unavailable.'], 422);
+}
 
-        $subcatStmt = $db->prepare(
-            "INSERT INTO SERVICE_SUBCAT (SUBCAT_NAME, SERCAT_ID)
-             VALUES (:name, :cat_id)"
-        );
-        $subcatStmt->execute([
-            ':name' => 'General',
-            ':cat_id' => $catId,
-        ]);
+function resolveServiceSubcategoryId(PDO $db, string $category): int {
+    $label = trim($category) !== '' ? trim($category) : 'General Services';
+    $aliases = [
+        'creative' => ['Creative Services', 'Creative'],
+        'academics' => ['Academics & Tutoring', 'Tutoring'],
+        'tutoring' => ['Academics & Tutoring', 'Tutoring'],
+        'tech support' => ['Tech Support', 'Technical Support'],
+        'errands' => ['Errands & Tasks', 'Errands'],
+    ];
+    [$catName, $subcatName] = $aliases[normalizeCategoryLabel($label)] ?? [$label, $label];
 
-        return (int) $db->lastInsertId();
+    $stmt = $db->prepare(
+	     "SELECT ss.SERSUBCAT_ID AS id
+	      FROM SERVICE_SUBCAT ss
+	      INNER JOIN SERVICE_CAT sc ON sc.SERCAT_ID = ss.SERCAT_ID
+	      WHERE LOWER(ss.SUBCAT_NAME) = LOWER(:subcat_name_filter)
+	         OR LOWER(sc.CAT_NAME) = LOWER(:cat_name)
+	      ORDER BY
+	         CASE WHEN LOWER(ss.SUBCAT_NAME) = LOWER(:subcat_name_order) THEN 0 ELSE 1 END,
+	         ss.SERSUBCAT_ID ASC
+	      LIMIT 1"
+	 );
+	 $stmt->execute([
+	     ':subcat_name_filter' => $subcatName,
+	     ':subcat_name_order' => $subcatName,
+	     ':cat_name' => $catName,
+	 ]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        return (int) $row['id'];
     }
 
-    jsonResponse(['error' => 'Catalog categories are unavailable. Please try again later.'], 500);
+    $catStmt = $db->prepare("SELECT SERCAT_ID FROM SERVICE_CAT WHERE LOWER(CAT_NAME) = LOWER(:name) LIMIT 1");
+    $catStmt->execute([':name' => $catName]);
+    $catId = (int) ($catStmt->fetchColumn() ?: 0);
+    if ($catId <= 0) {
+        $insertCat = $db->prepare("INSERT INTO SERVICE_CAT (CAT_NAME) VALUES (:name)");
+        $insertCat->execute([':name' => $catName]);
+        $catId = (int) $db->lastInsertId();
+    }
+
+    $insertSubcat = $db->prepare(
+        "INSERT INTO SERVICE_SUBCAT (SUBCAT_NAME, SERCAT_ID)
+         VALUES (:name, :cat_id)"
+    );
+    $insertSubcat->execute([
+        ':name' => $subcatName,
+        ':cat_id' => $catId,
+    ]);
+
+    return (int) $db->lastInsertId();
+}
+
+function resolveSubcategoryId(PDO $db, string $type, string $category): int {
+    return $type === 'product'
+        ? resolveProductSubcategoryId($db, $category)
+        : resolveServiceSubcategoryId($db, $category);
 }
 
 function ownedOffering(PDO $db, int $offeringId, int $merchantId): ?array {
@@ -118,6 +203,7 @@ function offeringPayloadFromRow(array $row): array {
         'category' => $row['category'] ?: 'Uncategorized',
         'price' => (float) $row['price'],
         'stock' => isset($row['stock']) ? (int) $row['stock'] : null,
+        'slots' => isset($row['slots']) ? (int) $row['slots'] : null,
         'rate' => $row['rate'] ?: null,
         'status' => $row['status'],
         'img' => $images[0]['url'] ?? '',
@@ -133,6 +219,7 @@ function listOfferings(PDO $db, int $merchantId): array {
                 COALESCE(pc.CAT_NAME, sc.CAT_NAME) AS category,
                 COALESCE(p.PRICE, s.PRICE) AS price,
                 p.STOCK_QTY AS stock,
+                s.SLOTS AS slots,
                 CASE
                     WHEN s.SERVICE_ID IS NOT NULL THEN s.DELIVERY_METHOD
                     ELSE NULL
@@ -157,7 +244,7 @@ function listOfferings(PDO $db, int $merchantId): array {
          WHERE o.MERCHANT_ID = :merchant_id
          GROUP BY o.OFFERING_ID, o.OFFERING_TYPE, o.OFFERING_NAME, o.AVAIL_STATUS,
                   o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
-                  pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.DELIVERY_METHOD
+                  pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.SLOTS, s.DELIVERY_METHOD
          ORDER BY o.OFFERING_ID DESC"
     );
     $stmt->execute([':merchant_id' => $merchantId]);
@@ -325,7 +412,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['_method'] ?? '')
     $name = requireTextField('name');
     $status = normalizeOfferingStatus((string) ($_POST['status'] ?? 'Active'));
     $description = trim((string) ($_POST['description'] ?? ''));
-    $price = numericField('price', 0);
+    $category = requireTextField('category');
+    $price = integerField('price', 0);
     $files = uploadedFiles();
 
     try {
@@ -345,15 +433,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['_method'] ?? '')
         $offeringId = (int) $db->lastInsertId();
 
         if ($type === 'product') {
-            $stock = (int) numericField('stock', 0);
-            $subcatId = firstSubcategoryId($db, 'product');
+            $stock = integerField('stock', 0);
+            $subcatId = resolveSubcategoryId($db, $type, $category);
             $productStmt = $db->prepare(
                 "INSERT INTO PRODUCT (PROD_ID, PRICE, PROD_DESC, STOCK_QTY, STATUS, MERCHANT_ID, PRODSUBCAT_ID)
                  VALUES (:id, :price, :description, :stock, :status, :merchant_id, :subcat_id)"
             );
             $productStmt->execute([
                 ':id' => $offeringId,
-                ':price' => (int) round($price),
+                ':price' => $price,
                 ':description' => $description !== '' ? $description : $name,
                 ':stock' => $stock,
                 ':status' => $status,
@@ -361,8 +449,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['_method'] ?? '')
                 ':subcat_id' => $subcatId,
             ]);
         } else {
-            $subcatId = firstSubcategoryId($db, 'service');
+            $subcatId = resolveSubcategoryId($db, $type, $category);
             $rate = trim((string) ($_POST['rate'] ?? 'Per Project'));
+            $slots = integerField('slots', 1);
             $serviceStmt = $db->prepare(
                 "INSERT INTO SERVICE (SERVICE_ID, SER_DESC, PRICE, SLOTS, STATUS, DELIVERY_METHOD, POSTED_ON, MERCHANT_ID, SERSUBCAT_ID)
                  VALUES (:id, :description, :price, :slots, :status, :delivery_method, NOW(1), :merchant_id, :subcat_id)"
@@ -370,8 +459,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['_method'] ?? '')
             $serviceStmt->execute([
                 ':id' => $offeringId,
                 ':description' => $description !== '' ? $description : $name,
-                ':price' => (int) round($price),
-                ':slots' => max(1, (int) ($_POST['slots'] ?? 1)),
+                ':price' => $price,
+                ':slots' => $slots,
                 ':status' => $status,
                 ':delivery_method' => $rate,
                 ':merchant_id' => $merchantId,
@@ -403,7 +492,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || ($_SERVER['REQUEST_METHOD'] === 'P
     $name = requireTextField('name');
     $status = normalizeOfferingStatus((string) ($_POST['status'] ?? 'Active'));
     $description = trim((string) ($_POST['description'] ?? ''));
-    $price = numericField('price', 0);
+    $category = requireTextField('category');
+    $price = integerField('price', 0);
     $removeIds = json_decode((string) ($_POST['removeImageIds'] ?? '[]'), true);
     $files = uploadedFiles();
 
@@ -426,32 +516,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || ($_SERVER['REQUEST_METHOD'] === 'P
         ]);
 
         if ($type === 'product') {
-            $stock = (int) numericField('stock', 0);
+            $stock = integerField('stock', 0);
+            $subcatId = resolveSubcategoryId($db, $type, $category);
             $productStmt = $db->prepare(
                 "UPDATE PRODUCT
-                 SET PRICE = :price, PROD_DESC = :description, STOCK_QTY = :stock, STATUS = :status
+                 SET PRICE = :price, PROD_DESC = :description, STOCK_QTY = :stock, STATUS = :status, PRODSUBCAT_ID = :subcat_id
                  WHERE PROD_ID = :id AND MERCHANT_ID = :merchant_id"
             );
             $productStmt->execute([
-                ':price' => (int) round($price),
+                ':price' => $price,
                 ':description' => $description !== '' ? $description : $name,
                 ':stock' => $stock,
                 ':status' => $status,
+                ':subcat_id' => $subcatId,
                 ':id' => $offeringId,
                 ':merchant_id' => $merchantId,
             ]);
         } else {
             $rate = trim((string) ($_POST['rate'] ?? 'Per Project'));
+            $slots = integerField('slots', 1);
+            $subcatId = resolveSubcategoryId($db, $type, $category);
             $serviceStmt = $db->prepare(
                 "UPDATE SERVICE
-                 SET PRICE = :price, SER_DESC = :description, STATUS = :status, DELIVERY_METHOD = :delivery_method
+                 SET PRICE = :price,
+                     SER_DESC = :description,
+                     SLOTS = :slots,
+                     STATUS = :status,
+                     DELIVERY_METHOD = :delivery_method,
+                     SERSUBCAT_ID = :subcat_id
                  WHERE SERVICE_ID = :id AND MERCHANT_ID = :merchant_id"
             );
             $serviceStmt->execute([
-                ':price' => (int) round($price),
+                ':price' => $price,
                 ':description' => $description !== '' ? $description : $name,
+                ':slots' => $slots,
                 ':status' => $status,
                 ':delivery_method' => $rate,
+                ':subcat_id' => $subcatId,
                 ':id' => $offeringId,
                 ':merchant_id' => $merchantId,
             ]);
