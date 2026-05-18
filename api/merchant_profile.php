@@ -8,25 +8,14 @@ const MERCHANT_AVATAR_UPLOAD_DIR = __DIR__ . '/uploads/merchant-avatars';
 const MERCHANT_AVATAR_UPLOAD_URL = '/api/uploads/merchant-avatars';
 
 function ensureMerchantBannerColumn(PDO $db): void {
-    $columns = $db->query("SHOW COLUMNS FROM MERCHANT")->fetchAll(PDO::FETCH_COLUMN);
-    if (!in_array('SHOP_BANNER_URL', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN SHOP_BANNER_URL tinytext DEFAULT NULL AFTER SHOP_DESC");
-    }
-    if (!in_array('ACCEPTS_COD', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_COD tinyint(1) NOT NULL DEFAULT 1 AFTER ID_IMAGE_URL");
-    }
-    if (!in_array('ACCEPTS_GCASH', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_GCASH tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_COD");
-    }
-    if (!in_array('ALLOW_MEETUP', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_MEETUP tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_GCASH");
-    }
-    if (!in_array('ALLOW_DELIVERY', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_DELIVERY tinyint(1) NOT NULL DEFAULT 1 AFTER ALLOW_MEETUP");
-    }
-    if (!in_array('DELIVERY_FEE', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN DELIVERY_FEE double NOT NULL DEFAULT 50 AFTER ALLOW_DELIVERY");
-    }
+    requireTableColumns($db, 'MERCHANT', [
+        'SHOP_BANNER_URL',
+        'ACCEPTS_COD',
+        'ACCEPTS_GCASH',
+        'ALLOW_MEETUP',
+        'ALLOW_DELIVERY',
+        'DELIVERY_FEE',
+    ]);
 }
 
 function requireMerchantForProfile(PDO $db): array {
