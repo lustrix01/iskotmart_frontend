@@ -19,6 +19,7 @@ export default function MerchantMessages() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [imageData, setImageData] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const messagesRef = useRef(null);
   const imageInputRef = useRef(null);
   const isAtBottomRef = useRef(true);
@@ -27,6 +28,18 @@ export default function MerchantMessages() {
     () => threads.find((thread) => thread.id === activeChatId) || threads[0] || null,
     [activeChatId, threads],
   );
+  const filteredThreads = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return threads;
+    }
+    return threads.filter((thread) =>
+      [thread.name, thread.lastMsg]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [searchQuery, threads]);
 
   const showNotice = (message) => {
     setNotice(message);
@@ -157,9 +170,10 @@ export default function MerchantMessages() {
             />
             <input
               type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search conversations..."
-              disabled
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-lg text-sm text-gray-400 focus:outline-none"
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-lg text-sm text-gray-600 focus:outline-none focus:border-[#0074D9]"
             />
           </div>
         </div>
@@ -171,8 +185,8 @@ export default function MerchantMessages() {
                 Loading conversations...
               </p>
             </div>
-          ) : threads.length > 0 ? (
-            threads.map((chat) => (
+          ) : filteredThreads.length > 0 ? (
+            filteredThreads.map((chat) => (
               <button
                 key={chat.id}
                 onClick={() => setActiveChatId(chat.id)}
@@ -211,7 +225,7 @@ export default function MerchantMessages() {
               <div>
                 <AlertCircle size={22} className="mx-auto mb-3 text-gray-300" />
                 <p className="text-[12px] text-gray-400 font-medium">
-                  {error || "No customer conversations yet."}
+                  {error || (threads.length > 0 ? "No conversations match your search." : "No customer conversations yet.")}
                 </p>
               </div>
             </div>
