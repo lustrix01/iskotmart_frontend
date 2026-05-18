@@ -194,33 +194,16 @@ function storeMerchantBannerImage(int $merchantId, string $dataUrl): string {
         return '';
     }
 
-    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
-        jsonResponse(['error' => 'Banner must be a JPG, PNG, or WebP image.'], 422);
-    }
-
-    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
-    if ($binary === false || strlen($binary) === 0) {
-        jsonResponse(['error' => 'Banner image could not be read.'], 422);
-    }
-
-    if (strlen($binary) > 5 * 1024 * 1024) {
-        jsonResponse(['error' => 'Banner image must be 5MB or smaller.'], 422);
-    }
+    $image = verifiedImageDataUrlPayload($dataUrl, ['image/jpeg', 'image/png', 'image/webp'], 'Banner', 5 * 1024 * 1024);
 
     if (!is_dir(MERCHANT_BANNER_UPLOAD_DIR) && !mkdir(MERCHANT_BANNER_UPLOAD_DIR, 0775, true)) {
         jsonResponse(['error' => 'Unable to prepare banner image storage.'], 500);
     }
 
-    $extension = match ($matches[1]) {
-        'image/jpeg', 'image/jpg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        default => 'img',
-    };
-    $fileName = sprintf('merchant-%d-banner-%s.%s', $merchantId, bin2hex(random_bytes(8)), $extension);
+    $fileName = sprintf('merchant-%d-banner-%s.%s', $merchantId, bin2hex(random_bytes(8)), $image['extension']);
     $targetPath = MERCHANT_BANNER_UPLOAD_DIR . '/' . $fileName;
 
-    if (file_put_contents($targetPath, $binary) === false) {
+    if (file_put_contents($targetPath, $image['binary']) === false) {
         jsonResponse(['error' => 'Unable to store banner image.'], 500);
     }
 
@@ -233,33 +216,16 @@ function storeMerchantAvatarImage(int $merchantId, string $dataUrl): string {
         return '';
     }
 
-    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
-        jsonResponse(['error' => 'Profile image must be a JPG, PNG, or WebP image.'], 422);
-    }
-
-    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
-    if ($binary === false || strlen($binary) === 0) {
-        jsonResponse(['error' => 'Profile image could not be read.'], 422);
-    }
-
-    if (strlen($binary) > 5 * 1024 * 1024) {
-        jsonResponse(['error' => 'Profile image must be 5MB or smaller.'], 422);
-    }
+    $image = verifiedImageDataUrlPayload($dataUrl, ['image/jpeg', 'image/png', 'image/webp'], 'Profile', 5 * 1024 * 1024);
 
     if (!is_dir(MERCHANT_AVATAR_UPLOAD_DIR) && !mkdir(MERCHANT_AVATAR_UPLOAD_DIR, 0775, true)) {
         jsonResponse(['error' => 'Unable to prepare profile image storage.'], 500);
     }
 
-    $extension = match ($matches[1]) {
-        'image/jpeg', 'image/jpg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        default => 'img',
-    };
-    $fileName = sprintf('merchant-%d-avatar-%s.%s', $merchantId, bin2hex(random_bytes(8)), $extension);
+    $fileName = sprintf('merchant-%d-avatar-%s.%s', $merchantId, bin2hex(random_bytes(8)), $image['extension']);
     $targetPath = MERCHANT_AVATAR_UPLOAD_DIR . '/' . $fileName;
 
-    if (file_put_contents($targetPath, $binary) === false) {
+    if (file_put_contents($targetPath, $image['binary']) === false) {
         jsonResponse(['error' => 'Unable to store profile image.'], 500);
     }
 
