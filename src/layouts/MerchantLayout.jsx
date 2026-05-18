@@ -26,6 +26,7 @@ export default function MerchantLayout() {
   const [merchantProfile, setMerchantProfile] = useState({
     shopName: "Merchant Shop",
     initials: "IM",
+    avatarUrl: "",
   });
 
   // --- FR-40: Sidebar provides quick access to settings and catalogs ---
@@ -64,6 +65,7 @@ export default function MerchantLayout() {
         setMerchantProfile({
           shopName: payload.profile.shopName || "Merchant Shop",
           initials: payload.profile.initials || "IM",
+          avatarUrl: payload.profile.avatarUrl || "",
         });
       } catch {
         // Keep the neutral placeholder if the profile API is unavailable.
@@ -72,8 +74,19 @@ export default function MerchantLayout() {
 
     loadMerchantProfile();
 
+    const handleMerchantProfileUpdate = (event) => {
+      const profile = event.detail || {};
+      setMerchantProfile((current) => ({
+        ...current,
+        shopName: profile.shopName || current.shopName,
+        avatarUrl: profile.avatarUrl || current.avatarUrl,
+      }));
+    };
+    window.addEventListener("iskomart:merchant-profile-updated", handleMerchantProfileUpdate);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("iskomart:merchant-profile-updated", handleMerchantProfileUpdate);
     };
   }, []);
 
@@ -155,9 +168,17 @@ export default function MerchantLayout() {
               <span className="text-xs font-bold text-gray-700">
                 {merchantProfile.shopName}
               </span>
-              <div className="w-8 h-8 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-[#FF851B] font-bold text-xs">
-                {merchantProfile.initials}
-              </div>
+              {merchantProfile.avatarUrl ? (
+                <img
+                  src={merchantProfile.avatarUrl}
+                  alt={`${merchantProfile.shopName} logo`}
+                  className="w-8 h-8 rounded-full border border-orange-200 object-cover bg-orange-50"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-[#FF851B] font-bold text-xs">
+                  {merchantProfile.initials}
+                </div>
+              )}
             </div>
           </div>
         </header>
