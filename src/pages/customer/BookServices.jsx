@@ -31,6 +31,7 @@ export default function BookServices() {
   const [searchParams] = useSearchParams();
   const searchTerm = searchParams.get("q") || "";
   const category = searchParams.get("category") || "";
+  const showAllMerchants = searchParams.get("merchants") === "all";
 
   const { services: storefrontServices, loading, error } = useStorefrontListings();
   const merchants = useMemo(() => {
@@ -43,8 +44,9 @@ export default function BookServices() {
         img: item.merchantAvatar || FALLBACK_AVATAR,
       });
     });
-    return Array.from(byId.values()).slice(0, 12);
-  }, [storefrontServices]);
+    const allMerchants = Array.from(byId.values());
+    return showAllMerchants ? allMerchants : allMerchants.slice(0, 12);
+  }, [showAllMerchants, storefrontServices]);
   const services = storefrontServices
     .filter((item) => matchesListing(item, searchTerm, category))
     .sort((a, b) => {
@@ -97,10 +99,10 @@ export default function BookServices() {
               </h2>
             </div>
             <Link
-              to="/services"
+              to={showAllMerchants ? "/services" : "/services?merchants=all"}
               className="text-[11px] font-bold text-[#0074D9] flex items-center gap-1 hover:underline"
             >
-              See all <ChevronRight size={12} />
+              {showAllMerchants ? "Show less" : "See all"} <ChevronRight size={12} />
             </Link>
           </div>
 
@@ -147,12 +149,18 @@ export default function BookServices() {
                     <Link
                       to={`/services?category=${encodeURIComponent(cat.value)}`}
                       onClick={() => setCurrentPage(1)}
-                      className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group"
+                      className={`w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold rounded-lg transition-colors group ${
+                        category === cat.value
+                          ? "bg-blue-50 text-[#003366] border border-blue-100"
+                          : "text-gray-700 hover:bg-gray-50 hover:text-[#003366]"
+                      }`}
                     >
                       <span className="flex items-center gap-2">
                         <ChevronRight
                           size={14}
-                          className="text-gray-300 group-hover:text-[#0074D9] transition-colors"
+                          className={`transition-colors ${
+                            category === cat.value ? "text-[#0074D9]" : "text-gray-300 group-hover:text-[#0074D9]"
+                          }`}
                         />
                         {cat.label}
                       </span>
@@ -190,10 +198,10 @@ export default function BookServices() {
                   ))}
                   <button
                     onClick={toggleRateSort}
-                    className={`px-4 py-2 border text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all ${
+                    className={`px-4 py-2 border text-xs font-bold rounded-md flex items-center gap-2 transition-all ${
                       activeSort.startsWith("Rate:")
-                        ? "bg-[#0074D9] text-white border-[#0074D9]"
-                        : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-[#0074D9] text-white border-[#0074D9] hover:bg-[#0068C3]"
+                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
                     }`}
                   >
                     {activeSort.startsWith("Rate:") ? activeSort : "Rate"}{" "}
