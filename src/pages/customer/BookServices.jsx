@@ -17,6 +17,7 @@ import {
 
 const PAGE_SIZE = 20;
 const FALLBACK_IMAGE = "/placeholders/offering.svg";
+const FALLBACK_AVATAR = "/placeholders/avatar.svg";
 const SERVICE_CATEGORIES = [
   { label: "Academics & Tutoring", value: "Academics & Tutoring" },
   { label: "Graphic Design", value: "Creative Services" },
@@ -39,7 +40,7 @@ export default function BookServices() {
       byId.set(item.merchantId, {
         id: item.merchantId,
         name: item.merchant || "Merchant",
-        img: item.img || item.images?.[0]?.url || FALLBACK_IMAGE,
+        img: item.merchantAvatar || FALLBACK_AVATAR,
       });
     });
     return Array.from(byId.values()).slice(0, 12);
@@ -116,6 +117,9 @@ export default function BookServices() {
                       src={person.img}
                       alt={person.name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      onError={(event) => {
+                        event.currentTarget.src = FALLBACK_AVATAR;
+                      }}
                     />
                   </div>
                 </div>
