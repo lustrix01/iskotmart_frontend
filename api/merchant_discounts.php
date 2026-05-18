@@ -76,16 +76,35 @@ function merchantDiscountOfferings(PDO $db, int $merchantId): array {
     ], $stmt->fetchAll(PDO::FETCH_ASSOC));
 }
 
-function markUsedVouchersInactive(PDO $db, int $merchantId): void {
+function ensureDiscountStatusColumn(PDO $db): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+
+    $checked = true;
+    try {
+        $stmt = $db->query("SHOW COLUMNS FROM DISCOUNT LIKE 'STATUS'");
+        if (!$stmt || !$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $db->exec("ALTER TABLE DISCOUNT ADD STATUS varchar(45) NOT NULL DEFAULT 'ACTIVE'");
+        }
+    } catch (Throwable $e) {
+        logApiError($e);
+    }
+}
+
+function syncVoucherStatuses(PDO $db, int $merchantId): void {
     $stmt = $db->prepare(
         "UPDATE VOUCHER v
          SET v.STATUS = 'INACTIVE'
          WHERE v.MERCHANT_ID = :merchant_id
-           AND EXISTS (
-               SELECT 1
+           AND v.STATUS = 'ACTIVE'
+           AND v.USAGE_LIMIT > 0
+           AND (
+               SELECT COUNT(*)
                FROM VOUCHER_USAGE vu
                WHERE vu.VOUCHER_ID = v.VOUCHER_ID
-           )"
+           ) >= v.USAGE_LIMIT"
     );
     $stmt->execute([':merchant_id' => $merchantId]);
 }
@@ -95,7 +114,8 @@ $merchantId = (int) $sessionUser['id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
-        markUsedVouchersInactive($db, $merchantId);
+        ensureDiscountStatusColumn($db);
+        syncVoucherStatuses($db, $merchantId);
 
         $voucherStmt = $db->prepare(
             "SELECT v.VOUCHER_ID AS id, v.CODE AS code, v.DISCOUNT_TYPE AS discountType,
@@ -116,7 +136,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     o.OFFERING_NAME AS offeringName, o.OFFERING_TYPE AS offeringType,
                     COALESCE(p.PRICE, s.PRICE) AS originalPrice,
                     d.TYPE AS discountType, d.VALUE AS discountValue,
-                    d.START_DATE AS startDate, d.END_DATE AS endDate
+                    d.START_DATE AS startDate, d.END_DATE AS endDate,
+                    COALESCE(d.STATUS, 'ACTIVE') AS status
              FROM DISCOUNT d
              JOIN OFFERING o ON o.OFFERING_ID = d.OFFERING_ID
              LEFT JOIN PRODUCT p ON p.PROD_ID = o.OFFERING_ID
@@ -137,15 +158,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'usageLimit' => (int) $row['usageLimit'],
                 'used' => (int) $row['used'],
                 'expiryDate' => $row['expiryDate'],
-                'status' => (int) $row['used'] > 0 ? 'INACTIVE' : $row['status'],
+                'status' => $row['status'],
             ];
         }, $voucherStmt->fetchAll(PDO::FETCH_ASSOC));
 
         $vouchers = array_values(array_filter($allVouchers, fn (array $voucher): bool =>
-            (int) $voucher['used'] === 0 && strtoupper((string) $voucher['status']) === 'ACTIVE'
+            strtoupper((string) $voucher['status']) === 'ACTIVE'
         ));
         $usedVouchers = array_values(array_filter($allVouchers, fn (array $voucher): bool =>
-            (int) $voucher['used'] > 0
+            strtoupper((string) $voucher['status']) !== 'ACTIVE'
         ));
 
         $productDiscounts = array_map(function (array $row): array {
@@ -167,7 +188,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'discountedPrice' => $discountedPrice,
                 'startDate' => substr((string) $row['startDate'], 0, 10),
                 'endDate' => substr((string) $row['endDate'], 0, 10),
-                'status' => date('Y-m-d') <= substr((string) $row['endDate'], 0, 10) ? 'Active' : 'Expired',
+                'status' => strtoupper((string) $row['status']) === 'RETIRED'
+                    ? 'Retired'
+                    : (date('Y-m-d') <= substr((string) $row['endDate'], 0, 10) ? 'Active' : 'Expired'),
             ];
         }, $discountStmt->fetchAll(PDO::FETCH_ASSOC));
 
@@ -192,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $data = jsonInput();
 $mode = strtolower(trim((string) ($data['mode'] ?? '')));
 
-if ($mode === 'delete-voucher') {
+if ($mode === 'delete-voucher' || $mode === 'retire-voucher') {
     $voucherId = (int) ($data['id'] ?? 0);
     if ($voucherId <= 0) {
         jsonResponse(['error' => 'A valid voucher ID is required.'], 422);
@@ -200,8 +223,11 @@ if ($mode === 'delete-voucher') {
 
     try {
         $stmt = $db->prepare(
-            "DELETE FROM VOUCHER
-             WHERE VOUCHER_ID = :voucher_id AND MERCHANT_ID = :merchant_id"
+            "UPDATE VOUCHER
+             SET STATUS = 'RETIRED'
+             WHERE VOUCHER_ID = :voucher_id
+               AND MERCHANT_ID = :merchant_id
+               AND STATUS <> 'RETIRED'"
         );
         $stmt->execute([
             ':voucher_id' => $voucherId,
@@ -209,17 +235,18 @@ if ($mode === 'delete-voucher') {
         ]);
 
         if ($stmt->rowCount() === 0) {
-            jsonResponse(['error' => 'Voucher not found for this merchant.'], 404);
+            jsonResponse(['error' => 'Voucher not found or already retired.'], 404);
         }
 
-        jsonResponse(['message' => 'Voucher deleted.']);
+        jsonResponse(['message' => 'Voucher retired.']);
     } catch (Throwable $e) {
         logApiError($e);
-        jsonResponse(['error' => 'Unable to delete voucher. It may already be used by an order or request.'], 409);
+        jsonResponse(['error' => 'Unable to retire voucher.'], 409);
     }
 }
 
-if ($mode === 'delete-product-discount') {
+if ($mode === 'delete-product-discount' || $mode === 'retire-product-discount') {
+    ensureDiscountStatusColumn($db);
     $discountId = (int) ($data['id'] ?? 0);
     if ($discountId <= 0) {
         jsonResponse(['error' => 'A valid discount ID is required.'], 422);
@@ -227,10 +254,12 @@ if ($mode === 'delete-product-discount') {
 
     try {
         $stmt = $db->prepare(
-            "DELETE d
-             FROM DISCOUNT d
+            "UPDATE DISCOUNT d
              JOIN OFFERING o ON o.OFFERING_ID = d.OFFERING_ID
-             WHERE d.DISCOUNT_ID = :discount_id AND o.MERCHANT_ID = :merchant_id"
+             SET d.STATUS = 'RETIRED'
+             WHERE d.DISCOUNT_ID = :discount_id
+               AND o.MERCHANT_ID = :merchant_id
+               AND COALESCE(d.STATUS, 'ACTIVE') <> 'RETIRED'"
         );
         $stmt->execute([
             ':discount_id' => $discountId,
@@ -238,19 +267,20 @@ if ($mode === 'delete-product-discount') {
         ]);
 
         if ($stmt->rowCount() === 0) {
-            jsonResponse(['error' => 'Product discount not found for this merchant.'], 404);
+            jsonResponse(['error' => 'Discount not found or already retired.'], 404);
         }
 
-        jsonResponse(['message' => 'Product discount deleted.']);
+        jsonResponse(['message' => 'Discount retired.']);
     } catch (Throwable $e) {
         logApiError($e);
-        jsonResponse(['error' => 'Unable to delete discount.'], 409);
+        jsonResponse(['error' => 'Unable to retire discount.'], 409);
     }
 }
 
 if ($mode === 'voucher') {
     requireFields($data, ['code', 'discountType', 'discountValue', 'minSpend', 'usageLimit', 'expiryDate']);
 
+    $voucherId = (int) ($data['id'] ?? 0);
     $code = strtoupper(trim((string) $data['code']));
     if (!preg_match('/^[A-Z0-9][A-Z0-9-]{2,31}$/', $code)) {
         jsonResponse(['error' => 'Voucher code must be 3-32 characters and use only letters, numbers, or dashes.'], 422);
@@ -273,33 +303,59 @@ if ($mode === 'voucher') {
         jsonResponse(['error' => 'Usage limit must be at least 1.'], 422);
     }
 
+    $usedCount = 0;
+    if ($voucherId > 0) {
+        $existingStmt = $db->prepare(
+            "SELECT v.VOUCHER_ID, v.STATUS, COUNT(vu.VU_ID) AS used
+             FROM VOUCHER v
+             LEFT JOIN VOUCHER_USAGE vu ON vu.VOUCHER_ID = v.VOUCHER_ID
+             WHERE v.VOUCHER_ID = :voucher_id AND v.MERCHANT_ID = :merchant_id
+             GROUP BY v.VOUCHER_ID, v.STATUS"
+        );
+        $existingStmt->execute([
+            ':voucher_id' => $voucherId,
+            ':merchant_id' => $merchantId,
+        ]);
+        $existingVoucher = $existingStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingVoucher) {
+            jsonResponse(['error' => 'Voucher not found for this merchant.'], 404);
+        }
+        if (strtoupper((string) $existingVoucher['STATUS']) === 'RETIRED') {
+            jsonResponse(['error' => 'Retired vouchers cannot be edited.'], 409);
+        }
+        $usedCount = (int) ($existingVoucher['used'] ?? 0);
+        if ($usageLimit < $usedCount) {
+            jsonResponse(['error' => "Usage limit cannot be lower than the {$usedCount} already-used voucher redemption(s)."], 422);
+        }
+    }
+
     $expiryDate = dateValue((string) $data['expiryDate'], 'Expiry date');
     if ($expiryDate < date('Y-m-d')) {
         jsonResponse(['error' => 'Expiry date cannot be in the past.'], 422);
     }
 
-    $duplicateStmt = $db->prepare(
+    $duplicateSql =
         "SELECT VOUCHER_ID
          FROM VOUCHER
-         WHERE MERCHANT_ID = :merchant_id AND CODE = :code
-         LIMIT 1"
-    );
-    $duplicateStmt->execute([
+         WHERE MERCHANT_ID = :merchant_id
+           AND CODE = :code";
+    $duplicateParams = [
         ':merchant_id' => $merchantId,
         ':code' => $code,
-    ]);
+    ];
+    if ($voucherId > 0) {
+        $duplicateSql .= " AND VOUCHER_ID <> :voucher_id";
+        $duplicateParams[':voucher_id'] = $voucherId;
+    }
+    $duplicateSql .= " LIMIT 1";
+    $duplicateStmt = $db->prepare($duplicateSql);
+    $duplicateStmt->execute($duplicateParams);
     if ($duplicateStmt->fetchColumn()) {
         jsonResponse(['error' => 'A voucher with this code already exists.'], 409);
     }
 
     try {
-        $stmt = $db->prepare(
-            "INSERT INTO VOUCHER
-                (CODE, DISCOUNT_TYPE, DISCOUNT_VALUE, CAP, MIN_SPEND, USAGE_LIMIT, EXPIRY_DATE, STATUS, MERCHANT_ID)
-             VALUES
-                (:code, :discount_type, :discount_value, :cap, :min_spend, :usage_limit, :expiry_date, 'ACTIVE', :merchant_id)"
-        );
-        $stmt->execute([
+        $params = [
             ':code' => $code,
             ':discount_type' => $discountType,
             ':discount_value' => (int) round($discountValue),
@@ -308,7 +364,35 @@ if ($mode === 'voucher') {
             ':usage_limit' => $usageLimit,
             ':expiry_date' => $expiryDate,
             ':merchant_id' => $merchantId,
-        ]);
+        ];
+
+        if ($voucherId > 0) {
+            $stmt = $db->prepare(
+                "UPDATE VOUCHER
+                 SET CODE = :code,
+                     DISCOUNT_TYPE = :discount_type,
+                     DISCOUNT_VALUE = :discount_value,
+                     CAP = :cap,
+                     MIN_SPEND = :min_spend,
+                     USAGE_LIMIT = :usage_limit,
+                     EXPIRY_DATE = :expiry_date,
+                     STATUS = :status
+                 WHERE VOUCHER_ID = :voucher_id
+                   AND MERCHANT_ID = :merchant_id
+                   AND STATUS <> 'RETIRED'"
+            );
+            $params[':voucher_id'] = $voucherId;
+            $params[':status'] = $usageLimit <= $usedCount ? 'INACTIVE' : 'ACTIVE';
+            $stmt->execute($params);
+        } else {
+            $stmt = $db->prepare(
+                "INSERT INTO VOUCHER
+                    (CODE, DISCOUNT_TYPE, DISCOUNT_VALUE, CAP, MIN_SPEND, USAGE_LIMIT, EXPIRY_DATE, STATUS, MERCHANT_ID)
+                 VALUES
+                    (:code, :discount_type, :discount_value, :cap, :min_spend, :usage_limit, :expiry_date, 'ACTIVE', :merchant_id)"
+            );
+            $stmt->execute($params);
+        }
 
         jsonResponse(['message' => 'Voucher saved.'], 201);
     } catch (Throwable $e) {
@@ -318,8 +402,10 @@ if ($mode === 'voucher') {
 }
 
 if ($mode === 'product-discount' || $mode === 'discount') {
+    ensureDiscountStatusColumn($db);
     requireFields($data, ['offeringId', 'discountType', 'discountValue', 'startDate', 'endDate']);
 
+    $discountId = (int) ($data['id'] ?? 0);
     $offeringId = (int) $data['offeringId'];
     if ($offeringId <= 0) {
         jsonResponse(['error' => 'A valid merchant product or service is required.'], 422);
@@ -350,18 +436,60 @@ if ($mode === 'product-discount' || $mode === 'discount') {
         jsonResponse(['error' => 'End date cannot be earlier than start date.'], 422);
     }
 
-    try {
-        $stmt = $db->prepare(
-            "INSERT INTO DISCOUNT (TYPE, VALUE, START_DATE, END_DATE, OFFERING_ID)
-             VALUES (:type, :value, :start_date, :end_date, :offering_id)"
+    if ($discountId > 0) {
+        $existingStmt = $db->prepare(
+            "SELECT d.DISCOUNT_ID, COALESCE(d.STATUS, 'ACTIVE') AS status
+             FROM DISCOUNT d
+             JOIN OFFERING o ON o.OFFERING_ID = d.OFFERING_ID
+             WHERE d.DISCOUNT_ID = :discount_id AND o.MERCHANT_ID = :merchant_id
+             LIMIT 1"
         );
-        $stmt->execute([
+        $existingStmt->execute([
+            ':discount_id' => $discountId,
+            ':merchant_id' => $merchantId,
+        ]);
+        $existingDiscount = $existingStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingDiscount) {
+            jsonResponse(['error' => 'Discount not found for this merchant.'], 404);
+        }
+        if (strtoupper((string) $existingDiscount['status']) === 'RETIRED') {
+            jsonResponse(['error' => 'Retired discounts cannot be edited.'], 409);
+        }
+    }
+
+    try {
+        $params = [
             ':type' => $discountType,
             ':value' => (int) round($discountValue),
             ':start_date' => $startDate . ' 00:00:00.0',
             ':end_date' => $endDate . ' 23:59:59.0',
             ':offering_id' => $offeringId,
-        ]);
+        ];
+
+        if ($discountId > 0) {
+            $stmt = $db->prepare(
+                "UPDATE DISCOUNT d
+                 JOIN OFFERING o ON o.OFFERING_ID = d.OFFERING_ID
+                 SET d.TYPE = :type,
+                     d.VALUE = :value,
+                     d.START_DATE = :start_date,
+                     d.END_DATE = :end_date,
+                     d.OFFERING_ID = :offering_id,
+                     d.STATUS = 'ACTIVE'
+                 WHERE d.DISCOUNT_ID = :discount_id
+                   AND o.MERCHANT_ID = :merchant_id
+                   AND COALESCE(d.STATUS, 'ACTIVE') <> 'RETIRED'"
+            );
+            $params[':discount_id'] = $discountId;
+            $params[':merchant_id'] = $merchantId;
+            $stmt->execute($params);
+        } else {
+            $stmt = $db->prepare(
+                "INSERT INTO DISCOUNT (TYPE, VALUE, START_DATE, END_DATE, OFFERING_ID, STATUS)
+                 VALUES (:type, :value, :start_date, :end_date, :offering_id, 'ACTIVE')"
+            );
+            $stmt->execute($params);
+        }
 
         jsonResponse(['message' => 'Discount saved.'], 201);
     } catch (Throwable $e) {
