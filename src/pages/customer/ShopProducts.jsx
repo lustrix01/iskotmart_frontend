@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ChevronRight,
   ChevronDown,
@@ -8,60 +8,72 @@ import {
   ShieldCheck,
   ChevronLeft,
 } from "lucide-react";
+import {
+  matchesListing,
+  storefrontDataDecision,
+  useStorefrontListings,
+} from "../../data/storefrontData";
+
+const PAGE_SIZE = 20;
+const FALLBACK_IMAGE = "/placeholders/offering.svg";
+const PRODUCT_CATEGORIES = [
+  { label: "Apparel & Uniforms", value: "Fashion & Apparel" },
+  { label: "School Supplies", value: "Books & Media" },
+  { label: "Electronics", value: "Electronics & Technology" },
+  { label: "Food & Drink", value: "Groceries & Essentials" },
+];
 
 export default function ShopProducts() {
   const [activeSort, setActiveSort] = useState("Popular");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchParams] = useSearchParams();
+  const searchTerm = searchParams.get("q") || "";
+  const category = searchParams.get("category") || "";
+  const saleOnly = searchParams.get("sale") === "true";
 
-  // Mock Data: Verified Merchants
-  const merchants = [
-    {
-      id: 1,
-      name: "TechHub Electronics",
-      img: "https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=150",
-    },
-    {
-      id: 2,
-      name: "Student Snacks",
-      img: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=150",
-    },
-    {
-      id: 3,
-      name: "Dorm Essentials",
-      img: "https://images.unsplash.com/photo-1522771731535-61df24312214?q=80&w=150",
-    },
-    {
-      id: 4,
-      name: "Campus Kicks",
-      img: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=150",
-    },
-    {
-      id: 5,
-      name: "Art Supplies",
-      img: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?q=80&w=150",
-    },
-    {
-      id: 6,
-      name: "Study Notes Hub",
-      img: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?q=80&w=150",
-    },
-  ];
+  const { products: storefrontProducts, loading, error } = useStorefrontListings();
+  const merchants = useMemo(() => {
+    const byId = new Map();
+    storefrontProducts.forEach((item) => {
+      if (!item.merchantId || byId.has(item.merchantId)) return;
+      byId.set(item.merchantId, {
+        id: item.merchantId,
+        name: item.merchant || "Merchant",
+        img: item.img || item.images?.[0]?.url || FALLBACK_IMAGE,
+      });
+    });
+    return Array.from(byId.values()).slice(0, 12);
+  }, [storefrontProducts]);
+  const products = storefrontProducts
+    .filter((item) => matchesListing(item, searchTerm, category))
+    .filter((item) => !saleOnly || item.isOnSale)
+    .sort((a, b) => {
+      if (activeSort === "Top sales") {
+        return (Number(b.weeklySold || 0) - Number(a.weeklySold || 0))
+          || (Number(b.weeklyRevenue || 0) - Number(a.weeklyRevenue || 0));
+      }
+      if (activeSort === "Latest") {
+        return Number(b.id || 0) - Number(a.id || 0);
+      }
+      if (activeSort === "Price: Low to High") {
+        return Number(a.price || 0) - Number(b.price || 0);
+      }
+      if (activeSort === "Price: High to Low") {
+        return Number(b.price || 0) - Number(a.price || 0);
+      }
+      return (Number(b.reviewCount || 0) - Number(a.reviewCount || 0))
+        || (Number(b.weeklySold || 0) - Number(a.weeklySold || 0));
+    });
+  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+  const page = Math.min(currentPage, totalPages);
+  const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // Mock Data: Products
-  const products = Array(15)
-    .fill()
-    .map((_, i) => ({
-      id: i + 1,
-      name: i % 2 === 0 ? "Premium Campus Sandwich" : "Wireless Mouse",
-      price: 999.0,
-      oldPrice: 1200.0,
-      discount: "-12%",
-      rating: 4.8,
-      sold: "1.2k",
-      img:
-        i % 2 === 0
-          ? "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?q=80&w=300"
-          : "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?q=80&w=300",
-    }));
+  const togglePriceSort = () => {
+    setCurrentPage(1);
+    setActiveSort((current) =>
+      current === "Price: Low to High" ? "Price: High to Low" : "Price: Low to High",
+    );
+  };
 
   return (
     <div className="bg-[#F5F7F9] min-h-screen pb-12 font-sans animate-in fade-in duration-500">
@@ -76,6 +88,7 @@ export default function ShopProducts() {
         </div>
 
         {/* VERIFIED MERCHANTS SECTION */}
+        {merchants.length > 0 ? (
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm mb-6 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-50 flex justify-between items-center bg-[#F8FAFC]">
             <div className="flex items-center gap-2 text-[#003366]">
@@ -83,7 +96,7 @@ export default function ShopProducts() {
               <h2 className="text-sm font-bold">Verified merchants</h2>
             </div>
             <Link
-              to="#"
+              to="/products"
               className="text-[11px] font-bold text-[#FF851B] flex items-center gap-1 hover:underline"
             >
               See all <ChevronRight size={12} />
@@ -113,6 +126,7 @@ export default function ShopProducts() {
             ))}
           </div>
         </div>
+        ) : null}
 
         {/* MAIN LAYOUT: Sidebar + Content */}
         <div className="flex flex-col md:flex-row gap-6">
@@ -124,38 +138,21 @@ export default function ShopProducts() {
                 <h2 className="text-sm font-bold">Categories</h2>
               </div>
               <div className="p-2">
-                {[1, 2, 3, 4].map((cat) => (
-                  <div key={cat} className="mb-1">
-                    <button className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group">
+                {PRODUCT_CATEGORIES.map((cat) => (
+                  <div key={cat.value} className="mb-1">
+                    <Link
+                      to={`/products?category=${encodeURIComponent(cat.value)}`}
+                      onClick={() => setCurrentPage(1)}
+                      className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group"
+                    >
                       <span className="flex items-center gap-2">
                         <ChevronRight
                           size={14}
                           className="text-gray-300 group-hover:text-[#FF851B] transition-colors"
                         />
-                        Category {cat}
+                        {cat.label}
                       </span>
-                    </button>
-                    {/* Subcategories */}
-                    <div className="pl-10 pr-4 py-1 space-y-2">
-                      <Link
-                        to="#"
-                        className="block text-[11px] text-gray-500 hover:text-[#FF851B] transition-colors"
-                      >
-                        Subcategory 1
-                      </Link>
-                      <Link
-                        to="#"
-                        className="block text-[11px] text-gray-500 hover:text-[#FF851B] transition-colors"
-                      >
-                        Subcategory 2
-                      </Link>
-                      <Link
-                        to="#"
-                        className="block text-[11px] text-gray-500 hover:text-[#FF851B] transition-colors"
-                      >
-                        Subcategory 3
-                      </Link>
-                    </div>
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -174,7 +171,10 @@ export default function ShopProducts() {
                   {["Popular", "Latest", "Top sales"].map((sort) => (
                     <button
                       key={sort}
-                      onClick={() => setActiveSort(sort)}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setActiveSort(sort);
+                      }}
                       className={`px-5 py-2 text-xs font-bold rounded-md transition-all ${
                         activeSort === sort
                           ? "bg-[#FF851B] text-white shadow-md shadow-orange-100"
@@ -184,8 +184,16 @@ export default function ShopProducts() {
                       {sort}
                     </button>
                   ))}
-                  <button className="px-4 py-2 bg-white text-gray-600 border border-gray-200 text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all">
-                    Price <ChevronDown size={14} />
+                  <button
+                    onClick={togglePriceSort}
+                    className={`px-4 py-2 border text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all ${
+                      activeSort.startsWith("Price:")
+                        ? "bg-[#FF851B] text-white border-[#FF851B]"
+                        : "bg-white text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    {activeSort.startsWith("Price:") ? activeSort : "Price"}{" "}
+                    <ChevronDown size={14} />
                   </button>
                 </div>
               </div>
@@ -193,22 +201,62 @@ export default function ShopProducts() {
               {/* Pagination (Top) */}
               <div className="flex items-center gap-3 mr-2">
                 <span className="text-[11px] font-bold">
-                  <span className="text-[#FF851B]">1</span> / 8
+                  <span className="text-[#FF851B]">{page}</span> / {totalPages}
                 </span>
                 <div className="flex gap-1">
-                  <button className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-400 hover:bg-gray-50 transition-colors">
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => setCurrentPage((current) => Math.max(1, current - 1))}
+                    className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-400 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                  >
                     <ChevronLeft size={14} />
                   </button>
-                  <button className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors">
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => setCurrentPage((current) => Math.min(totalPages, current + 1))}
+                    className="w-7 h-7 flex items-center justify-center bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                  >
                     <ChevronRight size={14} />
                   </button>
                 </div>
               </div>
             </div>
 
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-bold text-gray-500">
+                {products.length} product{products.length === 1 ? "" : "s"}
+                {searchTerm ? ` matching "${searchTerm}"` : ""}
+                {category ? ` in ${category}` : ""}
+                {saleOnly ? " on sale" : ""}
+              </p>
+              <p className="max-w-2xl text-[10px] font-semibold text-gray-400">
+                {storefrontDataDecision}
+              </p>
+            </div>
+
             {/* Product Grid (5 Columns) */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {products.map((item) => (
+            {loading ? (
+              <div className="bg-white border border-gray-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-[#003366]">
+                  Loading products...
+                </p>
+              </div>
+            ) : error ? (
+              <div className="bg-red-50 border border-red-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-red-600">{error}</p>
+              </div>
+            ) : products.length === 0 ? (
+              <div className="bg-white border border-gray-100 rounded-xl p-12 text-center">
+                <p className="text-sm font-bold text-[#003366]">
+                  No products found.
+                </p>
+                <p className="mt-2 text-xs text-gray-400">
+                  Try another search term or browse all products.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {pagedProducts.map((item) => (
                 <Link
                   to={`/product/${item.id}`}
                   key={item.id}
@@ -217,9 +265,12 @@ export default function ShopProducts() {
                   {/* Image */}
                   <div className="aspect-square bg-gray-50 relative overflow-hidden">
                     <img
-                      src={item.img}
+                      src={item.img || item.images?.[0]?.url || FALLBACK_IMAGE}
                       alt={item.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(event) => {
+                        event.currentTarget.src = FALLBACK_IMAGE;
+                      }}
                     />
                   </div>
 
@@ -249,36 +300,17 @@ export default function ShopProducts() {
                             fill="#FF851B"
                             className="text-[#FF851B]"
                           />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
-                          <Star
-                            size={10}
-                            fill="#FF851B"
-                            className="text-[#FF851B]"
-                          />
                         </div>
                         <span className="text-[9px] text-gray-400 font-medium">
-                          {item.sold} sold
+                          {item.rating !== null ? `${item.rating} (${item.reviewCount || 0})` : "No ratings"}
                         </span>
                       </div>
                     </div>
                   </div>
                 </Link>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Return Home Button */}
             <div className="mt-12 flex justify-center">

@@ -13,7 +13,7 @@ import {
   ArrowLeft, // Added the Arrow icon for the back button
 } from "lucide-react";
 import Navbar from "../components/Navbar";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function ProfileLayout() {
   const location = useLocation();
@@ -36,14 +36,11 @@ export default function ProfileLayout() {
   const handleConfirmLogout = () => {
     setIsLoggingOut(true);
 
-    setTimeout(() => {
-      // Clear the session via context
+    setTimeout(async () => {
       if (logout) {
-        logout();
+        await logout();
       }
-
-      // Force a hard redirect to override any built-in AuthContext routing
-      window.location.href = "/login";
+      navigate("/login", { replace: true });
     }, 2000);
   };
 

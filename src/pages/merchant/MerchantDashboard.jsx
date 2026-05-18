@@ -1,120 +1,140 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   DollarSign,
   ShoppingBag,
   Package,
   Users,
-  Clock,
-  ArrowRight,
   PlusCircle,
   Settings,
 } from "lucide-react";
 
+const formatMoney = (value) =>
+  `₱${Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const chartKeyForFilter = (filter) =>
+  filter === "Last 30 Days" ? "last30Days" : "last7Days";
+
+const compactMoney = (value) => {
+  const amount = Number(value || 0);
+  if (amount >= 1000000) {
+    return `₱${(amount / 1000000).toFixed(1)}M`;
+  }
+  if (amount >= 1000) {
+    return `₱${(amount / 1000).toFixed(1)}K`;
+  }
+  return `₱${amount.toFixed(0)}`;
+};
+
 export default function MerchantDashboard() {
   const navigate = useNavigate();
   const [activeFilter, setActiveFilter] = useState("Last 7 Days");
+  const [summary, setSummary] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
-  // --- FR-52: Dynamic Analytics Simulation ---
-  const chartData =
-    activeFilter === "Last 7 Days"
-      ? "M0 180 C 60 140, 100 120, 133 130 C 200 150, 230 180, 266 170 C 330 150, 360 80, 400 70 C 460 50, 500 120, 533 110 C 600 90, 630 30, 666 20 C 720 10, 760 40, 800 50"
-      : "M0 150 C 60 160, 100 180, 133 140 C 200 100, 230 60, 266 80 C 330 120, 360 160, 400 140 C 460 90, 500 50, 533 70 C 600 100, 630 130, 666 90 C 720 40, 760 20, 800 30";
+  useEffect(() => {
+    let isMounted = true;
 
-  const chartPoints =
-    activeFilter === "Last 7 Days"
-      ? [
-          { cx: 0, cy: 180 },
-          { cx: 133, cy: 130 },
-          { cx: 266, cy: 170 },
-          { cx: 400, cy: 70 },
-          { cx: 533, cy: 110 },
-          { cx: 666, cy: 20 },
-          { cx: 800, cy: 50 },
-        ]
-      : [
-          { cx: 0, cy: 150 },
-          { cx: 133, cy: 140 },
-          { cx: 266, cy: 80 },
-          { cx: 400, cy: 140 },
-          { cx: 533, cy: 70 },
-          { cx: 666, cy: 90 },
-          { cx: 800, cy: 30 },
-        ];
+    const loadSummary = async () => {
+      try {
+        const response = await fetch("/api/merchant_dashboard.php", {
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load dashboard data.");
+        }
+        if (isMounted) {
+          setSummary(payload);
+          setLoadError("");
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(error.message);
+        }
+      }
+    };
 
-  const stats = [
-    {
-      title: "Total Sales",
-      value: activeFilter === "Last 7 Days" ? "₱128,450" : "₱450,200",
-      trend: "+12.5% this period",
-      icon: DollarSign,
-      path: "/merchant/earnings",
-      bg: "bg-orange-50",
-    },
-    {
-      title: "Pending Orders",
-      value: "1,234",
-      trend: "8 new today",
-      icon: ShoppingBag,
-      path: "/merchant/orders",
-      bg: "bg-orange-50",
-    },
-    {
-      title: "Products Listed",
-      value: "23",
-      trend: "12 active",
-      icon: Package,
-      path: "/merchant/products",
-      bg: "bg-orange-50",
-    },
-    {
-      title: "Store Visitors",
-      value: activeFilter === "Last 7 Days" ? "2,847" : "10,492",
-      trend: "+18.2% this period",
-      icon: Users,
-      path: "/merchant/analytics",
-      bg: "bg-orange-50",
-    },
-  ];
+    loadSummary();
 
-  const recentOrders = [
-    {
-      id: "#ORD-2026-001",
-      account: "Juan Dela Cruz",
-      product: "iPhone 15 Pro Max",
-      amount: "₱65,999.00",
-      status: "Delivered",
-      date: "Mar 19, 2026",
-    },
-    {
-      id: "#ORD-2026-002",
-      account: "Maria Santos",
-      product: "MacBook Air M2",
-      amount: "₱64,990.00",
-      status: "Delivered",
-      date: "Mar 19, 2026",
-    },
-    {
-      id: "#ORD-2026-003",
-      account: "Ana Lopez",
-      product: "AirPods Pro 2",
-      amount: "₱13,490.00",
-      status: "Pending",
-      date: "Mar 18, 2026",
-    },
-    {
-      id: "#ORD-2026-004",
-      account: "Pedro Reyes",
-      product: "Apple Watch Series 9",
-      amount: "₱22,990.00",
-      status: "Processing",
-      date: "Mar 17, 2026",
-    },
-  ];
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const stats = useMemo(
+    () => [
+      {
+        title: "Total Sales",
+        value: summary?.stats?.totalSalesFormatted || formatMoney(0),
+        trend: `${summary?.stats?.totalOrders || 0} paid completed orders`,
+        icon: DollarSign,
+        path: "/merchant/earnings",
+      },
+      {
+        title: "Active Orders",
+        value: String(summary?.stats?.activeOrders ?? summary?.stats?.pendingOrders ?? 0),
+        trend: "Not completed or cancelled",
+        icon: ShoppingBag,
+        path: "/merchant/orders",
+      },
+      {
+        title: "Products Listed",
+        value: String(summary?.stats?.catalogItems || 0),
+        trend: `${summary?.stats?.activeCatalogItems || 0} active`,
+        icon: Package,
+        path: "/merchant/products",
+      },
+      {
+        title: "Customers",
+        value: String(summary?.stats?.customers || 0),
+        trend: "Unique customers with orders",
+        icon: Users,
+        path: "/merchant/analytics",
+      },
+    ],
+    [summary],
+  );
+
+  const recentOrders = summary?.recentOrders || [];
+  const trendData = Array.isArray(summary?.salesTrend?.[chartKeyForFilter(activeFilter)])
+    ? summary.salesTrend[chartKeyForFilter(activeFilter)]
+    : [];
+  const maxSales = Math.max(...trendData.map((point) => Number(point.sales || 0)), 0);
+  const chartWidth = 800;
+  const chartHeight = 220;
+  const chartPadding = 18;
+  const usableHeight = chartHeight - chartPadding * 2;
+  const xStep = trendData.length > 1 ? chartWidth / (trendData.length - 1) : chartWidth;
+  const chartPoints = trendData.map((point, index) => {
+    const sales = Number(point.sales || 0);
+    const x = index * xStep;
+    const y = maxSales > 0
+      ? chartPadding + usableHeight - (sales / maxSales) * usableHeight
+      : chartPadding + usableHeight;
+    return { ...point, x, y, sales };
+  });
+  const linePath = chartPoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(" ");
+  const areaPath = chartPoints.length > 0
+    ? `${linePath} L ${chartPoints[chartPoints.length - 1].x.toFixed(2)} ${chartHeight - chartPadding} L 0 ${chartHeight - chartPadding} Z`
+    : "";
+  const totalChartSales = trendData.reduce((sum, point) => sum + Number(point.sales || 0), 0);
+  const totalChartOrders = trendData.reduce((sum, point) => sum + Number(point.orders || 0), 0);
+  const labelInterval = activeFilter === "Last 30 Days" ? 5 : 1;
 
   return (
     <div className="animate-in fade-in duration-500 max-w-7xl mx-auto space-y-6">
-      {/* --- FR-40: QUICK ACTIONS ROW --- */}
+      {loadError && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-xs font-bold text-red-600">
+          {loadError}
+        </div>
+      )}
+
       <div className="flex gap-4">
         <button
           onClick={() => navigate("/merchant/products")}
@@ -136,11 +156,10 @@ export default function MerchantDashboard() {
         </button>
       </div>
 
-      {/* 1. TOP STATS ROW */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
+        {stats.map((stat) => (
           <button
-            key={i}
+            key={stat.title}
             onClick={() => navigate(stat.path)}
             className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between transition-all hover:shadow-lg hover:border-[#FF851B]/30 hover:-translate-y-1 text-left group"
           >
@@ -151,13 +170,8 @@ export default function MerchantDashboard() {
               <p className="text-3xl font-extrabold text-[#003366] mb-1 transition-all">
                 {stat.value}
               </p>
-              <p className="text-[10px] font-bold text-green-500">
-                {stat.trend}
-              </p>
             </div>
-            <div
-              className={`p-4 rounded-full ${stat.bg} group-hover:bg-[#FF851B] transition-colors`}
-            >
+            <div className="p-4 rounded-full bg-orange-50 group-hover:bg-[#FF851B] transition-colors">
               <stat.icon
                 size={28}
                 className="text-[#FF851B] group-hover:text-white transition-colors"
@@ -169,7 +183,6 @@ export default function MerchantDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 2. FR-52: SALES OVERVIEW CHART */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden lg:col-span-2">
           <div className="px-6 py-5 border-b border-gray-50 flex justify-between items-center bg-white">
             <h3 className="text-base font-bold text-[#003366]">
@@ -191,103 +204,94 @@ export default function MerchantDashboard() {
               ))}
             </div>
           </div>
-
           <div className="p-6 relative">
-            <div className="absolute left-6 top-6 bottom-8 flex flex-col justify-between text-[10px] font-bold text-gray-300">
-              <span>{activeFilter === "Last 7 Days" ? "30k" : "100k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "24k" : "80k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "18k" : "60k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "12k" : "40k"}</span>
-              <span>{activeFilter === "Last 7 Days" ? "6k" : "20k"}</span>
-              <span>0</span>
+            <div className="mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl bg-orange-50 border border-orange-100 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400">Revenue</p>
+                <p className="text-lg font-black text-[#FF851B]">{formatMoney(totalChartSales)}</p>
+              </div>
+              <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Paid orders</p>
+                <p className="text-lg font-black text-[#003366]">{totalChartOrders}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Peak day</p>
+                <p className="text-lg font-black text-[#003366]">
+                  {maxSales > 0
+                    ? chartPoints.reduce((peak, point) => point.sales > peak.sales ? point : peak, chartPoints[0]).label
+                    : "No sales"}
+                </p>
+              </div>
             </div>
 
-            <div className="ml-12 h-64 relative">
-              <svg
-                className="w-full h-full transition-all duration-500"
-                preserveAspectRatio="none"
-                viewBox="0 0 800 200"
-              >
-                <defs>
-                  <linearGradient
-                    id="chartGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
+            <div className="h-72 relative">
+              <div className="absolute left-0 top-0 bottom-8 w-20 flex flex-col justify-between text-[10px] font-bold text-gray-400">
+                {[1, 0.75, 0.5, 0.25, 0].map((ratio) => (
+                  <span key={ratio}>{compactMoney(maxSales * ratio)}</span>
+                ))}
+              </div>
+              <div className="ml-20 h-64 relative">
+                {trendData.length === 0 || maxSales === 0 ? (
+                  <div className="h-full border border-dashed border-gray-200 rounded-xl flex items-center justify-center text-xs font-bold text-gray-400">
+                    No paid completed sales in this period.
+                  </div>
+                ) : (
+                  <svg
+                    className="w-full h-full transition-all duration-500"
+                    preserveAspectRatio="none"
+                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                   >
-                    <stop offset="0%" stopColor="#FF851B" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="#FF851B" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-
-                {/* Grid Lines */}
-                {[0, 40, 80, 120, 160, 200].map((y) => (
-                  <path
-                    key={y}
-                    d={`M0 ${y} L800 ${y}`}
-                    stroke="#f3f4f6"
-                    strokeWidth="1"
-                    fill="none"
-                  />
-                ))}
-
-                {/* Area Under Curve */}
-                <path
-                  d={`${chartData} L 800 200 L 0 200 Z`}
-                  fill="url(#chartGradient)"
-                  className="transition-all duration-500"
-                />
-
-                {/* The Line */}
-                <path
-                  d={chartData}
-                  stroke="#FF851B"
-                  strokeWidth="3"
-                  fill="none"
-                  className="transition-all duration-500"
-                />
-
-                {/* Data Points */}
-                {chartPoints.map((pt, idx) => (
-                  <circle
-                    key={idx}
-                    cx={pt.cx}
-                    cy={pt.cy}
-                    r="4"
-                    fill="#FF851B"
-                    stroke="#fff"
-                    strokeWidth="2"
-                    className="transition-all duration-500"
-                  />
-                ))}
-              </svg>
+                    {[0.25, 0.5, 0.75, 1].map((ratio) => (
+                      <line
+                        key={ratio}
+                        x1="0"
+                        x2={chartWidth}
+                        y1={chartPadding + usableHeight * (1 - ratio)}
+                        y2={chartPadding + usableHeight * (1 - ratio)}
+                        stroke="#E5E7EB"
+                        strokeWidth="1"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                    <path d={areaPath} fill="#FF851B" opacity="0.12" />
+                    <path
+                      d={linePath}
+                      stroke="#FF851B"
+                      strokeWidth="3"
+                      fill="none"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    {chartPoints.map((point) => (
+                      <circle
+                        key={point.date}
+                        cx={point.x}
+                        cy={point.y}
+                        r="4"
+                        fill="#FFFFFF"
+                        stroke="#FF851B"
+                        strokeWidth="2"
+                        vectorEffect="non-scaling-stroke"
+                      >
+                        <title>{`${point.label}: ${formatMoney(point.sales)} from ${point.orders} order${point.orders === 1 ? "" : "s"}`}</title>
+                      </circle>
+                    ))}
+                  </svg>
+                )}
+              </div>
             </div>
-
-            <div className="ml-12 mt-4 flex justify-between text-[10px] font-bold text-gray-400 px-1">
-              {activeFilter === "Last 7 Days" ? (
-                <>
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                  <span>Sun</span>
-                </>
-              ) : (
-                <>
-                  <span>Wk 1</span>
-                  <span>Wk 2</span>
-                  <span>Wk 3</span>
-                  <span>Wk 4</span>
-                </>
-              )}
+            <div className="ml-20 mt-2 grid text-[10px] font-bold text-gray-400" style={{ gridTemplateColumns: `repeat(${Math.max(trendData.length, 1)}, minmax(0, 1fr))` }}>
+              {trendData.map((point, index) => (
+                <span
+                  key={point.date}
+                  className={`${index % labelInterval === 0 || index === trendData.length - 1 ? "opacity-100" : "opacity-0"} ${index === trendData.length - 1 ? "text-right" : ""}`}
+                >
+                  {point.label}
+                </span>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* 3. RECENT ORDERS (Sidebar format) */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-full">
           <div className="px-6 py-5 border-b border-gray-50 flex justify-between items-center bg-white">
             <h3 className="text-base font-bold text-[#003366]">
@@ -295,9 +299,9 @@ export default function MerchantDashboard() {
             </h3>
           </div>
           <div className="p-6 space-y-4 overflow-y-auto flex-grow">
-            {recentOrders.map((order, i) => (
+            {recentOrders.map((order) => (
               <div
-                key={i}
+                key={order.id}
                 onClick={() => navigate("/merchant/orders")}
                 className="border border-gray-100 rounded-xl p-4 hover:bg-gray-50 cursor-pointer transition-colors group"
               >
@@ -305,15 +309,7 @@ export default function MerchantDashboard() {
                   <span className="text-[10px] font-bold text-gray-400 group-hover:text-[#0074D9] transition-colors">
                     {order.id}
                   </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
-                      order.status === "Pending"
-                        ? "bg-orange-100 text-[#FF851B]"
-                        : order.status === "Processing"
-                          ? "bg-blue-100 text-[#0074D9]"
-                          : "bg-green-100 text-green-600"
-                    }`}
-                  >
+                  <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-orange-100 text-[#FF851B]">
                     {order.status}
                   </span>
                 </div>
@@ -321,13 +317,20 @@ export default function MerchantDashboard() {
                   {order.product}
                 </p>
                 <div className="flex justify-between items-end mt-2">
-                  <span className="text-xs text-gray-500">{order.account}</span>
+                  <span className="text-xs text-gray-500">
+                    {order.account}
+                  </span>
                   <span className="font-black text-[#FF851B]">
                     {order.amount}
                   </span>
                 </div>
               </div>
             ))}
+            {recentOrders.length === 0 && (
+              <div className="border border-dashed border-gray-200 rounded-xl p-8 text-center text-xs font-bold text-gray-400">
+                No active orders right now.
+              </div>
+            )}
           </div>
           <div className="p-4 border-t border-gray-50 bg-gray-50/50">
             <button

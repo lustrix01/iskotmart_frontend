@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -11,11 +11,9 @@ import {
   DollarSign,
   LogOut as LogOutIcon,
   AlertCircle,
-  Bell,
-  CreditCard,
   ShieldCheck,
 } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function MerchantLayout() {
   const location = useLocation();
@@ -26,6 +24,10 @@ export default function MerchantLayout() {
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [merchantProfile, setMerchantProfile] = useState({
+    shopName: "Merchant Shop",
+    initials: "IM",
+  });
 
   // --- FR-40: Sidebar provides quick access to settings and catalogs ---
   const menuItems = [
@@ -34,11 +36,6 @@ export default function MerchantLayout() {
     { name: "Products/Services", path: "/merchant/products", icon: Package },
     { name: "Orders", path: "/merchant/orders", icon: ShoppingCart },
     { name: "Messages", path: "/merchant/messages", icon: MessageSquare },
-    {
-      name: "Subscriptions",
-      path: "/merchant/subscriptions",
-      icon: CreditCard,
-    },
     { name: "Discount and Voucher", path: "/merchant/discounts", icon: Tag },
     { name: "Analytics", path: "/merchant/analytics", icon: TrendingUp },
     { name: "Earnings", path: "/merchant/earnings", icon: DollarSign },
@@ -46,11 +43,41 @@ export default function MerchantLayout() {
 
   const handleConfirmLogout = () => {
     setIsLoggingOut(true);
-    setTimeout(() => {
-      if (logout) logout();
-      window.location.href = "/login";
+    setTimeout(async () => {
+      if (logout) {
+        await logout();
+      }
+      navigate("/login", { replace: true });
     }, 2000);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMerchantProfile = async () => {
+      try {
+        const response = await fetch("/api/merchant_dashboard.php", {
+          credentials: "include",
+        });
+        const payload = await response.json();
+        if (!response.ok || !isMounted || !payload.profile) {
+          return;
+        }
+        setMerchantProfile({
+          shopName: payload.profile.shopName || "Merchant Shop",
+          initials: payload.profile.initials || "IM",
+        });
+      } catch {
+        // Keep the neutral placeholder if the profile API is unavailable.
+      }
+    };
+
+    loadMerchantProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F5F7F9] font-sans flex">
@@ -126,16 +153,12 @@ export default function MerchantLayout() {
               </span>
             </div>
 
-            <button className="w-10 h-10 flex items-center justify-center border border-gray-100 rounded-full hover:bg-gray-50 transition-colors relative">
-              <Bell size={18} className="text-gray-500" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
             <div className="flex items-center gap-2 pl-3 border-l border-gray-100">
               <span className="text-xs font-bold text-gray-700">
-                TechHub Electronics
+                {merchantProfile.shopName}
               </span>
               <div className="w-8 h-8 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center text-[#FF851B] font-bold text-xs">
-                TH
+                {merchantProfile.initials}
               </div>
             </div>
           </div>

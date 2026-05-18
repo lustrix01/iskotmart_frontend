@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
+import { clearRememberedClientSession } from "../api/clientSession";
 import logo from "../assets/logo.png";
 
 export default function CustomerSignup() {
@@ -16,14 +17,33 @@ export default function CustomerSignup() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSignup = (e) => {
+  const passwordPolicyMessage =
+    "Use at least 10 characters with uppercase, lowercase, number, and special character.";
+
+  const validateStrongPassword = (value) => {
+    if (value.length < 10) return false;
+    if (!/[A-Z]/.test(value)) return false;
+    if (!/[a-z]/.test(value)) return false;
+    if (!/\d/.test(value)) return false;
+    if (!/[^A-Za-z0-9]/.test(value)) return false;
+    return true;
+  };
+
+  const handleSignup = async (e) => {
     e.preventDefault();
+    setError("");
     if (password !== confirmPassword) {
       alert("Passwords don't match!");
+      return;
+    }
+    if (!validateStrongPassword(password)) {
+      setError(passwordPolicyMessage);
       return;
     }
     if (!agreeTerms) {
@@ -31,13 +51,46 @@ export default function CustomerSignup() {
       return;
     }
     if (username && email && password) {
-      login({
-        id: Date.now(),
-        name: `${firstName} ${lastName}`,
-        role: "customer",
-        email,
-      });
-      navigate("/");
+      setIsSubmitting(true);
+      try {
+        const response = await fetch("/api/signup.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            role: "customer",
+            firstName,
+            lastName,
+            gender,
+            username,
+            email,
+            phone: `+63${phone}`,
+            dob: `${dobYear}-${dobMonth.padStart(2, "0")}-${dobDay.padStart(2, "0")}`,
+            password,
+          }),
+        });
+
+        const raw = await response.text();
+        let payload = {};
+        try {
+          payload = raw ? JSON.parse(raw) : {};
+        } catch {
+          throw new Error(
+            "Signup API returned a non-JSON response. Check Vite proxy/PHP server.",
+          );
+        }
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to create account.");
+        }
+
+        login(payload.user);
+        clearRememberedClientSession();
+        navigate("/");
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -281,6 +334,9 @@ export default function CustomerSignup() {
                     required
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#FF851B] outline-none text-sm transition-all"
                   />
+                  <p className="mt-1 text-[10px] text-gray-400">
+                    {passwordPolicyMessage}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-0.5">
@@ -336,11 +392,15 @@ export default function CustomerSignup() {
                 </Link>
                 <button
                   type="submit"
-                  className="w-2/3 bg-[#FF851B] text-white font-bold py-2.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300"
+                  disabled={isSubmitting}
+                  className="w-2/3 bg-[#FF851B] text-white font-bold py-2.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300 disabled:opacity-70 disabled:hover:translate-y-0"
                 >
-                  Create Account
+                  {isSubmitting ? "Creating..." : "Create Account"}
                 </button>
               </div>
+              {error && (
+                <p className="text-xs font-semibold text-red-600">{error}</p>
+              )}
             </form>
           </div>
         </div>

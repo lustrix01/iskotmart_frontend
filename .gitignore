@@ -24,4 +24,10 @@ dist-ssr
 *.sw?
 
 # ?
-package-lock.json
+checklist.md
+AGENTS.md
+development plan.md
+development notes.md
+
+# Local uploaded files
+api/uploads/

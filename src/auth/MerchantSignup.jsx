@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
+import { clearRememberedClientSession } from "../api/clientSession";
 import logo from "../assets/logo.png";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 
@@ -13,6 +14,8 @@ export default function MerchantSignup() {
 
   // State for inline error validation
   const [emailError, setEmailError] = useState("");
+  const [submitError, setSubmitError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Centralized form data state
   const [formData, setFormData] = useState({
@@ -37,10 +40,20 @@ export default function MerchantSignup() {
     idFile: null, // Holds the uploaded file object
     password: "",
     confirmPassword: "",
-    // Step 3: Payment Options
-    payments: { gcash: false, paymaya: false, paypal: false, stripe: false },
     agreeTerms: false,
   });
+
+  const passwordPolicyMessage =
+    "Use at least 10 characters with uppercase, lowercase, number, and special character.";
+
+  const validateStrongPassword = (value) => {
+    if (value.length < 10) return false;
+    if (!/[A-Z]/.test(value)) return false;
+    if (!/[a-z]/.test(value)) return false;
+    if (!/\d/.test(value)) return false;
+    if (!/[^A-Za-z0-9]/.test(value)) return false;
+    return true;
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -55,14 +68,6 @@ export default function MerchantSignup() {
     }
   };
 
-  const handlePaymentChange = (e) => {
-    const { name, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      payments: { ...prev.payments, [name]: checked },
-    }));
-  };
-
   const nextStep = (e) => {
     e.preventDefault(); // Prevents default form submission
 
@@ -70,6 +75,10 @@ export default function MerchantSignup() {
       // 1. Password Match Validation
       if (formData.password !== formData.confirmPassword) {
         alert("Passwords don't match!");
+        return;
+      }
+      if (!validateStrongPassword(formData.password)) {
+        alert(passwordPolicyMessage);
         return;
       }
 
@@ -99,21 +108,75 @@ export default function MerchantSignup() {
     setStep((prev) => prev - 1);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!formData.agreeTerms) {
       alert("Please agree to the Terms and Conditions.");
       return;
     }
-    // Submit final data
-    console.log("Merchant Data Submitted:", formData);
-    login({
-      id: Date.now(),
-      name: formData.businessName,
-      role: "merchant",
-      email: formData.studentEmail,
-    });
-    navigate("/");
+
+    setIsSubmitting(true);
+    try {
+      const address = [
+        formData.bizCity,
+        formData.bizProvince,
+        formData.sameAsBiz
+          ? null
+          : [formData.postalCity, formData.postalProvince]
+              .filter(Boolean)
+              .join(", "),
+      ]
+        .filter(Boolean)
+        .join(" / ");
+
+      const response = await fetch("/api/signup.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          role: "merchant",
+          businessName: formData.businessName,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          username: formData.username,
+          gender: formData.gender,
+          email: formData.studentEmail,
+          phone: `+63${formData.phone}`,
+          studentNumber: formData.studentNumber,
+          dob: `${formData.dobYear}-${formData.dobMonth.padStart(2, "0")}-${formData.dobDay.padStart(2, "0")}`,
+          address,
+          idImageUrl: formData.idFile?.name || null,
+          password: formData.password,
+        }),
+      });
+
+      const raw = await response.text();
+      let payload = {};
+      try {
+        payload = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          "Signup API returned a non-JSON response. Check Vite proxy/PHP server.",
+        );
+      }
+      if (!response.ok) {
+        const details = Array.isArray(payload.details) ? payload.details : [];
+        throw new Error(
+          [payload.error || "Unable to create merchant account.", ...details]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      }
+
+      login(payload.user);
+      clearRememberedClientSession();
+      navigate("/merchant", { replace: true });
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -262,7 +325,7 @@ export default function MerchantSignup() {
                 <span className="w-4 h-4 flex items-center justify-center border border-white rounded-full">
                   3
                 </span>
-                <span>Payment Options</span>
+                <span>Confirmation</span>
               </div>
             </div>
 
@@ -383,7 +446,7 @@ export default function MerchantSignup() {
                       to="/signup"
                       className="flex-1 flex justify-center items-center text-gray-500 font-bold py-2.5 px-4 rounded-xl hover:bg-gray-100 transition-all"
                     >
-                      CANCEL
+                      RETURN
                     </Link>
                   </div>
                 </div>
@@ -641,6 +704,9 @@ export default function MerchantSignup() {
                         required
                         className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
                       />
+                      <p className="mt-1 text-[10px] text-gray-400">
+                        {passwordPolicyMessage}
+                      </p>
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
@@ -685,51 +751,28 @@ export default function MerchantSignup() {
               {/* ================= STEP 3 ================= */}
               {step === 3 && (
                 <div className="space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Allowed Payments
-                    </label>
-                    <div className="space-y-3 pl-2">
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="gcash"
-                          checked={formData.payments.gcash}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        GCash
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="paymaya"
-                          checked={formData.payments.paymaya}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        PayMaya
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="paypal"
-                          checked={formData.payments.paypal}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        PayPal
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="stripe"
-                          checked={formData.payments.stripe}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        Stripe
-                      </label>
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-5">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2
+                        size={22}
+                        className="text-[#FF851B] shrink-0 mt-0.5"
+                      />
+                      <div>
+                        <h3 className="text-sm font-bold text-[#003366]">
+                          Payment methods are preset
+                        </h3>
+                        <p className="mt-1 text-xs text-gray-600 leading-relaxed">
+                          IskoMart currently accepts only{" "}
+                          <span className="font-bold text-gray-800">GCash</span>{" "}
+                          and{" "}
+                          <span className="font-bold text-gray-800">
+                            Cash on Delivery / Meetup
+                          </span>
+                          . These are enabled automatically for merchant
+                          accounts, so no payment selection is needed during
+                          signup.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -765,18 +808,26 @@ export default function MerchantSignup() {
                   <div className="flex gap-3 pt-2">
                     <button
                       type="submit"
-                      className="flex-[2] bg-[#FF851B] text-white font-bold py-3 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] transition-all"
+                      disabled={isSubmitting}
+                      className="flex-[2] bg-[#FF851B] text-white font-bold py-3 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] transition-all disabled:opacity-70 disabled:hover:translate-y-0"
                     >
-                      CREATE ACCOUNT
+                      {isSubmitting ? "CREATING..." : "CREATE ACCOUNT"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate("/signup")}
+                      onClick={prevStep}
                       className="flex-1 flex justify-center items-center text-gray-500 font-bold py-3 px-4 rounded-xl hover:bg-gray-100 transition-all"
                     >
-                      CANCEL
+                      RETURN
                     </button>
                   </div>
+                  {submitError && (
+                    <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+                      {submitError.split("\n").map((line, index) => (
+                        <p key={`${line}-${index}`}>{line}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </form>
