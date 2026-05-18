@@ -4,7 +4,9 @@ require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/payment_helpers.php');
 
 function ensurePublicMerchantBannerColumn(PDO $db): void {
-    requireTableColumns($db, 'MERCHANT', ['SHOP_BANNER_URL']);
+    ensureTableColumns($db, 'MERCHANT', [
+        'SHOP_BANNER_URL' => 'tinytext DEFAULT NULL',
+    ]);
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
