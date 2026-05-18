@@ -14,14 +14,7 @@ $email = strtolower(trim((string) $data['email']));
 enforceAuthRateLimit('forgot_password', $email, 5, 900);
 
 try {
-    requireTableColumns($db, 'PASSWORD_RESETS', [
-        'RESET_ID',
-        'USER_ID',
-        'TOKEN_HASH',
-        'EXPIRES_AT',
-        'USED_AT',
-        'CREATED_AT',
-    ]);
+    ensurePasswordResetTable($db);
 
     $stmt = $db->prepare(
         "SELECT USER_ID, EMAIL
