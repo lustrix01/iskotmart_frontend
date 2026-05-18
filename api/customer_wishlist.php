@@ -46,7 +46,9 @@ function wishlistItems(PDO $db, int $customerId): array {
                 s.DELIVERY_METHOD AS rate,
                 o.MERCHANT_ID AS merchant_id,
                 COALESCE(m.SHOP_NAME, u.USERNAME, 'Merchant') AS merchant_name,
-                GROUP_CONCAT(
+                AVG(r.RATING) AS average_rating,
+                COUNT(DISTINCT r.REVIEW_ID) AS review_count,
+                GROUP_CONCAT(DISTINCT
                     JSON_OBJECT(
                         'id', di.DISPLAY_IMG_ID,
                         'url', di.IMAGE_URL,
@@ -66,6 +68,7 @@ function wishlistItems(PDO $db, int $customerId): array {
          LEFT JOIN SERVICE_SUBCAT ss ON ss.SERSUBCAT_ID = s.SERSUBCAT_ID
          LEFT JOIN SERVICE_CAT sc ON sc.SERCAT_ID = ss.SERCAT_ID
          LEFT JOIN DISPLAY_IMG di ON di.OFFERING_ID = o.OFFERING_ID
+         LEFT JOIN REVIEW r ON r.OFFERING_ID = o.OFFERING_ID
          WHERE cw.CUSTOMER_ID = :customer_id
          GROUP BY cw.WISHLIST_ID, cw.ADDED_ON, o.OFFERING_ID, o.OFFERING_TYPE,
                   o.OFFERING_NAME, o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
@@ -96,7 +99,8 @@ function wishlistItems(PDO $db, int $customerId): array {
             'rateType' => $row['rate'] ?: 'per project',
             'img' => $images[0]['url'] ?? '',
             'images' => $images,
-            'rating' => 0,
+            'rating' => $row['average_rating'] !== null ? round((float) $row['average_rating'], 1) : null,
+            'reviewCount' => (int) ($row['review_count'] ?? 0),
             'addedOn' => $row['added_on'],
         ];
     }, $stmt->fetchAll(PDO::FETCH_ASSOC));
