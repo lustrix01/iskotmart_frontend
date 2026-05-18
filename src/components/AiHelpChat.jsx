@@ -6,7 +6,7 @@ import { useAuth } from "../context/useAuth";
 const STARTER_MESSAGE = {
   role: "assistant",
   content:
-    "I can help you compare listed products and services, prices, active item discounts, reviews, and merchant details. I cannot checkout, edit your cart, manage your wishlist, apply vouchers, or access your account.",
+    "I can help you compare listed products and services, prices in ₱, active item discounts, reviews, and merchant details. I cannot checkout, edit your cart, manage your wishlist, apply vouchers, or access your account.",
 };
 
 function visibleMessages(messages) {
