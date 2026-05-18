@@ -15,18 +15,76 @@ function requireCustomerForVoucher(PDO $db): array {
     return $user;
 }
 
+function ensureVoucherDiscountStatusColumn(PDO $db): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+
+    $checked = true;
+    try {
+        $stmt = $db->query("SHOW COLUMNS FROM DISCOUNT LIKE 'STATUS'");
+        if (!$stmt || !$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $db->exec("ALTER TABLE DISCOUNT ADD STATUS varchar(45) NOT NULL DEFAULT 'ACTIVE'");
+        }
+    } catch (Throwable $e) {
+        logApiError($e);
+    }
+}
+
+function applyVoucherOfferingDiscount(float $price, mixed $type, mixed $value): float {
+    $discountValue = (float) ($value ?? 0);
+    if ($discountValue <= 0 || $type === null) {
+        return round($price, 2);
+    }
+
+    $discounted = strtolower((string) $type) === 'percentage'
+        ? $price - ($price * ($discountValue / 100))
+        : $price - $discountValue;
+
+    return round(max(0, $discounted), 2);
+}
+
 function voucherOffering(PDO $db, string $type, int $id): ?array {
+    ensureVoucherDiscountStatusColumn($db);
+
     if ($type === 'product') {
         $stmt = $db->prepare(
-            "SELECT p.PROD_ID AS id, p.PRICE AS price, p.MERCHANT_ID AS merchant_id
+            "SELECT p.PROD_ID AS id, p.PRICE AS price, p.MERCHANT_ID AS merchant_id,
+                    d.TYPE AS discount_type, d.VALUE AS discount_value
              FROM PRODUCT p
+             LEFT JOIN (
+                 SELECT d1.*
+                 FROM DISCOUNT d1
+                 INNER JOIN (
+                     SELECT OFFERING_ID, MAX(DISCOUNT_ID) AS DISCOUNT_ID
+                     FROM DISCOUNT
+                     WHERE START_DATE <= NOW(1)
+                       AND END_DATE >= NOW(1)
+                       AND COALESCE(STATUS, 'ACTIVE') = 'ACTIVE'
+                     GROUP BY OFFERING_ID
+                 ) latest ON latest.DISCOUNT_ID = d1.DISCOUNT_ID
+             ) d ON d.OFFERING_ID = p.PROD_ID
              WHERE p.PROD_ID = :id
              LIMIT 1"
         );
     } else {
         $stmt = $db->prepare(
-            "SELECT s.SERVICE_ID AS id, s.PRICE AS price, s.MERCHANT_ID AS merchant_id
+            "SELECT s.SERVICE_ID AS id, s.PRICE AS price, s.MERCHANT_ID AS merchant_id,
+                    d.TYPE AS discount_type, d.VALUE AS discount_value
              FROM SERVICE s
+             LEFT JOIN (
+                 SELECT d1.*
+                 FROM DISCOUNT d1
+                 INNER JOIN (
+                     SELECT OFFERING_ID, MAX(DISCOUNT_ID) AS DISCOUNT_ID
+                     FROM DISCOUNT
+                     WHERE START_DATE <= NOW(1)
+                       AND END_DATE >= NOW(1)
+                       AND COALESCE(STATUS, 'ACTIVE') = 'ACTIVE'
+                     GROUP BY OFFERING_ID
+                 ) latest ON latest.DISCOUNT_ID = d1.DISCOUNT_ID
+             ) d ON d.OFFERING_ID = s.SERVICE_ID
              WHERE s.SERVICE_ID = :id
              LIMIT 1"
         );
@@ -34,7 +92,17 @@ function voucherOffering(PDO $db, string $type, int $id): ?array {
 
     $stmt->execute([':id' => $id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $row ?: null;
+    if (!$row) {
+        return null;
+    }
+
+    $row['price'] = applyVoucherOfferingDiscount(
+        (float) ($row['price'] ?? 0),
+        $row['discount_type'] ?? null,
+        $row['discount_value'] ?? null
+    );
+
+    return $row;
 }
 
 function computeVoucherDiscount(array $voucher, float $eligibleSubtotal): float {
@@ -61,6 +129,7 @@ $data = jsonInput();
 $type = strtolower(trim((string) ($data['type'] ?? '')));
 $code = strtoupper(trim((string) ($data['code'] ?? '')));
 $items = $data['items'] ?? [];
+$appliedCodes = is_array($data['appliedCodes'] ?? null) ? $data['appliedCodes'] : [];
 
 if (!in_array($type, ['product', 'service'], true)) {
     jsonResponse(['error' => 'Invalid checkout type.'], 422);
@@ -68,6 +137,17 @@ if (!in_array($type, ['product', 'service'], true)) {
 
 if (!preg_match('/^[A-Z0-9][A-Z0-9-]{2,31}$/', $code)) {
     jsonResponse(['error' => 'Invalid voucher code.'], 422);
+}
+
+$normalizedAppliedCodes = [];
+foreach ($appliedCodes as $appliedCode) {
+    $normalized = strtoupper(trim((string) $appliedCode));
+    if ($normalized !== '') {
+        $normalizedAppliedCodes[] = $normalized;
+    }
+}
+if (in_array($code, $normalizedAppliedCodes, true)) {
+    jsonResponse(['error' => "Voucher {$code} is already applied."], 409);
 }
 
 if (!is_array($items) || count($items) === 0) {
@@ -119,7 +199,8 @@ try {
         if ((string) $voucher['EXPIRY_DATE'] < date('Y-m-d')) {
             continue;
         }
-        if ((int) $voucher['used'] > 0) {
+        $usageLimit = (int) ($voucher['USAGE_LIMIT'] ?? 0);
+        if ($usageLimit > 0 && (int) $voucher['used'] >= $usageLimit) {
             continue;
         }
         if ($eligibleSubtotal < (float) $voucher['MIN_SPEND']) {
@@ -133,6 +214,7 @@ try {
             'discountType' => strtolower((string) $voucher['DISCOUNT_TYPE']),
             'discountValue' => (float) $voucher['DISCOUNT_VALUE'],
             'eligibleSubtotal' => $eligibleSubtotal,
+            'merchantId' => $merchantId,
             'message' => "Voucher {$code} applied.",
         ]);
     }
