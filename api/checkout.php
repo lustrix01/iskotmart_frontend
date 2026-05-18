@@ -26,47 +26,78 @@ function assertClose(float $expected, float $actual, string $label): void {
     }
 }
 
-function fallbackUnitPrice(string $type, string $name, int $id): ?float {
-    $normalized = strtolower(trim($name));
-
-    if ($type === 'product') {
-        if (str_contains($normalized, 'keyboard')) {
-            return 904.30;
-        }
-        if (str_contains($normalized, 'earbuds') || str_contains($normalized, 'mouse') || str_contains($normalized, 'sandwich') || str_contains($normalized, 'tote')) {
-            return 999.00;
-        }
+function ensureCheckoutDiscountStatusColumn(PDO $db): void {
+    static $checked = false;
+    if ($checked) {
+        return;
     }
 
-    if ($type === 'service') {
-        if (str_contains($normalized, 'logo') || str_contains($normalized, 'branding')) {
-            return str_contains($normalized, 'professional') ? 1903.30 : 1500.00;
+    $checked = true;
+    try {
+        $stmt = $db->query("SHOW COLUMNS FROM DISCOUNT LIKE 'STATUS'");
+        if (!$stmt || !$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $db->exec("ALTER TABLE DISCOUNT ADD STATUS varchar(45) NOT NULL DEFAULT 'ACTIVE'");
         }
-        if (str_contains($normalized, 'consultation')) {
-            return 951.65;
-        }
-        if (str_contains($normalized, 'tutoring') || str_contains($normalized, 'algebra')) {
-            return 250.00;
-        }
+    } catch (Throwable $e) {
+        logApiError($e);
+    }
+}
+
+function applyCheckoutDiscount(float $price, mixed $type, mixed $value): float {
+    $discountValue = (float) ($value ?? 0);
+    if ($discountValue <= 0 || $type === null) {
+        return moneyValue($price);
     }
 
-    return $id > 0 ? null : null;
+    $discounted = strtolower((string) $type) === 'percentage'
+        ? $price - ($price * ($discountValue / 100))
+        : $price - $discountValue;
+
+    return moneyValue(max(0, $discounted));
 }
 
 function dbOffering(PDO $db, string $type, int $id): ?array {
+    ensureCheckoutDiscountStatusColumn($db);
+
     if ($type === 'product') {
         $stmt = $db->prepare(
             "SELECT p.PROD_ID AS id, p.PRICE AS price, p.STOCK_QTY AS capacity,
-                    p.STATUS AS status, p.MERCHANT_ID AS merchant_id
+                    p.STATUS AS status, p.MERCHANT_ID AS merchant_id,
+                    d.TYPE AS discount_type, d.VALUE AS discount_value
              FROM PRODUCT p
+             LEFT JOIN (
+                 SELECT d1.*
+                 FROM DISCOUNT d1
+                 INNER JOIN (
+                     SELECT OFFERING_ID, MAX(DISCOUNT_ID) AS DISCOUNT_ID
+                     FROM DISCOUNT
+                     WHERE START_DATE <= NOW(1)
+                       AND END_DATE >= NOW(1)
+                       AND COALESCE(STATUS, 'ACTIVE') = 'ACTIVE'
+                     GROUP BY OFFERING_ID
+                 ) latest ON latest.DISCOUNT_ID = d1.DISCOUNT_ID
+             ) d ON d.OFFERING_ID = p.PROD_ID
              WHERE p.PROD_ID = :id
              LIMIT 1"
         );
     } else {
         $stmt = $db->prepare(
             "SELECT s.SERVICE_ID AS id, s.PRICE AS price, s.SLOTS AS capacity,
-                    s.STATUS AS status, s.MERCHANT_ID AS merchant_id
+                    s.STATUS AS status, s.MERCHANT_ID AS merchant_id,
+                    d.TYPE AS discount_type, d.VALUE AS discount_value
              FROM SERVICE s
+             LEFT JOIN (
+                 SELECT d1.*
+                 FROM DISCOUNT d1
+                 INNER JOIN (
+                     SELECT OFFERING_ID, MAX(DISCOUNT_ID) AS DISCOUNT_ID
+                     FROM DISCOUNT
+                     WHERE START_DATE <= NOW(1)
+                       AND END_DATE >= NOW(1)
+                       AND COALESCE(STATUS, 'ACTIVE') = 'ACTIVE'
+                     GROUP BY OFFERING_ID
+                 ) latest ON latest.DISCOUNT_ID = d1.DISCOUNT_ID
+             ) d ON d.OFFERING_ID = s.SERVICE_ID
              WHERE s.SERVICE_ID = :id
              LIMIT 1"
         );
@@ -74,7 +105,17 @@ function dbOffering(PDO $db, string $type, int $id): ?array {
 
     $stmt->execute([':id' => $id]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $row ?: null;
+    if (!$row) {
+        return null;
+    }
+
+    $row['price'] = applyCheckoutDiscount(
+        moneyValue($row['price'] ?? 0),
+        $row['discount_type'] ?? null,
+        $row['discount_value'] ?? null
+    );
+
+    return $row;
 }
 
 function merchantAllowsPayment(PDO $db, int $merchantId, int $offeringId, string $paymentMethod): bool {
@@ -93,10 +134,8 @@ function merchantAllowsPayment(PDO $db, int $merchantId, int $offeringId, string
     ]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Backward-compatibility fallback: if no per-offering active mapping exists,
-    // do not hard-block checkout.
     if (!$rows) {
-        return true;
+        return false;
     }
 
     $allowsGcash = false;
@@ -260,8 +299,9 @@ function validateCheckoutVoucher(PDO $db, string $code, array $validatedItems, b
 
         $usageStmt->execute([':voucher_id' => (int) $voucher['VOUCHER_ID']]);
         $used = (int) $usageStmt->fetchColumn();
-        if ($used > 0) {
-            jsonResponse(['error' => 'Voucher has already been used.'], 422);
+        $usageLimit = (int) ($voucher['USAGE_LIMIT'] ?? 0);
+        if ($usageLimit > 0 && $used >= $usageLimit) {
+            jsonResponse(['error' => 'Voucher usage limit has been reached.'], 422);
         }
 
         if ($eligibleSubtotal < (float) $voucher['MIN_SPEND']) {
@@ -271,12 +311,71 @@ function validateCheckoutVoucher(PDO $db, string $code, array $validatedItems, b
         return [
             'id' => (int) $voucher['VOUCHER_ID'],
             'code' => $code,
+            'merchantId' => $merchantId,
             'discountAmount' => voucherDiscountAmount($voucher, $eligibleSubtotal),
             'eligibleSubtotal' => $eligibleSubtotal,
         ];
     }
 
     jsonResponse(['error' => 'Invalid voucher code.'], 422);
+}
+
+function normalizeVoucherCodes(mixed $rawCodes, string $legacyCode = ''): array {
+    $codes = [];
+    if (is_array($rawCodes)) {
+        foreach ($rawCodes as $rawCode) {
+            $code = strtoupper(trim((string) $rawCode));
+            if ($code !== '') {
+                $codes[] = $code;
+            }
+        }
+    } elseif ($legacyCode !== '') {
+        $codes[] = strtoupper(trim($legacyCode));
+    }
+
+    if (count($codes) !== count(array_unique($codes))) {
+        jsonResponse(['error' => 'The same voucher cannot be applied more than once.'], 422);
+    }
+
+    return array_values(array_unique($codes));
+}
+
+function validateCheckoutVouchers(PDO $db, array $codes, array $validatedItems, bool $lock = false): array {
+    $vouchers = [];
+    $discountByMerchant = [];
+
+    foreach ($codes as $code) {
+        $voucher = validateCheckoutVoucher($db, $code, $validatedItems, $lock);
+        if (!$voucher) {
+            continue;
+        }
+
+        $merchantId = (int) ($voucher['merchantId'] ?? 0);
+        $eligibleSubtotal = moneyValue($voucher['eligibleSubtotal'] ?? 0);
+        $currentMerchantDiscount = moneyValue($discountByMerchant[$merchantId] ?? 0);
+        $discountAmount = min(
+            moneyValue($voucher['discountAmount'] ?? 0),
+            max(0, $eligibleSubtotal - $currentMerchantDiscount)
+        );
+
+        if ($discountAmount <= 0) {
+            jsonResponse(['error' => 'Voucher discount exceeds the eligible store subtotal.'], 422);
+        }
+
+        $voucher['discountAmount'] = moneyValue($discountAmount);
+        $discountByMerchant[$merchantId] = $currentMerchantDiscount + $voucher['discountAmount'];
+        $vouchers[] = $voucher;
+    }
+
+    return $vouchers;
+}
+
+function totalVoucherDiscount(array $vouchers): float {
+    return moneyValue(array_reduce(
+        $vouchers,
+        fn (float $sum, array $voucher): float => $sum + moneyValue($voucher['discountAmount'] ?? 0),
+        0.0
+    ));
 }
 
 function recordVoucherUsage(PDO $db, array $voucher, float $discountAmount, ?int $orderId = null, ?int $requestId = null): void {
@@ -297,9 +396,15 @@ function recordVoucherUsage(PDO $db, array $voucher, float $discountAmount, ?int
     ]);
 
     $statusStmt = $db->prepare(
-        "UPDATE VOUCHER
-         SET STATUS = 'INACTIVE'
-         WHERE VOUCHER_ID = :voucher_id"
+        "UPDATE VOUCHER v
+         SET v.STATUS = 'INACTIVE'
+         WHERE v.VOUCHER_ID = :voucher_id
+           AND v.USAGE_LIMIT > 0
+           AND (
+             SELECT COUNT(*)
+             FROM VOUCHER_USAGE vu
+             WHERE vu.VOUCHER_ID = v.VOUCHER_ID
+           ) >= v.USAGE_LIMIT"
     );
     $statusStmt->execute([':voucher_id' => (int) $voucher['id']]);
 }
@@ -315,10 +420,13 @@ $type = strtolower(trim((string) ($data['type'] ?? '')));
 $paymentMethod = strtolower(trim((string) ($data['paymentMethod'] ?? '')));
 $deliveryMethod = strtolower(trim((string) ($data['deliveryMethod'] ?? '')));
 $voucherCode = strtoupper(trim((string) ($data['voucherCode'] ?? '')));
+$voucherCodes = normalizeVoucherCodes($data['voucherCodes'] ?? null, $voucherCode);
 $items = $data['items'] ?? [];
 $totals = $data['totals'] ?? [];
 $customer = is_array($data['customer'] ?? null) ? $data['customer'] : [];
 $service = is_array($data['service'] ?? null) ? $data['service'] : [];
+$paymentProofImage = trim((string) ($data['paymentProofImage'] ?? ''));
+$paymentProofUrl = null;
 
 if (!in_array($type, ['product', 'service'], true)) {
     jsonResponse(['error' => 'Invalid checkout type.'], 422);
@@ -333,6 +441,11 @@ if ($paymentMethod === 'gcash') {
     if (strlen($reference) !== 13) {
         jsonResponse(['error' => 'GCash reference number must be 13 digits.'], 422);
     }
+    if ($paymentProofImage === '') {
+        jsonResponse(['error' => 'GCash payment proof image is required.'], 422);
+    }
+    ensurePaymentProofColumn($db);
+    $paymentProofUrl = storePaymentProofImage($paymentProofImage);
 }
 
 if (!is_array($items) || count($items) === 0) {
@@ -346,7 +459,6 @@ $validatedItems = [];
 foreach ($items as $item) {
     $id = (int) ($item['id'] ?? 0);
     $quantity = (int) ($item['quantity'] ?? 0);
-    $name = trim((string) ($item['name'] ?? ''));
 
     if ($id <= 0 || $quantity <= 0 || $quantity > 99) {
         jsonResponse(['error' => 'Invalid item quantity.'], 422);
@@ -380,26 +492,21 @@ foreach ($items as $item) {
         continue;
     }
 
-    $fallbackPrice = fallbackUnitPrice($type, $name, $id);
-    if ($fallbackPrice === null) {
-        jsonResponse(['error' => 'Item is not available for checkout.'], 409);
-    }
-
-    $subtotal += $fallbackPrice * $quantity;
+    jsonResponse(['error' => 'Item is not available for checkout.'], 409);
 }
 
 $shippingFee = $type === 'product' && $deliveryMethod === 'standard' ? 50.00 : 0.00;
 $serviceFee = $type === 'service' ? 50.00 : 0.00;
-$voucher = null;
+$vouchers = [];
 $discountAmount = 0.0;
-if ($voucherCode !== '') {
+if ($voucherCodes) {
     if ($dbBackedItems !== count($items)) {
         jsonResponse(['error' => 'Voucher cannot be applied to this checkout.'], 422);
     }
-    $voucher = validateCheckoutVoucher($db, $voucherCode, $validatedItems);
-    $discountAmount = moneyValue($voucher['discountAmount'] ?? 0);
+    $vouchers = validateCheckoutVouchers($db, $voucherCodes, $validatedItems);
+    $discountAmount = totalVoucherDiscount($vouchers);
 }
-if ($voucherCode === '' && moneyValue($totals['discountAmount'] ?? 0) > 0) {
+if (!$voucherCodes && moneyValue($totals['discountAmount'] ?? 0) > 0) {
     jsonResponse(['error' => 'A voucher code is required for this discount.'], 422);
 }
 $total = max(0, $subtotal + $shippingFee + $serviceFee - $discountAmount);
@@ -411,7 +518,7 @@ assertClose($discountAmount, moneyValue($totals['discountAmount'] ?? 0), 'Discou
 assertClose($total, moneyValue($totals['total'] ?? -1), 'Total');
 
 $paymentStatus = $paymentMethod === 'gcash' ? PAYMENT_STATUS_PENDING_REVIEW : PAYMENT_STATUS_UNPAID;
-$validatedBy = $dbBackedItems === count($items) ? 'database' : 'mock-catalog-fallback';
+$validatedBy = 'database';
 
 if ($type === 'product' && $validatedBy === 'database') {
     $recipientName = trim((string) ($customer['recipientName'] ?? ''));
@@ -428,9 +535,9 @@ if ($type === 'product' && $validatedBy === 'database') {
 
     try {
         $db->beginTransaction();
-        if ($voucherCode !== '') {
-            $voucher = validateCheckoutVoucher($db, $voucherCode, $validatedItems, true);
-            $discountAmount = moneyValue($voucher['discountAmount'] ?? 0);
+        if ($voucherCodes) {
+            $vouchers = validateCheckoutVouchers($db, $voucherCodes, $validatedItems, true);
+            $discountAmount = totalVoucherDiscount($vouchers);
         }
 
         $orderStmt = $db->prepare(
@@ -487,14 +594,14 @@ if ($type === 'product' && $validatedBy === 'database') {
             }
         }
 
-        if ($voucher) {
-            recordVoucherUsage($db, $voucher, $discountAmount, $orderId, null);
+        foreach ($vouchers as $voucher) {
+            recordVoucherUsage($db, $voucher, moneyValue($voucher['discountAmount'] ?? 0), $orderId, null);
         }
 
         if ($paymentMethod === 'gcash') {
             $allowedPaymentId = resolveAllowedPaymentId($db, (int) $validatedItems[0]['merchant_id'], (int) $validatedItems[0]['id'], 'gcash');
             if ($allowedPaymentId !== null) {
-                ensurePaymentRecord($db, $orderId, null, $allowedPaymentId, $total, $reference);
+                ensurePaymentRecord($db, $orderId, null, $allowedPaymentId, $total, $reference, $paymentProofUrl);
             }
         }
 
@@ -530,9 +637,9 @@ if ($type === 'service' && $validatedBy === 'database') {
 
     try {
         $db->beginTransaction();
-        if ($voucherCode !== '') {
-            $voucher = validateCheckoutVoucher($db, $voucherCode, $validatedItems, true);
-            $discountAmount = moneyValue($voucher['discountAmount'] ?? 0);
+        if ($voucherCodes) {
+            $vouchers = validateCheckoutVouchers($db, $voucherCodes, $validatedItems, true);
+            $discountAmount = totalVoucherDiscount($vouchers);
         }
 
         $requestStmt = $db->prepare(
@@ -592,13 +699,15 @@ if ($type === 'service' && $validatedBy === 'database') {
             if ($paymentMethod === 'gcash') {
                 $allowedPaymentId = resolveAllowedPaymentId($db, (int) $item['merchant_id'], (int) $item['id'], 'gcash');
                 if ($allowedPaymentId !== null) {
-                    ensurePaymentRecord($db, null, $requestId, $allowedPaymentId, $lineTotal, $reference);
+                    ensurePaymentRecord($db, null, $requestId, $allowedPaymentId, $lineTotal, $reference, $paymentProofUrl);
                 }
             }
         }
 
-        if ($voucher && $createdIds) {
-            recordVoucherUsage($db, $voucher, $discountAmount, null, (int) $createdIds[0]);
+        if ($createdIds) {
+            foreach ($vouchers as $voucher) {
+                recordVoucherUsage($db, $voucher, moneyValue($voucher['discountAmount'] ?? 0), null, (int) $createdIds[0]);
+            }
         }
 
         $db->commit();
@@ -622,9 +731,4 @@ if ($type === 'service' && $validatedBy === 'database') {
     }
 }
 
-jsonResponse([
-    'orderNumber' => sprintf('ORD-%s-%04d', date('ymdHis'), random_int(1000, 9999)),
-    'paymentStatus' => paymentStatusLabel($paymentStatus),
-    'validatedBy' => $validatedBy,
-    'customerId' => (int) $sessionUser['id'],
-]);
+jsonResponse(['error' => 'Unable to place checkout for this item type.'], 422);
