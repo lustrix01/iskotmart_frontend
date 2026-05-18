@@ -2,6 +2,9 @@
 
 require_once(__DIR__ . '/config.php');
 
+const CUSTOMER_AVATAR_UPLOAD_DIR = __DIR__ . '/uploads/customer-avatars';
+const CUSTOMER_AVATAR_UPLOAD_URL = '/api/uploads/customer-avatars';
+
 function requireCustomer(PDO $db): array {
     $user = currentUser($db);
     if (!$user) {
@@ -13,6 +16,45 @@ function requireCustomer(PDO $db): array {
     }
 
     return $user;
+}
+
+function storeCustomerAvatarImage(int $customerId, string $dataUrl): string {
+    $dataUrl = trim($dataUrl);
+    if ($dataUrl === '') {
+        return '';
+    }
+
+    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
+        jsonResponse(['error' => 'Profile image must be a JPG, PNG, or WebP image.'], 422);
+    }
+
+    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
+    if ($binary === false || strlen($binary) === 0) {
+        jsonResponse(['error' => 'Profile image could not be read.'], 422);
+    }
+
+    if (strlen($binary) > 5 * 1024 * 1024) {
+        jsonResponse(['error' => 'Profile image must be 5MB or smaller.'], 422);
+    }
+
+    if (!is_dir(CUSTOMER_AVATAR_UPLOAD_DIR) && !mkdir(CUSTOMER_AVATAR_UPLOAD_DIR, 0775, true)) {
+        jsonResponse(['error' => 'Unable to prepare profile image storage.'], 500);
+    }
+
+    $extension = match ($matches[1]) {
+        'image/jpeg', 'image/jpg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        default => 'img',
+    };
+    $fileName = sprintf('customer-%d-avatar-%s.%s', $customerId, bin2hex(random_bytes(8)), $extension);
+    $targetPath = CUSTOMER_AVATAR_UPLOAD_DIR . '/' . $fileName;
+
+    if (file_put_contents($targetPath, $binary) === false) {
+        jsonResponse(['error' => 'Unable to store profile image.'], 500);
+    }
+
+    return CUSTOMER_AVATAR_UPLOAD_URL . '/' . $fileName;
 }
 
 function profilePayloadFromRow(array $row): array {
@@ -71,12 +113,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || $_SERVER['REQUEST_METHOD'] === 'PO
     $dob = trim((string) $data['dob']);
     $displayName = trim((string) ($data['displayName'] ?? ($firstName . ' ' . $lastName)));
     $bio = isset($data['bio']) ? trim((string) $data['bio']) : null;
+    $avatarImage = trim((string) ($data['avatarImage'] ?? ''));
 
     if ($firstName === '' || $lastName === '' || $phone === '' || $dob === '') {
         jsonResponse(['error' => 'Profile fields cannot be blank.'], 422);
     }
 
     try {
+        $avatarUrl = $avatarImage !== '' ? storeCustomerAvatarImage((int) $sessionUser['id'], $avatarImage) : null;
+
         $db->beginTransaction();
 
         $userStmt = $db->prepare(
@@ -85,7 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || $_SERVER['REQUEST_METHOD'] === 'PO
                  LNAME = :last_name,
                  PHONE = :phone,
                  DOB = :dob,
-                 GENDER = :gender
+                 GENDER = :gender,
+                 AVATAR_URL = COALESCE(:avatar_url, AVATAR_URL)
              WHERE USER_ID = :user_id AND STATUS = 'ACTIVE' AND ROLE = 'CUS'"
         );
         $userStmt->execute([
@@ -94,6 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || $_SERVER['REQUEST_METHOD'] === 'PO
             ':phone' => $phone,
             ':dob' => $dob,
             ':gender' => $gender,
+            ':avatar_url' => $avatarUrl,
             ':user_id' => $sessionUser['id'],
         ]);
 
