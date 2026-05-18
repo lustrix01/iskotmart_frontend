@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-label="No shop banner uploaded">
+  <rect width="1200" height="420" fill="#003366"/>
+  <path d="M0 330c145-58 245-58 360 0s220 58 360 0 245-58 480 0v90H0z" fill="#0074d9" opacity=".45"/>
+  <path d="M0 250c130-42 248-42 354 0s224 42 354 0 250-42 492 0v170H0z" fill="#ff851b" opacity=".28"/>
+  <rect x="470" y="132" width="260" height="116" rx="22" fill="#ffffff" opacity=".12"/>
+  <path d="M548 232v-72h38l32 72h-26l-5-14h-40l-5 14h-26zm6-34h26l-13-34-13 34zm84 34v-72h28v50h44v22h-72z" fill="#ffffff" opacity=".55"/>
+</svg>
