@@ -138,7 +138,12 @@ CREATE TABLE `merchant` (
   `SHOP_BANNER_URL` tinytext DEFAULT NULL,
   `ADDRESS` varchar(255) NOT NULL,
   `STUDENT_NUM` varchar(45) NOT NULL,
-  `ID_IMAGE_URL` tinytext DEFAULT NULL
+  `ID_IMAGE_URL` tinytext DEFAULT NULL,
+  `ACCEPTS_COD` tinyint(1) NOT NULL DEFAULT 1,
+  `ACCEPTS_GCASH` tinyint(1) NOT NULL DEFAULT 1,
+  `ALLOW_MEETUP` tinyint(1) NOT NULL DEFAULT 1,
+  `ALLOW_DELIVERY` tinyint(1) NOT NULL DEFAULT 1,
+  `DELIVERY_FEE` double NOT NULL DEFAULT 50
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
 -- --------------------------------------------------------
