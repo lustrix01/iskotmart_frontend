@@ -1,13 +1,30 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Search, Heart, ShoppingCart, User, Mail } from "lucide-react";
 import { useAuth } from "../context/useAuth";
+import { useCart } from "../context/useCart";
+
+const formatBadgeCount = (count) => {
+  const value = Number(count || 0);
+  return value > 99 ? "99+" : String(value);
+};
+
+function Badge({ count }) {
+  if (Number(count || 0) <= 0) return null;
+  return (
+    <span className="absolute -top-2 -right-2 min-w-5 rounded-full bg-[#FF851B] px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
+      {formatBadgeCount(count)}
+    </span>
+  );
+}
 
 export default function Navbar() {
   const { user } = useAuth();
+  const { productItems, serviceItems } = useCart();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const role = user?.role || "guest";
 
   const navByRole = {
@@ -38,9 +55,47 @@ export default function Navbar() {
   };
 
   const links = navByRole[role] || (user ? navByRole.unsupported : navByRole.guest);
+  const cartCount = useMemo(
+    () =>
+      [...productItems, ...serviceItems].reduce(
+        (sum, item) => sum + Number(item.qty || 1),
+        0,
+      ),
+    [productItems, serviceItems],
+  );
+  const visibleUnreadMessages =
+    user && ["customer", "merchant"].includes(role) ? unreadMessages : 0;
 
   const guestLink = (path) =>
     user ? { to: path } : { to: "/login", state: { from: { pathname: path } } };
+
+  useEffect(() => {
+    if (!user || !["customer", "merchant"].includes(role)) {
+      return;
+    }
+
+    let isMounted = true;
+    const loadCounts = async () => {
+      try {
+        const response = await fetch("/api/nav_counts.php", {
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && isMounted) {
+          setUnreadMessages(Number(payload.unreadMessages || 0));
+        }
+      } catch {
+        if (isMounted) {
+          setUnreadMessages(0);
+        }
+      }
+    };
+
+    loadCounts();
+    return () => {
+      isMounted = false;
+    };
+  }, [role, user]);
 
   const handleSearch = (event) => {
     event.preventDefault();
@@ -98,6 +153,7 @@ export default function Navbar() {
             aria-label="Messages"
           >
             <Mail size={20} />
+            <Badge count={visibleUnreadMessages} />
           </Link>
 
           {/* Wishlist Link */}
@@ -115,6 +171,7 @@ export default function Navbar() {
             aria-label="Cart"
           >
             <ShoppingCart size={20} />
+            {role === "customer" ? <Badge count={cartCount} /> : null}
           </Link>
 
           {/* My profile - Permanent link, Title Case, Removed extra boldness and italics */}
