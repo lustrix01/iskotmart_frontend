@@ -10,6 +10,8 @@ import {
   Smile,
 } from "lucide-react";
 
+const FALLBACK_AVATAR = "/placeholders/avatar.svg";
+
 export default function Messages() {
   const location = useLocation();
   const requestedMerchantId = Number(location.state?.merchantId || 0);
@@ -201,17 +203,29 @@ export default function Messages() {
                       activeThread?.id === thread.id ? "bg-white" : "hover:bg-white/70"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold text-[#003366] truncate">
-                        {thread.name}
-                      </p>
-                      <span className="text-[9px] text-gray-400 shrink-0">
-                        {thread.time}
-                      </span>
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={thread.avatarUrl || FALLBACK_AVATAR}
+                        alt={`${thread.name} profile`}
+                        className="h-10 w-10 rounded-full border border-gray-100 bg-gray-50 object-cover shrink-0"
+                        onError={(event) => {
+                          event.currentTarget.src = FALLBACK_AVATAR;
+                        }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold text-[#003366] truncate">
+                            {thread.name}
+                          </p>
+                          <span className="text-[9px] text-gray-400 shrink-0">
+                            {thread.time}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-gray-400 truncate">
+                          {thread.lastMsg || "No messages yet."}
+                        </p>
+                      </div>
                     </div>
-                    <p className="mt-1 text-[11px] text-gray-400 truncate">
-                      {thread.lastMsg || "No messages yet."}
-                    </p>
                   </button>
                 ))}
               </div>
@@ -228,13 +242,23 @@ export default function Messages() {
         <div className="flex-grow bg-[#F8FAFC]/30 flex flex-col min-w-0">
           {activeThread ? (
             <>
-              <div className="px-8 py-5 bg-white border-b border-gray-100">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  Conversation with
-                </p>
-                <h2 className="text-lg font-bold text-[#003366]">
-                  {activeThread.name}
-                </h2>
+              <div className="px-8 py-5 bg-white border-b border-gray-100 flex items-center gap-3">
+                <img
+                  src={activeThread.avatarUrl || FALLBACK_AVATAR}
+                  alt={`${activeThread.name} profile`}
+                  className="h-11 w-11 rounded-full border border-gray-100 bg-gray-50 object-cover"
+                  onError={(event) => {
+                    event.currentTarget.src = FALLBACK_AVATAR;
+                  }}
+                />
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    Conversation with
+                  </p>
+                  <h2 className="text-lg font-bold text-[#003366]">
+                    {activeThread.name}
+                  </h2>
+                </div>
               </div>
 
               <div
