@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 const formatMoney = (value) =>
-  `PHP ${Number(value || 0).toLocaleString(undefined, {
+  `₱${Number(value || 0).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -21,12 +21,12 @@ const chartKeyForFilter = (filter) =>
 const compactMoney = (value) => {
   const amount = Number(value || 0);
   if (amount >= 1000000) {
-    return `PHP ${(amount / 1000000).toFixed(1)}M`;
+    return `₱${(amount / 1000000).toFixed(1)}M`;
   }
   if (amount >= 1000) {
-    return `PHP ${(amount / 1000).toFixed(1)}K`;
+    return `₱${(amount / 1000).toFixed(1)}K`;
   }
-  return `PHP ${amount.toFixed(0)}`;
+  return `₱${amount.toFixed(0)}`;
 };
 
 export default function MerchantDashboard() {
@@ -89,9 +89,9 @@ export default function MerchantDashboard() {
         path: "/merchant/products",
       },
       {
-        title: "Store Visitors",
-        value: String(summary?.stats?.storeVisitors || 0),
-        trend: "No visitor table in schema",
+        title: "Customers",
+        value: String(summary?.stats?.customers || 0),
+        trend: "Unique customers with orders",
         icon: Users,
         path: "/merchant/analytics",
       },
@@ -169,9 +169,6 @@ export default function MerchantDashboard() {
               </h3>
               <p className="text-3xl font-extrabold text-[#003366] mb-1 transition-all">
                 {stat.value}
-              </p>
-              <p className="text-[10px] font-bold text-green-500">
-                {stat.trend}
               </p>
             </div>
             <div className="p-4 rounded-full bg-orange-50 group-hover:bg-[#FF851B] transition-colors">
