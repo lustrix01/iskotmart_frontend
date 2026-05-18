@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import { clearRememberedClientSession } from "../api/clientSession";
 import logo from "../assets/logo.png";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 
@@ -169,6 +170,7 @@ export default function MerchantSignup() {
       }
 
       login(payload.user);
+      clearRememberedClientSession();
       navigate("/merchant", { replace: true });
     } catch (err) {
       setSubmitError(err.message);
