@@ -189,6 +189,80 @@ function ensureTableColumns(PDO $db, string $table, array $columnDefinitions): v
     }
 }
 
+function ensurePasswordResetTable(PDO $db): void {
+    $db->exec(
+        "CREATE TABLE IF NOT EXISTS `PASSWORD_RESETS` (
+            `RESET_ID` int(11) NOT NULL AUTO_INCREMENT,
+            `USER_ID` int(11) NOT NULL,
+            `TOKEN_HASH` char(64) NOT NULL,
+            `EXPIRES_AT` datetime NOT NULL,
+            `USED_AT` datetime DEFAULT NULL,
+            `CREATED_AT` datetime NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (`RESET_ID`),
+            UNIQUE KEY `PASSWORD_RESETS_TOKEN_UNIQUE` (`TOKEN_HASH`),
+            KEY `PASSWORD_RESETS_USER_IDX` (`USER_ID`),
+            KEY `PASSWORD_RESETS_EXPIRES_IDX` (`EXPIRES_AT`),
+            CONSTRAINT `FK_PASSWORD_RESETS_USER`
+                FOREIGN KEY (`USER_ID`) REFERENCES `USERS` (`USER_ID`)
+                ON DELETE CASCADE ON UPDATE NO ACTION
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci"
+    );
+
+    requireTableColumns($db, 'PASSWORD_RESETS', [
+        'RESET_ID',
+        'USER_ID',
+        'TOKEN_HASH',
+        'EXPIRES_AT',
+        'USED_AT',
+        'CREATED_AT',
+    ]);
+}
+
+function normalizeImageMimeType(string $mime): string {
+    $normalized = strtolower(trim($mime));
+    return $normalized === 'image/jpg' ? 'image/jpeg' : $normalized;
+}
+
+function verifiedImageDataUrlPayload(string $dataUrl, array $allowedMimeTypes, string $label, int $maxBytes): array {
+    $allowed = array_values(array_unique(array_map('normalizeImageMimeType', $allowedMimeTypes)));
+    if (!preg_match('/^data:(image\/[A-Za-z0-9.+-]+);base64,([A-Za-z0-9+\/=\r\n]+)$/', trim($dataUrl), $matches)) {
+        jsonResponse(['error' => "{$label} must be a JPG, PNG, WebP, or GIF image."], 422);
+    }
+
+    $declaredMime = normalizeImageMimeType($matches[1]);
+    if (!in_array($declaredMime, $allowed, true)) {
+        jsonResponse(['error' => "{$label} uses an unsupported image type."], 422);
+    }
+
+    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
+    if ($binary === false || strlen($binary) === 0) {
+        jsonResponse(['error' => "{$label} image could not be read."], 422);
+    }
+
+    if (strlen($binary) > $maxBytes) {
+        jsonResponse(['error' => "{$label} image must be " . (int) ($maxBytes / 1024 / 1024) . "MB or smaller."], 422);
+    }
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $detectedMime = normalizeImageMimeType((string) $finfo->buffer($binary));
+    if (!in_array($detectedMime, $allowed, true)) {
+        jsonResponse(['error' => "{$label} image content does not match an allowed image type."], 422);
+    }
+
+    $extensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+
+    return [
+        'binary' => $binary,
+        'mime' => $detectedMime,
+        'extension' => $extensions[$detectedMime] ?? 'img',
+    ];
+}
+
 function requireFields(array $data, array $fields): void {
     foreach ($fields as $field) {
         if (!isset($data[$field]) || trim((string) $data[$field]) === '') {
