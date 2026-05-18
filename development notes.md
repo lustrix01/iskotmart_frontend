@@ -561,3 +561,31 @@ Scope clarification: subscription and promo surfaces remain removed because they
   - `npm run lint`
   - `npm run build`
   - `git diff --check`
+
+### UX confirmations, shop closure, messaging fixes, and merchant insights consolidation (May 18, 2026)
+
+- [T] Replaced remaining native or missing destructive confirmations where needed.
+  - `src/pages/customer/Addresses.jsx` now uses an in-app delete-address confirmation modal instead of `window.confirm`.
+  - Existing validation-only native alerts were audited separately and left for inline validation follow-up.
+- [T] Added password visibility controls across auth and merchant security forms.
+  - Updated login, customer signup, merchant signup, reset password, and merchant shop security password fields with eye/eye-off toggles.
+- [T] Added soft merchant shop closure.
+  - `api/merchant_profile.php` now accepts `DELETE` after the merchant types their email and sets `USERS.STATUS = 'INACTIVE'`.
+  - `src/pages/merchant/ShopSettings.jsx` now shows a typed-email confirmation modal, logs the merchant out, and redirects to login after closure.
+  - `api/checkout.php` and `api/customer_voucher.php` now block stale checkout and voucher validation for inactive merchants.
+  - Public storefront/search already filter active merchants through existing `USERS.STATUS = 'ACTIVE'` joins.
+- [T] Fixed receipt and order chat flows.
+  - `src/pages/merchant/MerchantOrders.jsx` now wires the Print Receipt button to a printable merchant receipt.
+  - `src/pages/customer/Orders.jsx` now shows a centered Opening IskoChat modal, creates/opens the merchant thread, and routes to customer messages.
+  - `src/pages/customer/Messages.jsx` now selects the merchant thread passed from the orders page.
+- [T] Consolidated merchant Earnings and Analytics into Insights.
+  - Added `api/merchant_insights.php` to return merged revenue, customer, trend, performer, deduction, and inventory data.
+  - Added `src/pages/merchant/MerchantInsights.jsx` as the combined merchant view.
+  - Updated routes, sidebar navigation, and dashboard stat links to use `/merchant/insights`.
+  - Old `/merchant/analytics` and `/merchant/earnings` routes redirect to `/merchant/insights`; the old frontend pages were removed.
+- Validation performed for this batch:
+  - `C:\xampp\php\php.exe -l api/merchant_profile.php`
+  - `C:\xampp\php\php.exe -l api/checkout.php`
+  - `C:\xampp\php\php.exe -l api/customer_voucher.php`
+  - `C:\xampp\php\php.exe -l api/merchant_insights.php`
+  - `npm run build`
