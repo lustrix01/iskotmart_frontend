@@ -242,6 +242,7 @@ CREATE TABLE `order_item` (
 CREATE TABLE `payment` (
   `PAYMENT_ID` int(11) NOT NULL,
   `REF_NUM` varchar(255) NOT NULL,
+  `PROOF_URL` tinytext DEFAULT NULL,
   `AMOUNT` int(11) NOT NULL,
   `PAID_ON` datetime(1) NOT NULL DEFAULT current_timestamp(1),
   `ORDER_ID` int(11) DEFAULT NULL,
