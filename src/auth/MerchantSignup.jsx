@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { clearRememberedClientSession } from "../api/clientSession";
 import logo from "../assets/logo.png";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 
 export default function MerchantSignup() {
   const navigate = useNavigate();
@@ -16,6 +16,10 @@ export default function MerchantSignup() {
   const [emailError, setEmailError] = useState("");
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState({
+    password: false,
+    confirm: false,
+  });
 
   // Centralized form data state
   const [formData, setFormData] = useState({
@@ -696,14 +700,37 @@ export default function MerchantSignup() {
                       <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
                         Password
                       </label>
-                      <input
-                        type="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword.password ? "text" : "password"}
+                          name="password"
+                          value={formData.password}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-2.5 py-1.5 pr-9 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                        />
+                        <button
+                          type="button"
+                          aria-label={
+                            showPassword.password
+                              ? "Hide password"
+                              : "Show password"
+                          }
+                          onClick={() =>
+                            setShowPassword((current) => ({
+                              ...current,
+                              password: !current.password,
+                            }))
+                          }
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                        >
+                          {showPassword.password ? (
+                            <EyeOff size={15} />
+                          ) : (
+                            <Eye size={15} />
+                          )}
+                        </button>
+                      </div>
                       <p className="mt-1 text-[10px] text-gray-400">
                         {passwordPolicyMessage}
                       </p>
@@ -712,14 +739,37 @@ export default function MerchantSignup() {
                       <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
                         Confirm Password
                       </label>
-                      <input
-                        type="password"
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword.confirm ? "text" : "password"}
+                          name="confirmPassword"
+                          value={formData.confirmPassword}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-2.5 py-1.5 pr-9 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                        />
+                        <button
+                          type="button"
+                          aria-label={
+                            showPassword.confirm
+                              ? "Hide confirm password"
+                              : "Show confirm password"
+                          }
+                          onClick={() =>
+                            setShowPassword((current) => ({
+                              ...current,
+                              confirm: !current.confirm,
+                            }))
+                          }
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                        >
+                          {showPassword.confirm ? (
+                            <EyeOff size={15} />
+                          ) : (
+                            <Eye size={15} />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
