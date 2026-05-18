@@ -44,22 +44,13 @@ function ensureCheckoutMerchantFulfillmentColumns(PDO $db): void {
     }
     $checked = true;
 
-    $columns = $db->query("SHOW COLUMNS FROM MERCHANT")->fetchAll(PDO::FETCH_COLUMN);
-    if (!in_array('ACCEPTS_COD', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_COD tinyint(1) NOT NULL DEFAULT 1 AFTER ID_IMAGE_URL");
-    }
-    if (!in_array('ACCEPTS_GCASH', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_GCASH tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_COD");
-    }
-    if (!in_array('ALLOW_MEETUP', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_MEETUP tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_GCASH");
-    }
-    if (!in_array('ALLOW_DELIVERY', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_DELIVERY tinyint(1) NOT NULL DEFAULT 1 AFTER ALLOW_MEETUP");
-    }
-    if (!in_array('DELIVERY_FEE', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN DELIVERY_FEE double NOT NULL DEFAULT 50 AFTER ALLOW_DELIVERY");
-    }
+    requireTableColumns($db, 'MERCHANT', [
+        'ACCEPTS_COD',
+        'ACCEPTS_GCASH',
+        'ALLOW_MEETUP',
+        'ALLOW_DELIVERY',
+        'DELIVERY_FEE',
+    ]);
 }
 
 function checkoutOffering(PDO $db, string $type, int $id): ?array {
