@@ -17,8 +17,7 @@ import { useAuth } from "../../context/useAuth";
 import { useCart } from "../../context/useCart";
 import { useStorefrontListings } from "../../data/storefrontData";
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=800&auto=format&fit=crop";
+const FALLBACK_IMAGE = "/placeholders/offering.svg";
 
 export default function ProductDetails() {
   const { id } = useParams();
