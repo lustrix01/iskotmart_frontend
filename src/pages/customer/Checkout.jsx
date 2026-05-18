@@ -796,9 +796,7 @@ export default function Checkout() {
                     <img
                       src={
                         item.img ||
-                        (type === "product"
-                          ? "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=100"
-                          : "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=100")
+                        "/placeholders/offering.svg"
                       }
                       className="w-full h-full object-cover"
                       alt="item"
