@@ -604,3 +604,14 @@ Scope clarification: subscription and promo surfaces remain removed because they
   - `npm run lint`
   - `npm run build`
   - `C:\xampp\php\php.exe -l` for touched PHP endpoints
+
+### Footer link population and booking cart polish (May 19, 2026)
+
+- [T] Populated the customer footer with editable link arrays in `src/components/Footer.jsx`.
+- [T] Kept Customer Support links as placeholder anchors for now so they do not route to missing pages.
+- [T] Updated service booking cart behavior so repeated service additions create separate booking rows instead of increasing a merged quantity.
+- [T] Updated wishlist availability handling so products with no stock and services with no slots cannot be added from wishlist.
+- Validation performed for this batch:
+  - `npm run lint`
+  - `npm run build`
+  - `C:\xampp\php\php.exe -l api\customer_wishlist.php`
