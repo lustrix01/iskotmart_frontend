@@ -10,6 +10,7 @@ import {
   X,
   CheckCircle2,
   XCircle,
+  AlertCircle,
 } from "lucide-react";
 
 const emptyForm = {
@@ -34,6 +35,8 @@ export default function Addresses() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadAddresses = async () => {
     setIsLoading(true);
@@ -83,6 +86,12 @@ export default function Addresses() {
     }
   };
 
+  const closeDeleteModal = () => {
+    if (!isDeleting) {
+      setDeleteTarget(null);
+    }
+  };
+
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
@@ -128,10 +137,7 @@ export default function Addresses() {
   };
 
   const deleteAddress = async (address) => {
-    if (!window.confirm(`Delete ${address.category || "this address"}?`)) {
-      return;
-    }
-
+    setIsDeleting(true);
     setError("");
     setSuccess("");
 
@@ -149,8 +155,11 @@ export default function Addresses() {
       }
 
       applyAddressPayload(payload, "Address deleted.");
+      setDeleteTarget(null);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -223,7 +232,7 @@ export default function Addresses() {
               key={address.id}
               address={address}
               onEdit={() => openEditForm(address)}
-              onDelete={() => deleteAddress(address)}
+              onDelete={() => setDeleteTarget(address)}
               onSetDefault={() => setDefaultAddress(address)}
             />
           ))}
@@ -237,6 +246,15 @@ export default function Addresses() {
           onClose={closeForm}
           onSubmit={handleSubmit}
           onChange={updateField}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteAddressModal
+          address={deleteTarget}
+          isDeleting={isDeleting}
+          onClose={closeDeleteModal}
+          onConfirm={() => deleteAddress(deleteTarget)}
         />
       )}
     </div>
@@ -465,6 +483,56 @@ function AddressFormModal({ form, isSaving, onClose, onSubmit, onChange }) {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function DeleteAddressModal({ address, isDeleting, onClose, onConfirm }) {
+  const label = address.category || "this address";
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close delete address confirmation"
+        className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-in zoom-in duration-200">
+        <div className="p-8 text-center">
+          <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <AlertCircle size={32} className="text-red-500" />
+          </div>
+          <h3 className="text-lg font-bold text-[#003366] mb-2">
+            Delete address?
+          </h3>
+          <p className="text-gray-500 text-xs mb-6 leading-relaxed px-2">
+            Are you sure you want to delete{" "}
+            <span className="font-bold text-gray-800">{label}</span>? This
+            action cannot be undone.
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isDeleting}
+              className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold text-xs shadow-md active:scale-95 transition-all disabled:opacity-70 disabled:active:scale-100"
+            >
+              {isDeleting ? "Deleting..." : "Yes, delete address"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isDeleting}
+              className="w-full bg-white text-gray-500 py-3 rounded-xl font-bold text-xs border border-gray-100 hover:bg-gray-50 transition-all disabled:opacity-70"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+        <div className="h-1.5 w-full bg-red-500" />
+      </div>
     </div>
   );
 }
