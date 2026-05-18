@@ -14,7 +14,7 @@ $email = strtolower(trim((string) $data['email']));
 enforceAuthRateLimit('login', $email, 8, 300);
 
 $stmt = $db->prepare(
-    "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, PASSWORD_HASH, ROLE
+    "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, PASSWORD_HASH, ROLE, AVATAR_URL
      FROM USERS
      WHERE EMAIL = :email AND STATUS = 'ACTIVE'
      LIMIT 1"
