@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 
@@ -13,6 +13,7 @@ const emptyProfile = {
   bio: "",
   createdOn: "",
   avatarUrl: "",
+  avatarImage: "",
 };
 
 export default function Profile() {
@@ -22,6 +23,7 @@ export default function Profile() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const avatarInputRef = useRef(null);
 
   const avatarSrc = useMemo(() => {
     if (profile.avatarUrl) {
@@ -75,6 +77,39 @@ export default function Profile() {
     setProfile((current) => ({ ...current, [field]: value }));
   };
 
+  const handleAvatarUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Profile image must be 5MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Profile image must be a JPG, PNG, or WebP image.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = String(reader.result || "");
+      setProfile((current) => ({
+        ...current,
+        avatarUrl: result,
+        avatarImage: result,
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
@@ -94,7 +129,7 @@ export default function Profile() {
         throw new Error(payload.error || "Unable to save profile.");
       }
 
-      setProfile({ ...emptyProfile, ...payload.profile });
+      setProfile({ ...emptyProfile, ...payload.profile, avatarImage: "" });
       if (payload.user) {
         login(payload.user);
       }
@@ -135,12 +170,19 @@ export default function Profile() {
                 </div>
                 <button
                   type="button"
-                  className="absolute bottom-1 right-1 bg-[#003366] text-white p-2 rounded-full shadow-lg border-2 border-white opacity-60 cursor-not-allowed"
-                  title="Profile photo upload is not enabled yet."
-                  disabled
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="absolute bottom-1 right-1 bg-[#003366] text-white p-2 rounded-full shadow-lg border-2 border-white hover:bg-[#004b8d] transition-colors"
+                  title="Upload profile photo"
                 >
                   <Camera size={14} />
                 </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleAvatarUpload}
+                  className="hidden"
+                />
               </div>
               <div className="space-y-1">
                 <h2 className="text-2xl font-bold text-gray-800">
