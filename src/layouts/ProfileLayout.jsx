@@ -11,6 +11,8 @@ import {
   LogOut as LogOutIcon,
   AlertCircle,
   ArrowLeft, // Added the Arrow icon for the back button
+  Menu,
+  X,
 } from "lucide-react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/useAuth";
@@ -24,6 +26,7 @@ export default function ProfileLayout() {
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [profileSummary, setProfileSummary] = useState({
     name: "My Profile",
     avatarUrl: "",
@@ -83,12 +86,39 @@ export default function ProfileLayout() {
       <Navbar />
 
       <div className="flex">
+        {isMobileNavOpen && (
+          <button
+            type="button"
+            aria-label="Close account menu overlay"
+            className="fixed inset-0 top-16 z-30 bg-[#003366]/40 backdrop-blur-sm lg:hidden"
+            onClick={() => setIsMobileNavOpen(false)}
+          />
+        )}
+
         {/* SIDEBAR */}
-        <aside className="w-64 bg-[#003366] text-white fixed h-[calc(100vh-64px)] top-16 left-0 z-40 flex flex-col justify-between border-r border-white/5 shadow-lg">
+        <aside
+          className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-64px)] w-64 transform flex-col justify-between border-r border-white/5 bg-[#003366] text-white shadow-lg transition-transform duration-200 lg:translate-x-0 ${
+            isMobileNavOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
           <div className="p-4">
+            <div className="mb-4 flex items-center justify-between lg:hidden">
+              <span className="text-xs font-bold uppercase tracking-widest text-white/60">
+                Account
+              </span>
+              <button
+                type="button"
+                aria-label="Close account menu"
+                onClick={() => setIsMobileNavOpen(false)}
+                className="rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
             {/* NEW: Back to Store Button */}
             <Link
               to="/"
+              onClick={() => setIsMobileNavOpen(false)}
               className="flex items-center gap-3 px-4 py-2.5 mb-6 rounded-md text-sm font-bold text-[#FF851B] bg-[#FF851B]/10 hover:bg-[#FF851B]/20 transition-all border border-[#FF851B]/20"
             >
               <ArrowLeft size={16} />
@@ -105,6 +135,7 @@ export default function ProfileLayout() {
                   <Link
                     key={item.path}
                     to={item.path}
+                    onClick={() => setIsMobileNavOpen(false)}
                     className={`flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-all group ${
                       isActive
                         ? "bg-white/10 text-white border-l-4 border-[#FF851B]"
@@ -137,11 +168,23 @@ export default function ProfileLayout() {
         </aside>
 
         {/* CONTENT AREA */}
-        <main className="flex-grow ml-64 pt-4 px-8 pb-10 mt-16">
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-gray-100 bg-white px-5 py-3 shadow-sm">
-            <h1 className="text-lg font-bold text-[#003366]">{pageTitle}</h1>
+        <main className="mt-16 flex-grow px-4 pb-10 pt-4 sm:px-6 lg:ml-64 lg:px-8">
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm sm:px-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                aria-label="Open account menu"
+                onClick={() => setIsMobileNavOpen(true)}
+                className="rounded-md border border-gray-100 p-2 text-[#003366] shadow-sm lg:hidden"
+              >
+                <Menu size={18} />
+              </button>
+              <h1 className="truncate text-lg font-bold text-[#003366]">
+                {pageTitle}
+              </h1>
+            </div>
             <div className="flex items-center gap-2 pl-3 border-l border-gray-100">
-              <span className="text-xs font-bold text-gray-700">
+              <span className="hidden text-xs font-bold text-gray-700 sm:inline">
                 {profileSummary.name}
               </span>
               <img
