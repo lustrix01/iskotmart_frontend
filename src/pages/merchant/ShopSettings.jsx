@@ -200,6 +200,14 @@ export default function ShopSettings() {
         allowDelivery: Boolean(profile.fulfillment?.allowDelivery ?? true),
         deliveryFee: Number(profile.fulfillment?.deliveryFee ?? 50),
       });
+      window.dispatchEvent(
+        new CustomEvent("iskomart:merchant-profile-updated", {
+          detail: {
+            shopName: profile.shopName || "",
+            avatarUrl: profile.avatarUrl || "",
+          },
+        }),
+      );
       setIsSaving(false);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
