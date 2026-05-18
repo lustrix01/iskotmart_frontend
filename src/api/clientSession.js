@@ -1,4 +1,5 @@
 const STORAGE_KEY = "iskomart_client_session";
+const PERSISTENT_STORAGE_KEY = "iskomart_client_session_remembered";
 const HEADER_NAME = "X-Isko-Client-Session";
 
 function randomToken() {
@@ -14,10 +15,21 @@ function randomToken() {
 function clientSessionToken() {
   let token = sessionStorage.getItem(STORAGE_KEY);
   if (!token) {
-    token = randomToken();
-    sessionStorage.setItem(STORAGE_KEY, token);
+    token = localStorage.getItem(PERSISTENT_STORAGE_KEY);
   }
+  if (!token) {
+    token = randomToken();
+  }
+  sessionStorage.setItem(STORAGE_KEY, token);
   return token;
+}
+
+export function rememberClientSession() {
+  localStorage.setItem(PERSISTENT_STORAGE_KEY, clientSessionToken());
+}
+
+export function clearRememberedClientSession() {
+  localStorage.removeItem(PERSISTENT_STORAGE_KEY);
 }
 
 function isApiRequest(input) {
