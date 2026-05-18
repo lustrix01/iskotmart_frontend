@@ -24,14 +24,7 @@ if ($passwordError !== null) {
 $tokenHash = hash('sha256', $token);
 
 try {
-    requireTableColumns($db, 'PASSWORD_RESETS', [
-        'RESET_ID',
-        'USER_ID',
-        'TOKEN_HASH',
-        'EXPIRES_AT',
-        'USED_AT',
-        'CREATED_AT',
-    ]);
+    ensurePasswordResetTable($db);
 
     $db->beginTransaction();
 
