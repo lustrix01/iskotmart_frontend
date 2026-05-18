@@ -16,23 +16,12 @@ function requireCustomerForWishlist(PDO $db): array {
 }
 
 function ensureWishlistTable(PDO $db): void {
-    $db->exec(
-        "CREATE TABLE IF NOT EXISTS CUSTOMER_WISHLIST (
-            WISHLIST_ID int(11) NOT NULL AUTO_INCREMENT,
-            CUSTOMER_ID int(11) NOT NULL,
-            OFFERING_ID int(11) NOT NULL,
-            ADDED_ON datetime(1) NOT NULL DEFAULT current_timestamp(1),
-            PRIMARY KEY (WISHLIST_ID),
-            UNIQUE KEY CUSTOMER_OFFERING_UNIQUE (CUSTOMER_ID, OFFERING_ID),
-            KEY CUSTOMER_WISHLIST_OFFERING_idx (OFFERING_ID),
-            CONSTRAINT FK_CUSTOMER_WISHLIST_CUSTOMER
-                FOREIGN KEY (CUSTOMER_ID) REFERENCES CUSTOMER (CUSTOMER_ID)
-                ON DELETE CASCADE ON UPDATE NO ACTION,
-            CONSTRAINT FK_CUSTOMER_WISHLIST_OFFERING
-                FOREIGN KEY (OFFERING_ID) REFERENCES OFFERING (OFFERING_ID)
-                ON DELETE CASCADE ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci"
-    );
+    requireTableColumns($db, 'CUSTOMER_WISHLIST', [
+        'WISHLIST_ID',
+        'CUSTOMER_ID',
+        'OFFERING_ID',
+        'ADDED_ON',
+    ]);
 }
 
 function wishlistItems(PDO $db, int $customerId): array {
