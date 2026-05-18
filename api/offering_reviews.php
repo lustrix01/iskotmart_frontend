@@ -83,33 +83,15 @@ function storeReviewImage(PDO $db, int $reviewId, string $dataUrl): void {
         return;
     }
 
-    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
-        jsonResponse(['error' => 'Review image must be a PNG, JPG, WebP, or GIF file.'], 422);
-    }
-
-    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
-    if ($binary === false || strlen($binary) === 0) {
-        jsonResponse(['error' => 'Review image could not be read.'], 422);
-    }
-
-    if (strlen($binary) > 5 * 1024 * 1024) {
-        jsonResponse(['error' => 'Review image must be 5MB or smaller.'], 422);
-    }
+    $image = verifiedImageDataUrlPayload($dataUrl, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], 'Review', 5 * 1024 * 1024);
 
     if (!is_dir(REVIEW_UPLOAD_DIR) && !mkdir(REVIEW_UPLOAD_DIR, 0775, true)) {
         jsonResponse(['error' => 'Unable to prepare review image storage.'], 500);
     }
 
-    $extension = match ($matches[1]) {
-        'image/jpeg', 'image/jpg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        'image/gif' => 'gif',
-        default => 'img',
-    };
-    $fileName = sprintf('review-%d-%s.%s', $reviewId, bin2hex(random_bytes(8)), $extension);
+    $fileName = sprintf('review-%d-%s.%s', $reviewId, bin2hex(random_bytes(8)), $image['extension']);
     $targetPath = REVIEW_UPLOAD_DIR . '/' . $fileName;
-    if (file_put_contents($targetPath, $binary) === false) {
+    if (file_put_contents($targetPath, $image['binary']) === false) {
         jsonResponse(['error' => 'Unable to store review image.'], 500);
     }
 
@@ -122,7 +104,7 @@ function storeReviewImage(PDO $db, int $reviewId, string $dataUrl): void {
     );
     $insertStmt->execute([
         ':attach_url' => REVIEW_UPLOAD_URL . '/' . $fileName,
-        ':file_type' => $matches[1],
+        ':file_type' => $image['mime'],
         ':review_id' => $reviewId,
     ]);
 }
