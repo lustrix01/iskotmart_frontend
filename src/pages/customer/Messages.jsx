@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   AlertCircle,
@@ -21,6 +21,7 @@ export default function Messages() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [imageData, setImageData] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const messagesRef = useRef(null);
   const imageInputRef = useRef(null);
   const isAtBottomRef = useRef(true);
@@ -29,13 +30,25 @@ export default function Messages() {
     () => threads.find((thread) => thread.id === activeThreadId) || threads[0] || null,
     [activeThreadId, threads],
   );
+  const filteredThreads = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return threads;
+    }
+    return threads.filter((thread) =>
+      [thread.name, thread.lastMsg]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [searchQuery, threads]);
 
   const showNotice = (message) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 2500);
   };
 
-  const loadThreads = async ({ keepActive = false } = {}) => {
+  const loadThreads = useCallback(async ({ keepActive = false } = {}) => {
     try {
       setLoading(true);
       setError("");
@@ -64,11 +77,11 @@ export default function Messages() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [requestedMerchantId]);
 
   useEffect(() => {
     loadThreads();
-  }, [requestedMerchantId]);
+  }, [loadThreads]);
 
   const scrollMessagesToBottom = () => {
     const container = messagesRef.current;
@@ -163,9 +176,10 @@ export default function Messages() {
               />
               <input
                 type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search conversations..."
-                disabled
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-xs text-gray-400"
+                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-xs text-gray-600 outline-none focus:border-[#0074D9]"
               />
             </div>
           </div>
@@ -177,9 +191,9 @@ export default function Messages() {
                   Loading conversations...
                 </p>
               </div>
-            ) : threads.length > 0 ? (
+            ) : filteredThreads.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {threads.map((thread) => (
+                {filteredThreads.map((thread) => (
                   <button
                     key={thread.id}
                     onClick={() => setActiveThreadId(thread.id)}
@@ -204,7 +218,7 @@ export default function Messages() {
             ) : (
               <div className="h-full flex items-center justify-center px-6 text-center">
                 <p className="text-[11px] font-medium text-gray-400">
-                  No conversations yet.
+                  {threads.length > 0 ? "No conversations match your search." : "No conversations yet."}
                 </p>
               </div>
             )}
