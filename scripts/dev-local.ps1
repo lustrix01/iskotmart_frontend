@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $phpPath = "C:\xampp\php\php.exe"
-$apiHost = "127.0.0.1"
+$apiHost = "localhost"
 $apiPort = "8000"
 $apiTarget = "http://${apiHost}:${apiPort}"
 
