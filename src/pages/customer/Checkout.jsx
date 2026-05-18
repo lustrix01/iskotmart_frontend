@@ -68,6 +68,7 @@ export default function Checkout() {
   const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
   const [paymentOptions, setPaymentOptions] = useState({
     allowedMethods: { cod: true, gcash: true },
+    deliveryOptions: { standard: true, pickup: true, deliveryFee: 50 },
     merchants: [],
     loaded: false,
     error: "",
@@ -105,7 +106,7 @@ export default function Checkout() {
   );
   const shippingFee =
     hasCheckoutItems && deliveryMethod === "standard" && type === "product"
-      ? 50.0
+      ? Number(paymentOptions.deliveryOptions?.deliveryFee ?? 50)
       : 0.0;
   const serviceFee = hasCheckoutItems && type === "service" ? 50.0 : 0.0;
   const discountAmount = appliedVouchers.reduce(
@@ -125,6 +126,10 @@ export default function Checkout() {
   );
   const isPaymentAllowed = (method) =>
     !paymentOptions.loaded || Boolean(paymentOptions.allowedMethods?.[method]);
+  const isDeliveryAllowed = (method) =>
+    type !== "product" ||
+    !paymentOptions.loaded ||
+    Boolean(paymentOptions.deliveryOptions?.[method]);
   const gcashPaymentDetails = paymentOptions.merchants
     .map((merchant) => ({
       ...merchant,
@@ -197,6 +202,7 @@ export default function Checkout() {
     if (!user || !hasCheckoutItems) {
       setPaymentOptions({
         allowedMethods: { cod: true, gcash: true },
+        deliveryOptions: { standard: true, pickup: true, deliveryFee: 50 },
         merchants: [],
         loaded: false,
         error: "",
@@ -235,6 +241,11 @@ export default function Checkout() {
             cod: Boolean(payload.allowedMethods?.cod),
             gcash: Boolean(payload.allowedMethods?.gcash),
           },
+          deliveryOptions: {
+            standard: Boolean(payload.deliveryOptions?.standard),
+            pickup: Boolean(payload.deliveryOptions?.pickup),
+            deliveryFee: Number(payload.deliveryOptions?.deliveryFee ?? 50),
+          },
           merchants: Array.isArray(payload.merchants) ? payload.merchants : [],
           loaded: true,
           error: "",
@@ -244,10 +255,14 @@ export default function Checkout() {
         if (!nextOptions.allowedMethods[paymentMethod]) {
           setPaymentMethod(nextOptions.allowedMethods.cod ? "cod" : "gcash");
         }
+        if (type === "product" && !nextOptions.deliveryOptions[deliveryMethod]) {
+          setDeliveryMethod(nextOptions.deliveryOptions.standard ? "standard" : "pickup");
+        }
       } catch (error) {
         if (isMounted) {
           setPaymentOptions({
             allowedMethods: { cod: false, gcash: false },
+            deliveryOptions: { standard: false, pickup: false, deliveryFee: 50 },
             merchants: [],
             loaded: true,
             error: error.message,
@@ -261,7 +276,7 @@ export default function Checkout() {
     return () => {
       isMounted = false;
     };
-  }, [type, user, hasCheckoutItems, checkoutItems, optionItemsKey, paymentMethod]);
+  }, [type, user, hasCheckoutItems, checkoutItems, optionItemsKey, paymentMethod, deliveryMethod]);
 
   const submitOrder = async ({ gcashReference = "" } = {}) => {
     if (!user) {
@@ -340,6 +355,15 @@ export default function Checkout() {
   const handlePlaceOrder = () => {
     if (!hasShippingAddress) {
       setCheckoutError("Add a shipping address before placing this order.");
+      return;
+    }
+
+    if (!isDeliveryAllowed(deliveryMethod)) {
+      setCheckoutError(
+        deliveryMethod === "standard"
+          ? "Standard delivery is not enabled by this merchant."
+          : "Campus meetup is not enabled by this merchant.",
+      );
       return;
     }
 
@@ -656,6 +680,7 @@ export default function Checkout() {
                 id="standard"
                 selected={deliveryMethod === "standard"}
                 onClick={setDeliveryMethod}
+                disabled={!isDeliveryAllowed("standard")}
                 icon={<Truck size={20} />}
                 title={
                   type === "product" ? "Standard delivery" : "Online / Remote"
@@ -665,13 +690,18 @@ export default function Checkout() {
                     ? "3-5 business days via campus rider"
                     : "Via Email/Cloud Link"
                 }
-                price={type === "product" ? "₱50.0" : "₱0.0"}
+                price={
+                  type === "product"
+                    ? `₱${Number(paymentOptions.deliveryOptions?.deliveryFee ?? 50).toFixed(1)}`
+                    : "₱0.0"
+                }
               />
 
               <MethodCard
                 id="pickup"
                 selected={deliveryMethod === "pickup"}
                 onClick={setDeliveryMethod}
+                disabled={!isDeliveryAllowed("pickup")}
                 icon={<Handshake size={20} />}
                 title={
                   type === "product" ? "Campus Meetup" : "On-campus meeting"
@@ -911,7 +941,8 @@ export default function Checkout() {
                 !hasCheckoutItems ||
                 isLoadingAddress ||
                 !hasShippingAddress ||
-                !isPaymentAllowed(paymentMethod)
+                !isPaymentAllowed(paymentMethod) ||
+                !isDeliveryAllowed(deliveryMethod)
               }
               className="w-full bg-[#FF851B] text-white py-4 rounded-md font-bold text-xs tracking-wide hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
             >
