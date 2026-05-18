@@ -10,6 +10,8 @@ import {
   Smile,
 } from "lucide-react";
 
+const FALLBACK_AVATAR = "/placeholders/avatar.svg";
+
 export default function MerchantMessages() {
   const [threads, setThreads] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -199,9 +201,20 @@ export default function MerchantMessages() {
                 ) : null}
 
                 <div className="relative shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold border-2 border-white shadow-sm">
-                    {chat.avatar || "CU"}
-                  </div>
+                  {chat.avatarUrl ? (
+                    <img
+                      src={chat.avatarUrl}
+                      alt={`${chat.name} profile`}
+                      className="w-12 h-12 rounded-full border-2 border-white bg-gray-50 object-cover shadow-sm"
+                      onError={(event) => {
+                        event.currentTarget.src = FALLBACK_AVATAR;
+                      }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold border-2 border-white shadow-sm">
+                      {chat.avatar || "CU"}
+                    </div>
+                  )}
                   <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white bg-green-500"></div>
                 </div>
 
@@ -238,9 +251,20 @@ export default function MerchantMessages() {
           <>
             <div className="h-[70px] border-b border-gray-100 flex items-center justify-between px-6">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold">
-                  {activeChat.avatar || "CU"}
-                </div>
+                {activeChat.avatarUrl ? (
+                  <img
+                    src={activeChat.avatarUrl}
+                    alt={`${activeChat.name} profile`}
+                    className="w-10 h-10 rounded-full border border-gray-100 bg-gray-50 object-cover"
+                    onError={(event) => {
+                      event.currentTarget.src = FALLBACK_AVATAR;
+                    }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold">
+                    {activeChat.avatar || "CU"}
+                  </div>
+                )}
                 <div>
                   <h2 className="text-[15px] font-bold text-[#001F3F]">
                     {activeChat.name}
