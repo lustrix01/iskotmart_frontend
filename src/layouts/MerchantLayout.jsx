@@ -11,6 +11,8 @@ import {
   LogOut as LogOutIcon,
   AlertCircle,
   ShieldCheck,
+  Menu,
+  X,
 } from "lucide-react";
 import { useAuth } from "../context/useAuth";
 
@@ -23,6 +25,7 @@ export default function MerchantLayout() {
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [merchantProfile, setMerchantProfile] = useState({
     shopName: "Merchant Shop",
     initials: "IM",
@@ -49,6 +52,9 @@ export default function MerchantLayout() {
       navigate("/login", { replace: true });
     }, 2000);
   };
+
+  const pageTitle =
+    menuItems.find((m) => m.path === location.pathname)?.name || "Dashboard";
 
   useEffect(() => {
     let isMounted = true;
@@ -92,13 +98,34 @@ export default function MerchantLayout() {
 
   return (
     <div className="min-h-screen bg-[#F5F7F9] font-sans flex">
-      <aside className="w-64 bg-[#003366] text-white fixed h-screen top-0 left-0 z-40 flex flex-col justify-between shadow-xl">
+      {isMobileNavOpen && (
+        <button
+          type="button"
+          aria-label="Close merchant menu overlay"
+          className="fixed inset-0 z-30 bg-[#003366]/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setIsMobileNavOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-0 z-40 flex h-screen w-64 transform flex-col justify-between bg-[#003366] text-white shadow-xl transition-transform duration-200 lg:translate-x-0 ${
+          isMobileNavOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div>
-          <div className="h-16 flex items-center justify-center border-b border-white/10 bg-[#002244]">
+          <div className="h-16 flex items-center justify-between border-b border-white/10 bg-[#002244] px-5">
             <Link to="/merchant" className="text-2xl font-bold tracking-tight">
               <span className="text-[#0074D9]">Isko</span>
               <span className="text-[#FF851B]">Mart</span>
             </Link>
+            <button
+              type="button"
+              aria-label="Close merchant menu"
+              onClick={() => setIsMobileNavOpen(false)}
+              className="rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
+            >
+              <X size={18} />
+            </button>
           </div>
 
           <div className="p-4 mt-2 overflow-y-auto max-h-[calc(100vh-140px)] no-scrollbar">
@@ -116,6 +143,7 @@ export default function MerchantLayout() {
                   <Link
                     key={item.path}
                     to={item.path}
+                    onClick={() => setIsMobileNavOpen(false)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-bold transition-all group ${
                       isActive
                         ? "bg-white/10 text-white border-l-4 border-[#FF851B]"
@@ -149,12 +177,21 @@ export default function MerchantLayout() {
         </div>
       </aside>
 
-      <main className="flex-grow ml-64 min-h-screen flex flex-col">
-        <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 sticky top-0 z-30 shadow-sm">
-          <h1 className="text-lg font-bold text-[#003366] capitalize">
-            {menuItems.find((m) => m.path === location.pathname)?.name ||
-              "Dashboard"}
-          </h1>
+      <main className="flex min-h-screen flex-grow flex-col lg:ml-64">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-gray-100 bg-white px-4 shadow-sm sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              aria-label="Open merchant menu"
+              onClick={() => setIsMobileNavOpen(true)}
+              className="rounded-md border border-gray-100 p-2 text-[#003366] shadow-sm lg:hidden"
+            >
+              <Menu size={18} />
+            </button>
+            <h1 className="truncate text-lg font-bold text-[#003366] capitalize">
+              {pageTitle}
+            </h1>
+          </div>
           <div className="flex items-center gap-3">
             {/* FR-41 Visual Proof: Secure Session Indicator */}
             <div className="hidden md:flex items-center gap-1.5 bg-green-50 text-green-600 px-3 py-1.5 rounded-full border border-green-100 mr-2">
@@ -165,7 +202,7 @@ export default function MerchantLayout() {
             </div>
 
             <div className="flex items-center gap-2 pl-3 border-l border-gray-100">
-              <span className="text-xs font-bold text-gray-700">
+              <span className="hidden text-xs font-bold text-gray-700 sm:inline">
                 {merchantProfile.shopName}
               </span>
               {merchantProfile.avatarUrl ? (
@@ -183,7 +220,7 @@ export default function MerchantLayout() {
           </div>
         </header>
 
-        <div className="p-8 flex-grow">
+        <div className="flex-grow p-4 sm:p-6 lg:p-8">
           <Outlet />
         </div>
       </main>
