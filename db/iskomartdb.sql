@@ -107,6 +107,7 @@ CREATE TABLE `discount` (
   `VALUE` int(11) NOT NULL,
   `START_DATE` datetime(1) NOT NULL DEFAULT current_timestamp(1),
   `END_DATE` datetime(1) NOT NULL DEFAULT current_timestamp(1),
+  `STATUS` varchar(45) NOT NULL DEFAULT 'ACTIVE',
   `OFFERING_ID` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
 
@@ -134,6 +135,7 @@ CREATE TABLE `merchant` (
   `BU_EMAIL` varchar(255) NOT NULL,
   `SHOP_NAME` varchar(255) NOT NULL,
   `SHOP_DESC` text DEFAULT NULL,
+  `SHOP_BANNER_URL` tinytext DEFAULT NULL,
   `ADDRESS` varchar(255) NOT NULL,
   `STUDENT_NUM` varchar(45) NOT NULL,
   `ID_IMAGE_URL` tinytext DEFAULT NULL
