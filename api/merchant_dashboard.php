@@ -38,7 +38,7 @@ function moneyAmount(float|int $amount): string {
 function merchantProfile(PDO $db, array $user): array {
     $stmt = $db->prepare(
         "SELECT m.SHOP_NAME, m.SHOP_DESC, m.ADDRESS, m.BU_EMAIL, m.ID_IMAGE_URL,
-                u.EMAIL, u.FNAME, u.LNAME
+                u.EMAIL, u.FNAME, u.LNAME, u.AVATAR_URL
          FROM MERCHANT m
          JOIN USERS u ON u.USER_ID = m.MERCHANT_ID
          WHERE m.MERCHANT_ID = :merchant_id
@@ -55,7 +55,7 @@ function merchantProfile(PDO $db, array $user): array {
         'description' => $row['SHOP_DESC'] ?? '',
         'address' => $row['ADDRESS'] ?? '',
         'email' => $row['BU_EMAIL'] ?? ($row['EMAIL'] ?? ($user['email'] ?? '')),
-        'avatarUrl' => $row['ID_IMAGE_URL'] ?? '',
+        'avatarUrl' => $row['AVATAR_URL'] ?: ($row['ID_IMAGE_URL'] ?? ''),
         'initials' => merchantInitials($shopName),
     ];
 }
