@@ -70,6 +70,31 @@ function normalizeCategoryLabel(string $category): string {
     return strtolower(trim(preg_replace('/\s+/', ' ', $category)));
 }
 
+function ensureMerchantFulfillmentColumns(PDO $db): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    $columns = $db->query("SHOW COLUMNS FROM MERCHANT")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('ACCEPTS_COD', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_COD tinyint(1) NOT NULL DEFAULT 1 AFTER ID_IMAGE_URL");
+    }
+    if (!in_array('ACCEPTS_GCASH', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_GCASH tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_COD");
+    }
+    if (!in_array('ALLOW_MEETUP', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_MEETUP tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_GCASH");
+    }
+    if (!in_array('ALLOW_DELIVERY', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_DELIVERY tinyint(1) NOT NULL DEFAULT 1 AFTER ALLOW_MEETUP");
+    }
+    if (!in_array('DELIVERY_FEE', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN DELIVERY_FEE double NOT NULL DEFAULT 50 AFTER ALLOW_DELIVERY");
+    }
+}
+
 function resolveProductSubcategoryId(PDO $db, string $category): int {
     $normalized = normalizeCategoryLabel($category);
     $aliases = [
@@ -186,6 +211,157 @@ function ownedOffering(PDO $db, int $offeringId, int $merchantId): ?array {
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     return $row ?: null;
+}
+
+function paymentMethodIdForKind(PDO $db, int $merchantId, string $kind): int {
+    $labels = $kind === 'gcash'
+        ? ['gcash']
+        : ['cod', 'cash on delivery', 'cash', 'meetup'];
+
+    $conditions = [];
+    $params = [':merchant_id' => $merchantId];
+    foreach ($labels as $index => $label) {
+        $key = ':label_' . $index;
+        $conditions[] = "LOWER(SERVICE) LIKE {$key}";
+        $params[$key] = '%' . $label . '%';
+    }
+
+    $stmt = $db->prepare(
+        "SELECT PM_ID
+         FROM PAYMENT_METHOD
+         WHERE MERCHANT_ID = :merchant_id
+           AND (" . implode(' OR ', $conditions) . ")
+         ORDER BY PM_ID ASC
+         LIMIT 1"
+    );
+    $stmt->execute($params);
+    $existingId = (int) ($stmt->fetchColumn() ?: 0);
+    if ($existingId > 0) {
+        return $existingId;
+    }
+
+    $insert = $db->prepare(
+        "INSERT INTO PAYMENT_METHOD (SERVICE, LINK, QR_URL, NUMBER, USERNAME, OTHER, MERCHANT_ID)
+         VALUES (:service, NULL, NULL, NULL, NULL, :other, :merchant_id)"
+    );
+    $insert->execute([
+        ':service' => $kind === 'gcash' ? 'GCash' : 'COD / Cash on Delivery',
+        ':other' => $kind === 'gcash'
+            ? 'Merchant can provide GCash details through chat.'
+            : 'Cash payment on delivery or meetup.',
+        ':merchant_id' => $merchantId,
+    ]);
+
+    return (int) $db->lastInsertId();
+}
+
+function merchantFulfillmentSettings(PDO $db, int $merchantId): array {
+    ensureMerchantFulfillmentColumns($db);
+
+    $stmt = $db->prepare(
+        "SELECT ACCEPTS_COD, ACCEPTS_GCASH, ALLOW_MEETUP, ALLOW_DELIVERY, DELIVERY_FEE
+         FROM MERCHANT
+         WHERE MERCHANT_ID = :merchant_id
+         LIMIT 1"
+    );
+    $stmt->execute([':merchant_id' => $merchantId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    return [
+        'acceptsCOD' => (bool) ($row['ACCEPTS_COD'] ?? 1),
+        'acceptsGCash' => (bool) ($row['ACCEPTS_GCASH'] ?? 1),
+        'allowMeetup' => (bool) ($row['ALLOW_MEETUP'] ?? 1),
+        'allowDelivery' => (bool) ($row['ALLOW_DELIVERY'] ?? 1),
+        'deliveryFee' => max(0, (float) ($row['DELIVERY_FEE'] ?? 50)),
+    ];
+}
+
+function ensureOfferingPaymentDefaults(PDO $db, int $merchantId, int $offeringId): void {
+    $settings = merchantFulfillmentSettings($db, $merchantId);
+    foreach (['cod', 'gcash'] as $kind) {
+        $paymentMethodId = paymentMethodIdForKind($db, $merchantId, $kind);
+        if ($paymentMethodId <= 0) {
+            continue;
+        }
+        $status = ($kind === 'gcash' ? $settings['acceptsGCash'] : $settings['acceptsCOD'])
+            ? 'ACTIVE'
+            : 'INACTIVE';
+
+        $existing = $db->prepare(
+            "SELECT ALLOWED_PM_ID
+             FROM ALLOWED_PAYMENT
+             WHERE OFFERING_ID = :offering_id AND PM_ID = :pm_id
+             LIMIT 1"
+        );
+        $existing->execute([
+            ':offering_id' => $offeringId,
+            ':pm_id' => $paymentMethodId,
+        ]);
+
+        if ($existing->fetch(PDO::FETCH_ASSOC)) {
+            $update = $db->prepare(
+                "UPDATE ALLOWED_PAYMENT
+                 SET STATUS = :status
+                 WHERE OFFERING_ID = :offering_id AND PM_ID = :pm_id"
+            );
+            $update->execute([
+                ':status' => $status,
+                ':offering_id' => $offeringId,
+                ':pm_id' => $paymentMethodId,
+            ]);
+            continue;
+        }
+
+        $insert = $db->prepare(
+            "INSERT INTO ALLOWED_PAYMENT (STATUS, PM_ID, OFFERING_ID)
+             VALUES (:status, :pm_id, :offering_id)"
+        );
+        $insert->execute([
+            ':status' => $status,
+            ':pm_id' => $paymentMethodId,
+            ':offering_id' => $offeringId,
+        ]);
+    }
+}
+
+function ensureProductDeliveryDefaults(PDO $db, int $productId, float $deliveryFee = 50): void {
+    $existing = $db->prepare("SELECT DM_NAME FROM DELIVERY_METHOD WHERE PROD_ID = :product_id");
+    $existing->execute([':product_id' => $productId]);
+    $names = array_map(
+        fn ($name): string => strtolower((string) $name),
+        $existing->fetchAll(PDO::FETCH_COLUMN)
+    );
+
+    $needsMeetup = !array_filter($names, fn ($name): bool => str_contains($name, 'meetup') || str_contains($name, 'pickup'));
+    $needsDelivery = !array_filter($names, fn ($name): bool => str_contains($name, 'standard') || str_contains($name, 'delivery') || str_contains($name, 'ship'));
+    if (!$needsMeetup && !$needsDelivery) {
+        return;
+    }
+
+    $insert = $db->prepare(
+        "INSERT INTO DELIVERY_METHOD (DM_NAME, DM_FEE, DM_PROVIDER, NOTE, PROD_ID)
+         VALUES (:name, :fee, :provider, :note, :product_id)"
+    );
+
+    if ($needsMeetup) {
+        $insert->execute([
+            ':name' => 'Campus Meetup',
+            ':fee' => 0,
+            ':provider' => 'Meetup',
+            ':note' => 'Default merchant fulfillment option',
+            ':product_id' => $productId,
+        ]);
+    }
+
+    if ($needsDelivery) {
+        $insert->execute([
+            ':name' => 'Standard Delivery',
+            ':fee' => $deliveryFee,
+            ':provider' => 'Campus Rider',
+            ':note' => 'Default merchant fulfillment option',
+            ':product_id' => $productId,
+        ]);
+    }
 }
 
 function offeringPayloadFromRow(array $row): array {
@@ -468,6 +644,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array(($_POST['_method'] ?? '')
             ]);
         }
 
+        ensureOfferingPaymentDefaults($db, $merchantId, $offeringId);
+        if ($type === 'product') {
+            $settings = merchantFulfillmentSettings($db, $merchantId);
+            ensureProductDeliveryDefaults($db, $offeringId, (float) $settings['deliveryFee']);
+        }
+
         $storedImages = validateAndStoreUploads($files, $offeringId);
         insertImages($db, $offeringId, $storedImages);
 
@@ -556,6 +738,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || ($_SERVER['REQUEST_METHOD'] === 'P
                 ':id' => $offeringId,
                 ':merchant_id' => $merchantId,
             ]);
+        }
+
+        ensureOfferingPaymentDefaults($db, $merchantId, $offeringId);
+        if ($type === 'product') {
+            $settings = merchantFulfillmentSettings($db, $merchantId);
+            ensureProductDeliveryDefaults($db, $offeringId, (float) $settings['deliveryFee']);
         }
 
         deleteImages($db, $offeringId, is_array($removeIds) ? $removeIds : []);
