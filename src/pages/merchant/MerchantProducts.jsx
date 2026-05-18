@@ -131,7 +131,7 @@ export default function MerchantProducts() {
         rate: "Per Hour",
         status: "Active",
         description: "",
-        img: "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=150",
+        img: "",
         images: [],
         newImages: [],
         removeImageIds: [],
@@ -408,13 +408,13 @@ export default function MerchantProducts() {
                             src={
                               item.img ||
                               item.images?.[0]?.url ||
-                              "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=150"
+                              "/placeholders/offering.svg"
                             }
                             alt={item.name}
                             className="w-full h-full object-cover"
                             onError={(event) => {
                               event.currentTarget.src =
-                                "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=150";
+                                "/placeholders/offering.svg";
                             }}
                           />
                         </div>
@@ -564,7 +564,7 @@ export default function MerchantProducts() {
                             alt="Uploaded item"
                             onError={(event) => {
                               event.currentTarget.src =
-                                "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=300";
+                                "/placeholders/offering.svg";
                             }}
                           />
                           <button
