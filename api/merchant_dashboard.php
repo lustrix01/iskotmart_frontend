@@ -32,7 +32,7 @@ function merchantInitials(string $name): string {
 }
 
 function moneyAmount(float|int $amount): string {
-    return 'PHP ' . number_format((float) $amount, 2);
+    return '₱' . number_format((float) $amount, 2);
 }
 
 function merchantProfile(PDO $db, array $user): array {
@@ -122,6 +122,32 @@ function dashboardStats(PDO $db, int $merchantId): array {
     $catalogStmt->execute([':merchant_id' => $merchantId]);
     $catalog = $catalogStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
+    $customerIds = [];
+    $productCustomerStmt = $db->prepare(
+        "SELECT DISTINCT o.CUSTOMER_ID
+         FROM ORDERS o
+         INNER JOIN ORDER_ITEM oi ON oi.ORDER_ID = o.ORDER_ID
+         INNER JOIN PRODUCT p ON p.PROD_ID = oi.PRODUCT_ID
+         WHERE p.MERCHANT_ID = :merchant_id
+           AND o.CUSTOMER_ID IS NOT NULL"
+    );
+    $productCustomerStmt->execute([':merchant_id' => $merchantId]);
+    foreach ($productCustomerStmt->fetchAll(PDO::FETCH_COLUMN) as $customerId) {
+        $customerIds[(int) $customerId] = true;
+    }
+
+    $serviceCustomerStmt = $db->prepare(
+        "SELECT DISTINCT sr.CUSTOMER_ID
+         FROM SERVICE_REQUEST sr
+         INNER JOIN SERVICE s ON s.SERVICE_ID = sr.SERVICE_ID
+         WHERE s.MERCHANT_ID = :merchant_id
+           AND sr.CUSTOMER_ID IS NOT NULL"
+    );
+    $serviceCustomerStmt->execute([':merchant_id' => $merchantId]);
+    foreach ($serviceCustomerStmt->fetchAll(PDO::FETCH_COLUMN) as $customerId) {
+        $customerIds[(int) $customerId] = true;
+    }
+
     $totalSales = (float) ($productSales['total_sales'] ?? 0) + $serviceSales;
     $totalOrders = (int) ($productSales['total_orders'] ?? 0) + $serviceOrders;
     $activeOrders = (int) ($productSales['pending_orders'] ?? 0) + count($serviceActiveOrders);
@@ -134,7 +160,7 @@ function dashboardStats(PDO $db, int $merchantId): array {
         'activeOrders' => $activeOrders,
         'catalogItems' => (int) ($catalog['total'] ?? 0),
         'activeCatalogItems' => (int) ($catalog['active'] ?? 0),
-        'storeVisitors' => 0,
+        'customers' => count($customerIds),
     ];
 }
 
@@ -341,7 +367,7 @@ function fallbackDashboardStats(): array {
         'pendingOrders' => 0,
         'catalogItems' => 0,
         'activeCatalogItems' => 0,
-        'storeVisitors' => 0,
+        'customers' => 0,
     ];
 }
 
