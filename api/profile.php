@@ -178,6 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'PATCH' || $_SERVER['REQUEST_METHOD'] === 'PO
                 'username' => $sessionUser['username'],
                 'email' => $sessionUser['email'],
                 'role' => 'customer',
+                'avatarUrl' => $profile['AVATAR_URL'] ?? '',
             ],
         ]);
     } catch (Throwable $e) {
