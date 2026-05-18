@@ -73,11 +73,16 @@ function productOrderRows(PDO $db, int $merchantId): array {
                  WHERE pay.ORDER_ID = ord.ORDER_ID
                  ORDER BY pay.PAYMENT_ID DESC
                  LIMIT 1) AS payment_method,
-                (SELECT pay.REF_NUM
-                 FROM PAYMENT pay
-                 WHERE pay.ORDER_ID = ord.ORDER_ID
-                 ORDER BY pay.PAYMENT_ID DESC
-                 LIMIT 1) AS payment_reference,
+	                (SELECT pay.REF_NUM
+	                 FROM PAYMENT pay
+	                 WHERE pay.ORDER_ID = ord.ORDER_ID
+	                 ORDER BY pay.PAYMENT_ID DESC
+	                 LIMIT 1) AS payment_reference,
+	                (SELECT pay.PROOF_URL
+	                 FROM PAYMENT pay
+	                 WHERE pay.ORDER_ID = ord.ORDER_ID
+	                 ORDER BY pay.PAYMENT_ID DESC
+	                 LIMIT 1) AS payment_proof_url,
                 u.FNAME, u.LNAME, u.EMAIL,
                 GROUP_CONCAT(
                     CONCAT(o.OFFERING_NAME, '||', oi.QUANTITY, '||', oi.PRICE)
@@ -104,7 +109,12 @@ function productOrderRows(PDO $db, int $merchantId): array {
 function serviceRequestRows(PDO $db, int $merchantId): array {
     $stmt = $db->prepare(
         "SELECT sr.REQUEST_ID, sr.REQUEST_DATE, sr.REQ_STATUS, sr.TOTAL_PRICE, sr.PHONE_NUM, sr.ADDRESS,
-                sr.RECEIPT_NAME, sr.RECIPIENT_NAME, sr.CUSTOMER_INFO, u.EMAIL,
+	                sr.RECEIPT_NAME, sr.RECIPIENT_NAME, sr.CUSTOMER_INFO, u.EMAIL,
+	                (SELECT pay.PROOF_URL
+	                 FROM PAYMENT pay
+	                 WHERE pay.REQUEST_ID = sr.REQUEST_ID
+	                 ORDER BY pay.PAYMENT_ID DESC
+	                 LIMIT 1) AS payment_proof_url,
                 COALESCE(o.OFFERING_NAME, 'Service Request') AS service_name
          FROM SERVICE_REQUEST sr
          INNER JOIN SERVICE s ON s.SERVICE_ID = sr.SERVICE_ID
@@ -143,8 +153,9 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             'method' => $row['method'] ?: 'Meet-up',
             'paymentStatus' => paymentStatusLabel($paymentStatus),
             'paymentStatusCode' => $paymentStatus,
-            'paymentMethod' => $row['payment_method'] ?: ($paymentStatus === PAYMENT_STATUS_PENDING_REVIEW ? 'GCash' : 'COD / Cash'),
-            'paymentReference' => $row['payment_reference'] ?: '',
+	            'paymentMethod' => $row['payment_method'] ?: ($paymentStatus === PAYMENT_STATUS_PENDING_REVIEW ? 'GCash' : 'COD / Cash'),
+	            'paymentReference' => $row['payment_reference'] ?: '',
+	            'paymentProofUrl' => $row['payment_proof_url'] ?: '',
             'status' => mapDbStatusToUi((string) ($row['ORDER_STATUS'] ?? '')),
             'date' => formatOrderDate($row['ORDERED_ON'] ?? null),
             'phone' => $row['PHONE_NUM'] ?: '',
@@ -177,8 +188,9 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             'method' => 'Service booking',
             'paymentStatus' => paymentStatusLabel($paymentStatus),
             'paymentStatusCode' => $paymentStatus,
-            'paymentMethod' => $paymentMethod === 'gcash' ? 'GCash' : 'COD / Cash',
-            'paymentReference' => (string) ($info['referenceNumber'] ?? ''),
+	            'paymentMethod' => $paymentMethod === 'gcash' ? 'GCash' : 'COD / Cash',
+	            'paymentReference' => (string) ($info['referenceNumber'] ?? ''),
+	            'paymentProofUrl' => $row['payment_proof_url'] ?: '',
             'status' => mapDbStatusToUi((string) ($row['REQ_STATUS'] ?? '')),
             'date' => formatOrderDate($row['REQUEST_DATE'] ?? null),
             'phone' => $row['PHONE_NUM'] ?: '',
@@ -288,6 +300,7 @@ $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
 if ($method === 'GET') {
     try {
+        ensurePaymentProofColumn($db);
         jsonResponse(['orders' => merchantOrderPayloads($db, $merchantId)]);
     } catch (Throwable $e) {
         logApiError($e);
