@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCheck,
   Image as ImageIcon,
   MessageSquare,
-  Paperclip,
   Search,
   Send,
   Smile,
@@ -18,6 +17,10 @@ export default function Messages() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
+  const [imageData, setImageData] = useState("");
+  const messagesRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const isAtBottomRef = useRef(true);
 
   const activeThread = useMemo(
     () => threads.find((thread) => thread.id === activeThreadId) || threads[0] || null,
@@ -61,9 +64,34 @@ export default function Messages() {
     loadThreads();
   }, []);
 
+  const scrollMessagesToBottom = () => {
+    const container = messagesRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  };
+
+  const handleMessagesScroll = () => {
+    const container = messagesRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    isAtBottomRef.current = distanceFromBottom <= 12;
+  };
+
+  useEffect(() => {
+    isAtBottomRef.current = true;
+    requestAnimationFrame(scrollMessagesToBottom);
+  }, [activeThread?.id]);
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      requestAnimationFrame(scrollMessagesToBottom);
+    }
+  }, [activeThread?.messages.length]);
+
   const handleSend = async () => {
     const message = messageText.trim();
-    if (!message || !activeThread || sending) {
+    if ((!message && !imageData) || !activeThread || sending) {
       return;
     }
 
@@ -76,6 +104,7 @@ export default function Messages() {
         body: JSON.stringify({
           merchantId: Number(activeThread.id),
           message,
+          imageData,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -84,12 +113,30 @@ export default function Messages() {
       }
 
       setMessageText("");
+      setImageData("");
       await loadThreads({ keepActive: true });
     } catch (sendError) {
       showNotice(sendError.message);
     } finally {
       setSending(false);
     }
+  };
+
+  const handleImageSelect = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showNotice("Messages only allow image files.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showNotice("Message image must be 5MB or smaller.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => setImageData(String(reader.result || ""));
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -170,7 +217,11 @@ export default function Messages() {
                 </h2>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 space-y-4">
+              <div
+                ref={messagesRef}
+                onScroll={handleMessagesScroll}
+                className="flex-1 overflow-y-auto p-8 space-y-4"
+              >
                 {activeThread.messages.map((message) => (
                   <div
                     key={message.id}
@@ -188,6 +239,15 @@ export default function Messages() {
                       <p className="text-xs leading-relaxed whitespace-pre-line">
                         {message.text}
                       </p>
+                      {message.imageUrl ? (
+                        <a href={message.imageUrl} target="_blank" rel="noreferrer">
+                          <img
+                            src={message.imageUrl}
+                            alt="Message attachment"
+                            className={`${message.text ? "mt-3" : ""} max-h-72 rounded-xl object-contain`}
+                          />
+                        </a>
+                      ) : null}
                       <p
                         className={`mt-2 text-[9px] ${
                           message.sender === "me" ? "text-white/60 text-right" : "text-gray-400"
@@ -207,8 +267,21 @@ export default function Messages() {
 
               <div className="p-5 border-t border-gray-100 bg-white">
                 <div className="flex items-center gap-4 bg-[#F8F9FB] rounded-2xl px-5 py-2 border border-gray-100">
-                  <Paperclip size={18} className="text-gray-300" />
-                  <ImageIcon size={18} className="text-gray-300" />
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="text-gray-300 hover:text-[#0074D9] transition-colors"
+                    title="Attach image"
+                  >
+                    <ImageIcon size={18} />
+                  </button>
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
 
                   <input
                     type="text"
@@ -227,12 +300,25 @@ export default function Messages() {
 
                   <button
                     onClick={handleSend}
-                    disabled={sending || messageText.trim() === ""}
+                    disabled={sending || (messageText.trim() === "" && imageData === "")}
                     className="bg-[#FF851B] p-2.5 rounded-xl text-white shadow-lg hover:bg-[#E67716] transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Send size={17} fill="white" />
                   </button>
                 </div>
+                {imageData ? (
+                  <div className="mt-3 flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                    <img src={imageData} alt="Selected attachment" className="h-16 w-16 rounded-lg object-cover" />
+                    <p className="flex-1 text-[11px] font-bold text-gray-500">Image ready to send</p>
+                    <button
+                      type="button"
+                      onClick={() => setImageData("")}
+                      className="text-xs font-bold text-red-500"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </>
           ) : (
