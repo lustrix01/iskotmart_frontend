@@ -137,6 +137,38 @@ function logApiError(Throwable $e): void {
     ));
 }
 
+function enforceAuthRateLimit(string $bucket, string $identifier, int $limit = 8, int $seconds = 300): void {
+    startApiSession();
+
+    $now = time();
+    $key = hash('sha256', $bucket . '|' . strtolower(trim($identifier)) . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if (!isset($_SESSION['rate_limits']) || !is_array($_SESSION['rate_limits'])) {
+        $_SESSION['rate_limits'] = [];
+    }
+
+    $entry = $_SESSION['rate_limits'][$key] ?? ['started_at' => $now, 'count' => 0];
+    if (!is_array($entry) || $now - (int) ($entry['started_at'] ?? 0) >= $seconds) {
+        $entry = ['started_at' => $now, 'count' => 0];
+    }
+
+    $entry['count'] = (int) ($entry['count'] ?? 0) + 1;
+    $_SESSION['rate_limits'][$key] = $entry;
+
+    if ($entry['count'] > $limit) {
+        jsonResponse(['error' => 'Too many attempts. Please wait before trying again.'], 429);
+    }
+}
+
+function requireTableColumns(PDO $db, string $table, array $columns): void {
+    $existing = $db->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN);
+    $missing = array_values(array_diff($columns, $existing));
+    if ($missing) {
+        throw new RuntimeException(
+            'Database schema is missing required columns on ' . $table . ': ' . implode(', ', $missing)
+        );
+    }
+}
+
 function requireFields(array $data, array $fields): void {
     foreach ($fields as $field) {
         if (!isset($data[$field]) || trim((string) $data[$field]) === '') {
