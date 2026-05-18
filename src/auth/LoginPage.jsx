@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import {
+  clearRememberedClientSession,
+  rememberClientSession,
+} from "../api/clientSession";
 import logo from "../assets/logo.png";
 
 const redirectByRole = {
@@ -49,6 +53,11 @@ export default function LoginPage() {
       }
 
       login(payload.user);
+      if (rememberMe) {
+        rememberClientSession();
+      } else {
+        clearRememberedClientSession();
+      }
       const isMerchant = payload.user.role === "merchant";
       const merchantRequestedPath =
         isMerchant && requestedPath?.startsWith("/merchant")
