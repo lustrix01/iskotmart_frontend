@@ -27,10 +27,29 @@ function storefrontDiscountLabel(?string $type, mixed $value): string {
 
     return strtolower($type) === 'percentage'
         ? '-' . rtrim(rtrim(number_format($discountValue, 2), '0'), '.') . '%'
-        : '-PHP ' . rtrim(rtrim(number_format($discountValue, 2), '0'), '.');
+        : '-₱' . rtrim(rtrim(number_format($discountValue, 2), '0'), '.');
+}
+
+function ensureStorefrontDiscountStatusColumn(PDO $db): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+
+    $checked = true;
+    try {
+        $stmt = $db->query("SHOW COLUMNS FROM DISCOUNT LIKE 'STATUS'");
+        if (!$stmt || !$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $db->exec("ALTER TABLE DISCOUNT ADD STATUS varchar(45) NOT NULL DEFAULT 'ACTIVE'");
+        }
+    } catch (Throwable $e) {
+        logApiError($e);
+    }
 }
 
 try {
+    ensureStorefrontDiscountStatusColumn($db);
+
     $stmt = $db->query(
         "SELECT o.OFFERING_ID AS id, o.OFFERING_TYPE AS type, o.OFFERING_NAME AS name,
                 COALESCE(o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC) AS description,
@@ -103,7 +122,9 @@ try {
              INNER JOIN (
                  SELECT OFFERING_ID, MAX(DISCOUNT_ID) AS DISCOUNT_ID
                  FROM DISCOUNT
-                 WHERE START_DATE <= NOW(1) AND END_DATE >= NOW(1)
+                 WHERE START_DATE <= NOW(1)
+                   AND END_DATE >= NOW(1)
+                   AND COALESCE(STATUS, 'ACTIVE') = 'ACTIVE'
                  GROUP BY OFFERING_ID
              ) latest_discount ON latest_discount.DISCOUNT_ID = d.DISCOUNT_ID
          ) discount ON discount.OFFERING_ID = o.OFFERING_ID
@@ -161,6 +182,7 @@ try {
     }, $rows);
 
     $products = array_values(array_filter($offerings, fn (array $item): bool => $item['type'] === 'product'));
+    $services = array_values(array_filter($offerings, fn (array $item): bool => $item['type'] === 'service'));
     $weeklyProducts = array_values(array_filter($products, fn (array $item): bool => (int) ($item['weeklySold'] ?? 0) > 0));
     usort($weeklyProducts, fn (array $a, array $b): int =>
         ($b['weeklySold'] <=> $a['weeklySold'])
@@ -169,11 +191,20 @@ try {
         ?: ($b['id'] <=> $a['id'])
     );
 
+    $featuredServices = array_values(array_filter($services, fn (array $item): bool => (int) ($item['completed'] ?? 0) > 0));
+    usort($featuredServices, fn (array $a, array $b): int =>
+        ($b['completed'] <=> $a['completed'])
+        ?: (($b['reviewCount'] ?? 0) <=> ($a['reviewCount'] ?? 0))
+        ?: (($b['rating'] ?? 0) <=> ($a['rating'] ?? 0))
+        ?: ($b['id'] <=> $a['id'])
+    );
+
     $onSaleProducts = array_values(array_filter($weeklyProducts, fn (array $item): bool => !empty($item['isOnSale'])));
 
     jsonResponse([
         'offerings' => $offerings,
         'featuredProducts' => array_slice($weeklyProducts, 0, 10),
+        'featuredServices' => array_slice($featuredServices, 0, 10),
         'onSaleProducts' => array_slice($onSaleProducts, 0, 10),
     ]);
 } catch (Throwable $e) {
