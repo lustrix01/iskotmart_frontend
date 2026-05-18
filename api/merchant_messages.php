@@ -146,7 +146,8 @@ try {
     $stmt = $db->prepare(
         "SELECT msg.MSG_ID, msg.MSG_TEXT, msg.SENT_ON, msg.STATUS, msg.ATTACH_URL, msg.ATTACH_FILETYPE, msg.MESSAGEcol,
                 msg.MSG_SENDER AS customer_id,
-                COALESCE(c.DISPLAY_NAME, TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), u.USERNAME, 'Customer') AS customer_name
+                COALESCE(c.DISPLAY_NAME, TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), u.USERNAME, 'Customer') AS customer_name,
+                COALESCE(u.AVATAR_URL, '') AS customer_avatar
          FROM MESSAGE msg
          INNER JOIN CUSTOMER c ON c.CUSTOMER_ID = msg.MSG_SENDER
          INNER JOIN USERS u ON u.USER_ID = c.CUSTOMER_ID AND u.STATUS = 'ACTIVE'
@@ -171,6 +172,7 @@ try {
                 'id' => $customerId,
                 'name' => $name,
                 'avatar' => $initials !== '' ? $initials : 'CU',
+                'avatarUrl' => (string) ($row['customer_avatar'] ?? ''),
                 'status' => 'ACTIVE',
                 'messages' => [],
                 'lastMsg' => '',
