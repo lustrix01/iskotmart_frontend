@@ -112,6 +112,7 @@ export default function Wishlist() {
         name: item.name,
         img: image,
         price: Number(item.price || 0),
+        merchantId: Number(item.merchantId || 0),
         merchant: item.merchant || "Merchant",
         category: item.category || "",
         rateType: item.rateType || "",
