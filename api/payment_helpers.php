@@ -128,12 +128,7 @@ function orderPrimaryOffering(PDO $db, int $orderId, int $merchantId): ?int {
 }
 
 function ensurePaymentProofColumn(PDO $db): bool {
-    $stmt = $db->query("SHOW COLUMNS FROM PAYMENT LIKE 'PROOF_URL'");
-    if ($stmt->fetch(PDO::FETCH_ASSOC)) {
-        return true;
-    }
-
-    $db->exec("ALTER TABLE PAYMENT ADD COLUMN PROOF_URL tinytext DEFAULT NULL AFTER REF_NUM");
+    requireTableColumns($db, 'PAYMENT', ['PROOF_URL']);
     return true;
 }
 
