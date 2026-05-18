@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Link,
   useLocation,
@@ -32,6 +32,12 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { useCart } from "../../context/useCart";
 
+const defaultServiceDeadline = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 7);
+  return date.toISOString().slice(0, 10);
+};
+
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -57,9 +63,15 @@ export default function Checkout() {
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [voucherInput, setVoucherInput] = useState("");
-  const [appliedVoucher, setAppliedVoucher] = useState(null);
+  const [appliedVouchers, setAppliedVouchers] = useState([]);
   const [voucherMessage, setVoucherMessage] = useState("");
   const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+  const [paymentOptions, setPaymentOptions] = useState({
+    allowedMethods: { cod: true, gcash: true },
+    merchants: [],
+    loaded: false,
+    error: "",
+  });
 
   const [orderNumber, setOrderNumber] = useState("");
 
@@ -78,7 +90,7 @@ export default function Checkout() {
   const [addressError, setAddressError] = useState("");
 
   const [serviceData, setServiceData] = useState({
-    deadline: "March 30, 2026",
+    deadline: defaultServiceDeadline(),
     complexity: "Premium Branding",
   });
 
@@ -96,11 +108,29 @@ export default function Checkout() {
       ? 50.0
       : 0.0;
   const serviceFee = hasCheckoutItems && type === "service" ? 50.0 : 0.0;
-  const discountAmount = Number(appliedVoucher?.discountAmount || 0);
+  const discountAmount = appliedVouchers.reduce(
+    (sum, voucher) => sum + Number(voucher.discountAmount || 0),
+    0,
+  );
   const total = Math.max(0, subtotal + shippingFee + serviceFee - discountAmount);
   const hasShippingAddress =
     type !== "product" ||
     Boolean(addressData.name && addressData.phone && addressData.address);
+  const optionItemsKey = useMemo(
+    () =>
+      checkoutItems
+        .map((item) => `${Number(item.id)}:${Number(item.qty || 1)}`)
+        .join("|"),
+    [checkoutItems],
+  );
+  const isPaymentAllowed = (method) =>
+    !paymentOptions.loaded || Boolean(paymentOptions.allowedMethods?.[method]);
+  const gcashPaymentDetails = paymentOptions.merchants
+    .map((merchant) => ({
+      ...merchant,
+      methods: (merchant.methods || []).filter((method) => method.kind === "gcash"),
+    }))
+    .filter((merchant) => merchant.methods.length > 0);
 
   useEffect(() => {
     if (!user || type !== "product") {
@@ -163,6 +193,76 @@ export default function Checkout() {
     };
   }, [type, user]);
 
+  useEffect(() => {
+    if (!user || !hasCheckoutItems) {
+      setPaymentOptions({
+        allowedMethods: { cod: true, gcash: true },
+        merchants: [],
+        loaded: false,
+        error: "",
+      });
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadPaymentOptions = async () => {
+      try {
+        const response = await fetch("/api/checkout_payment_options.php", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type,
+            items: checkoutItems.map((item) => ({
+              id: Number(item.id),
+              quantity: Number(item.qty || 1),
+            })),
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load payment options.");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextOptions = {
+          allowedMethods: {
+            cod: Boolean(payload.allowedMethods?.cod),
+            gcash: Boolean(payload.allowedMethods?.gcash),
+          },
+          merchants: Array.isArray(payload.merchants) ? payload.merchants : [],
+          loaded: true,
+          error: "",
+        };
+        setPaymentOptions(nextOptions);
+
+        if (!nextOptions.allowedMethods[paymentMethod]) {
+          setPaymentMethod(nextOptions.allowedMethods.cod ? "cod" : "gcash");
+        }
+      } catch (error) {
+        if (isMounted) {
+          setPaymentOptions({
+            allowedMethods: { cod: false, gcash: false },
+            merchants: [],
+            loaded: true,
+            error: error.message,
+          });
+        }
+      }
+    };
+
+    loadPaymentOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [type, user, hasCheckoutItems, checkoutItems, optionItemsKey, paymentMethod]);
+
   const submitOrder = async ({ gcashReference = "" } = {}) => {
     if (!user) {
       navigate("/login", { state: { from: location } });
@@ -192,7 +292,9 @@ export default function Checkout() {
           paymentMethod,
           deliveryMethod,
           referenceNumber: gcashReference,
-          voucherCode: appliedVoucher?.code || "",
+          paymentProofImage:
+            paymentMethod === "gcash" ? paymentScreenshot || "" : "",
+          voucherCodes: appliedVouchers.map((voucher) => voucher.code),
           customer: {
             recipientName: addressData.name,
             phone: addressData.phone,
@@ -242,8 +344,16 @@ export default function Checkout() {
     }
 
     if (paymentMethod === "gcash") {
+      if (!isPaymentAllowed("gcash") || gcashPaymentDetails.length === 0) {
+        setCheckoutError("GCash is not configured for this merchant.");
+        return;
+      }
       setShowGCashModal(true);
     } else {
+      if (!isPaymentAllowed("cod")) {
+        setCheckoutError("COD is not configured for this merchant.");
+        return;
+      }
       submitOrder();
     }
   };
@@ -252,8 +362,12 @@ export default function Checkout() {
     const code = voucherInput.trim().toUpperCase();
 
     if (!code) {
-      setAppliedVoucher(null);
       setVoucherMessage("");
+      return;
+    }
+
+    if (appliedVouchers.some((voucher) => voucher.code === code)) {
+      setVoucherMessage(`Voucher ${code} is already applied.`);
       return;
     }
 
@@ -268,6 +382,7 @@ export default function Checkout() {
         body: JSON.stringify({
           type,
           code,
+          appliedCodes: appliedVouchers.map((voucher) => voucher.code),
           items: checkoutItems.map((item) => ({
             id: Number(item.id),
             quantity: Number(item.qty || 1),
@@ -280,25 +395,51 @@ export default function Checkout() {
         throw new Error(payload.error || "Invalid voucher code.");
       }
 
-      setAppliedVoucher({
+      const merchantId = Number(payload.merchantId || 0);
+      const eligibleSubtotal = Number(payload.eligibleSubtotal || 0);
+      const existingMerchantDiscount = appliedVouchers
+        .filter((voucher) => Number(voucher.merchantId || 0) === merchantId)
+        .reduce((sum, voucher) => sum + Number(voucher.discountAmount || 0), 0);
+      const discountAmount = Math.min(
+        Number(payload.discountAmount || 0),
+        Math.max(0, eligibleSubtotal - existingMerchantDiscount),
+      );
+
+      if (discountAmount <= 0) {
+        throw new Error("Voucher discount exceeds the eligible store subtotal.");
+      }
+
+      const nextVoucher = {
         code: payload.code || code,
-        discountAmount: Number(payload.discountAmount || 0),
-      });
-      setVoucherInput(payload.code || code);
+        discountAmount,
+        eligibleSubtotal,
+        merchantId,
+      };
+      setAppliedVouchers((current) => [...current, nextVoucher]);
+      setVoucherInput("");
       setVoucherMessage(payload.message || `Voucher ${code} applied.`);
     } catch (error) {
-      setAppliedVoucher(null);
       setVoucherMessage(error.message);
     } finally {
       setIsApplyingVoucher(false);
     }
   };
 
-  // GCash simulation logic (Modified to handle manual form submission)
+  const handleRemoveVoucher = (code) => {
+    setAppliedVouchers((current) =>
+      current.filter((voucher) => voucher.code !== code),
+    );
+    setVoucherMessage("");
+  };
+
   const handleGCashSubmit = (e) => {
-    if (e) e.preventDefault(); // Prevent page reload if called from form
+    if (e) e.preventDefault();
     if (!referenceNumber) {
       alert("Please enter the 13-digit Reference Number.");
+      return;
+    }
+    if (!paymentScreenshot) {
+      alert("Please upload the GCash payment proof image.");
       return;
     }
 
@@ -314,12 +455,18 @@ export default function Checkout() {
       });
   };
 
-  // Added handler for the screenshot
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setPaymentScreenshot(URL.createObjectURL(file));
+    if (!file) {
+      setPaymentScreenshot(null);
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPaymentScreenshot(String(reader.result || ""));
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -438,7 +585,7 @@ export default function Checkout() {
                     </label>
                     <input
                       type="date"
-                      value="2026-03-30"
+                      value={serviceData.deadline}
                       onChange={(e) =>
                         setServiceData({
                           ...serviceData,
@@ -570,22 +717,37 @@ export default function Checkout() {
                 id="cod"
                 selected={paymentMethod === "cod"}
                 onClick={setPaymentMethod}
+                disabled={!isPaymentAllowed("cod")}
                 icon={<Wallet size={20} />}
                 title={
                   type === "product"
                     ? "Cash on Delivery / Hand-over"
                     : "Pay on meetup"
                 }
-                desc="Pay directly in cash during the transaction"
+                desc={
+                  isPaymentAllowed("cod")
+                    ? "Pay directly in cash during the transaction"
+                    : "Not enabled by this merchant"
+                }
               />
               <MethodCard
                 id="gcash"
                 selected={paymentMethod === "gcash"}
                 onClick={setPaymentMethod}
+                disabled={!isPaymentAllowed("gcash")}
                 icon={<Smartphone size={20} />}
                 title="GCash"
-                desc="Pay securely with GCash e-wallet"
+                desc={
+                  isPaymentAllowed("gcash")
+                    ? "Pay through the merchant's configured GCash account"
+                    : "Not enabled by this merchant"
+                }
               />
+              {paymentOptions.error && (
+                <p className="rounded-sm border border-red-100 bg-red-50 px-3 py-2 text-[10px] font-bold text-red-600">
+                  {paymentOptions.error}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -617,21 +779,15 @@ export default function Checkout() {
                       {item.name}
                     </p>
                     <p className="text-[9px] text-gray-400 font-semibold">
-                      Qty: {item.qty || 1} x PHP{" "}
+                      Qty: {item.qty || 1} x ₱
                       {Number(item.price || 0).toFixed(1)}
-                      <span className="hidden">
-                      Qty: 1 x ₱{subtotal / 2}
-                      </span>
                     </p>
                   </div>
                   <span className="text-[11px] font-bold text-gray-800">
-                    PHP{" "}
+                    ₱
                     {(
                       Number(item.price || 0) * Number(item.qty || 1)
                     ).toFixed(1)}
-                    <span className="hidden">
-                    ₱{(subtotal / 2).toFixed(1)}
-                    </span>
                   </span>
                 </div>
               ))}
@@ -659,16 +815,13 @@ export default function Checkout() {
                   {type === "product" ? "Shipping / Meetup fee" : "Service Fee"}
                 </span>
                 <span className="text-gray-700 font-bold">
-                  PHP {(type === "product" ? shippingFee : serviceFee).toFixed(1)}
-                  <span className="hidden">
-                  ₱{shippingFee.toFixed(1)}
-                  </span>
+                  ₱{(type === "product" ? shippingFee : serviceFee).toFixed(1)}
                 </span>
               </div>
               {discountAmount > 0 && (
                 <div className="flex justify-between text-green-500">
                   <span>Voucher discount</span>
-                  <span>- PHP {discountAmount.toFixed(1)}</span>
+                  <span>- ₱{discountAmount.toFixed(1)}</span>
                 </div>
               )}
             </div>
@@ -687,15 +840,8 @@ export default function Checkout() {
                     type="text"
                     value={voucherInput}
                     onChange={(e) => {
-                      const nextValue = e.target.value;
-                      setVoucherInput(nextValue);
+                      setVoucherInput(e.target.value);
                       setVoucherMessage("");
-                      if (
-                        appliedVoucher &&
-                        nextValue.trim().toUpperCase() !== appliedVoucher.code
-                      ) {
-                        setAppliedVoucher(null);
-                      }
                     }}
                     placeholder="Enter voucher code"
                     className="w-full rounded-sm border border-gray-200 py-2.5 pl-9 pr-2 text-[11px] focus:outline-none"
@@ -713,11 +859,33 @@ export default function Checkout() {
               {voucherMessage && (
                 <p
                   className={`mt-2 text-[10px] font-bold ${
-                    appliedVoucher ? "text-green-600" : "text-red-500"
+                    voucherMessage.toLowerCase().includes("applied")
+                      ? "text-green-600"
+                      : "text-red-500"
                   }`}
                 >
                   {voucherMessage}
                 </p>
+              )}
+              {appliedVouchers.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {appliedVouchers.map((voucher) => (
+                    <span
+                      key={voucher.code}
+                      className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-[10px] font-bold text-green-700"
+                    >
+                      {voucher.code} - ₱{Number(voucher.discountAmount || 0).toFixed(1)}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVoucher(voucher.code)}
+                        className="text-green-500 hover:text-red-500"
+                        aria-label={`Remove voucher ${voucher.code}`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
 
@@ -742,7 +910,8 @@ export default function Checkout() {
                 isSubmittingOrder ||
                 !hasCheckoutItems ||
                 isLoadingAddress ||
-                !hasShippingAddress
+                !hasShippingAddress ||
+                !isPaymentAllowed(paymentMethod)
               }
               className="w-full bg-[#FF851B] text-white py-4 rounded-md font-bold text-xs tracking-wide hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
             >
@@ -756,7 +925,6 @@ export default function Checkout() {
         </aside>
       </div>
 
-      {/* --- MODIFIED GCASH POPUP ONLY (Fixed height, no scrolling, form inputs) --- */}
       {showGCashModal && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
           <div
@@ -793,28 +961,53 @@ export default function Checkout() {
                 </div>
               ) : (
                 <form onSubmit={handleGCashSubmit} className="space-y-4">
-                  {/* Compact Merchant Details */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4">
-                    <div className="w-20 h-20 bg-white p-1.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-center relative shrink-0">
-                      <QrCode size={60} className="text-[#0055E3] opacity-20" />
-                      <span className="absolute text-[8px] font-black text-gray-400">
-                        QR
-                      </span>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest">
-                        Send to Merchant
-                      </p>
-                      <p className="text-lg font-black text-[#003366]">
-                        0912-345-6789
-                      </p>
-                      <p className="text-[10px] font-bold text-gray-500 italic">
-                        IskoMart Store
-                      </p>
-                    </div>
+                  <div className="space-y-3">
+                    {gcashPaymentDetails.map((merchant) =>
+                      merchant.methods.map((method) => (
+                        <div
+                          key={`${merchant.id}-${method.id}`}
+                          className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4"
+                        >
+                          <div className="w-20 h-20 bg-white p-1.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-center relative shrink-0 overflow-hidden">
+                            {method.qrUrl ? (
+                              <img
+                                src={method.qrUrl}
+                                alt={`${merchant.name} GCash QR`}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <>
+                                <QrCode
+                                  size={60}
+                                  className="text-[#0055E3] opacity-20"
+                                />
+                                <span className="absolute text-[8px] font-black text-gray-400">
+                                  QR
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <div className="min-w-0 text-left">
+                            <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest">
+                              Send to Merchant
+                            </p>
+                            <p className="truncate text-lg font-black text-[#003366]">
+                              {method.number || method.username || method.link}
+                            </p>
+                            <p className="text-[10px] font-bold text-gray-500 italic">
+                              {method.username || merchant.name}
+                            </p>
+                            {method.other && (
+                              <p className="mt-1 text-[9px] font-semibold text-gray-400">
+                                {method.other}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )),
+                    )}
                   </div>
 
-                  {/* Manual Inputs - Non-Scrollable Layout */}
                   <div className="space-y-3">
                     <div>
                       <label className="text-[9px] font-black text-gray-400 uppercase ml-1 tracking-widest">
@@ -958,13 +1151,16 @@ export default function Checkout() {
   );
 }
 
-function MethodCard({ id, selected, onClick, icon, title, desc, price }) {
+function MethodCard({ id, selected, onClick, icon, title, desc, price, disabled }) {
   return (
     <button
       type="button"
       onClick={() => onClick(id)}
+      disabled={disabled}
       className={`w-full p-4 border-2 rounded-md flex items-center justify-between cursor-pointer transition-all text-left ${
-        selected
+        disabled
+          ? "border-gray-100 bg-gray-100 opacity-60 cursor-not-allowed"
+          : selected
           ? "border-[#FF851B] bg-[#FFF7F0]"
           : "border-gray-100 bg-gray-50/30 hover:border-gray-200"
       }`}
