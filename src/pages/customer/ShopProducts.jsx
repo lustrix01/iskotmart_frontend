@@ -31,6 +31,7 @@ export default function ShopProducts() {
   const searchTerm = searchParams.get("q") || "";
   const category = searchParams.get("category") || "";
   const saleOnly = searchParams.get("sale") === "true";
+  const showAllMerchants = searchParams.get("merchants") === "all";
 
   const { products: storefrontProducts, loading, error } = useStorefrontListings();
   const merchants = useMemo(() => {
@@ -43,8 +44,9 @@ export default function ShopProducts() {
         img: item.merchantAvatar || FALLBACK_AVATAR,
       });
     });
-    return Array.from(byId.values()).slice(0, 12);
-  }, [storefrontProducts]);
+    const allMerchants = Array.from(byId.values());
+    return showAllMerchants ? allMerchants : allMerchants.slice(0, 12);
+  }, [showAllMerchants, storefrontProducts]);
   const products = storefrontProducts
     .filter((item) => matchesListing(item, searchTerm, category))
     .filter((item) => !saleOnly || item.isOnSale)
@@ -97,10 +99,10 @@ export default function ShopProducts() {
               <h2 className="text-sm font-bold">Verified merchants</h2>
             </div>
             <Link
-              to="/products"
+              to={showAllMerchants ? "/products" : "/products?merchants=all"}
               className="text-[11px] font-bold text-[#FF851B] flex items-center gap-1 hover:underline"
             >
-              See all <ChevronRight size={12} />
+              {showAllMerchants ? "Show less" : "See all"} <ChevronRight size={12} />
             </Link>
           </div>
 
@@ -147,12 +149,18 @@ export default function ShopProducts() {
                     <Link
                       to={`/products?category=${encodeURIComponent(cat.value)}`}
                       onClick={() => setCurrentPage(1)}
-                      className="w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 hover:text-[#003366] rounded-lg transition-colors group"
+                      className={`w-full flex justify-between items-center px-4 py-2.5 text-xs font-bold rounded-lg transition-colors group ${
+                        category === cat.value
+                          ? "bg-orange-50 text-[#003366] border border-orange-100"
+                          : "text-gray-700 hover:bg-gray-50 hover:text-[#003366]"
+                      }`}
                     >
                       <span className="flex items-center gap-2">
                         <ChevronRight
                           size={14}
-                          className="text-gray-300 group-hover:text-[#FF851B] transition-colors"
+                          className={`transition-colors ${
+                            category === cat.value ? "text-[#FF851B]" : "text-gray-300 group-hover:text-[#FF851B]"
+                          }`}
                         />
                         {cat.label}
                       </span>
@@ -190,10 +198,10 @@ export default function ShopProducts() {
                   ))}
                   <button
                     onClick={togglePriceSort}
-                    className={`px-4 py-2 border text-xs font-bold rounded-md flex items-center gap-2 hover:bg-gray-50 transition-all ${
+                    className={`px-4 py-2 border text-xs font-bold rounded-md flex items-center gap-2 transition-all ${
                       activeSort.startsWith("Price:")
-                        ? "bg-[#FF851B] text-white border-[#FF851B]"
-                        : "bg-white text-gray-600 border-gray-200"
+                        ? "bg-[#FF851B] text-white border-[#FF851B] hover:bg-[#E67716]"
+                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
                     }`}
                   >
                     {activeSort.startsWith("Price:") ? activeSort : "Price"}{" "}
