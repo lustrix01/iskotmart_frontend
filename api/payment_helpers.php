@@ -3,6 +3,8 @@
 const PAYMENT_STATUS_UNPAID = 'UNPAID';
 const PAYMENT_STATUS_PENDING_REVIEW = 'PENDING_PAYMENT_REVIEW';
 const PAYMENT_STATUS_PAID = 'PAID';
+const PAYMENT_PROOF_UPLOAD_DIR = __DIR__ . '/uploads/payment-proofs';
+const PAYMENT_PROOF_UPLOAD_URL = '/api/uploads/payment-proofs';
 
 function canonicalPaymentStatus(?string $status): string {
     $normalized = strtoupper(trim((string) $status));
@@ -125,23 +127,97 @@ function orderPrimaryOffering(PDO $db, int $orderId, int $merchantId): ?int {
     return $value ? (int) $value : null;
 }
 
-function ensurePaymentRecord(PDO $db, ?int $orderId, ?int $requestId, int $allowedPaymentId, float $amount, string $reference): void {
+function ensurePaymentProofColumn(PDO $db): bool {
+    $stmt = $db->query("SHOW COLUMNS FROM PAYMENT LIKE 'PROOF_URL'");
+    if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+        return true;
+    }
+
+    $db->exec("ALTER TABLE PAYMENT ADD COLUMN PROOF_URL tinytext DEFAULT NULL AFTER REF_NUM");
+    return true;
+}
+
+function storePaymentProofImage(string $dataUrl): string {
+    $dataUrl = trim($dataUrl);
+    if ($dataUrl === '') {
+        return '';
+    }
+
+    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
+        jsonResponse(['error' => 'Payment proof must be a JPG, PNG, or WebP image.'], 422);
+    }
+
+    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
+    if ($binary === false || strlen($binary) === 0) {
+        jsonResponse(['error' => 'Payment proof image could not be read.'], 422);
+    }
+
+    if (strlen($binary) > 5 * 1024 * 1024) {
+        jsonResponse(['error' => 'Payment proof image must be 5MB or smaller.'], 422);
+    }
+
+    if (!is_dir(PAYMENT_PROOF_UPLOAD_DIR) && !mkdir(PAYMENT_PROOF_UPLOAD_DIR, 0775, true)) {
+        jsonResponse(['error' => 'Unable to prepare payment proof storage.'], 500);
+    }
+
+    $extension = match ($matches[1]) {
+        'image/jpeg', 'image/jpg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        default => 'img',
+    };
+    $fileName = sprintf('payment-proof-%s.%s', bin2hex(random_bytes(12)), $extension);
+    $targetPath = PAYMENT_PROOF_UPLOAD_DIR . '/' . $fileName;
+
+    if (file_put_contents($targetPath, $binary) === false) {
+        jsonResponse(['error' => 'Unable to store payment proof image.'], 500);
+    }
+
+    return PAYMENT_PROOF_UPLOAD_URL . '/' . $fileName;
+}
+
+function ensurePaymentRecord(PDO $db, ?int $orderId, ?int $requestId, int $allowedPaymentId, float $amount, string $reference, ?string $proofUrl = null): void {
     $where = $orderId !== null ? 'ORDER_ID = :order_id' : 'REQUEST_ID = :request_id';
     $lookup = $db->prepare("SELECT PAYMENT_ID FROM PAYMENT WHERE {$where} LIMIT 1");
     $lookup->execute($orderId !== null ? [':order_id' => $orderId] : [':request_id' => $requestId]);
-    if ($lookup->fetch(PDO::FETCH_ASSOC)) {
+    $existing = $lookup->fetch(PDO::FETCH_ASSOC);
+    if ($existing) {
+        if ($proofUrl !== null && $proofUrl !== '') {
+            ensurePaymentProofColumn($db);
+            $update = $db->prepare(
+                "UPDATE PAYMENT
+                 SET PROOF_URL = COALESCE(PROOF_URL, :proof_url)
+                 WHERE PAYMENT_ID = :payment_id"
+            );
+            $update->execute([
+                ':proof_url' => $proofUrl,
+                ':payment_id' => (int) $existing['PAYMENT_ID'],
+            ]);
+        }
         return;
     }
 
-    $stmt = $db->prepare(
-        "INSERT INTO PAYMENT (REF_NUM, AMOUNT, ORDER_ID, REQUEST_ID, ALLOWED_PM_ID)
-         VALUES (:ref_num, :amount, :order_id, :request_id, :allowed_pm_id)"
-    );
-    $stmt->execute([
+    $params = [
         ':ref_num' => $reference,
         ':amount' => (int) round($amount),
         ':order_id' => $orderId,
         ':request_id' => $requestId,
         ':allowed_pm_id' => $allowedPaymentId,
-    ]);
+    ];
+
+    if ($proofUrl !== null && $proofUrl !== '') {
+        ensurePaymentProofColumn($db);
+        $stmt = $db->prepare(
+            "INSERT INTO PAYMENT (REF_NUM, PROOF_URL, AMOUNT, ORDER_ID, REQUEST_ID, ALLOWED_PM_ID)
+             VALUES (:ref_num, :proof_url, :amount, :order_id, :request_id, :allowed_pm_id)"
+        );
+        $params[':proof_url'] = $proofUrl;
+    } else {
+        $stmt = $db->prepare(
+            "INSERT INTO PAYMENT (REF_NUM, AMOUNT, ORDER_ID, REQUEST_ID, ALLOWED_PM_ID)
+             VALUES (:ref_num, :amount, :order_id, :request_id, :allowed_pm_id)"
+        );
+    }
+
+    $stmt->execute($params);
 }
