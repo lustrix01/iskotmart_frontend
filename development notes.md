@@ -475,6 +475,9 @@ Scope clarification: subscription and promo surfaces remain removed because they
 - [T] Improve chatbot UX around auth and provider errors.
   - `src/components/AiHelpChat.jsx` keeps the launcher visible for guests and shows a login prompt instead of hiding the feature.
   - Chat responses are split into readable lines, and debug details from the API are surfaced when enabled.
+- [T] Clarify chatbot scope and limitations.
+  - `src/components/AiHelpChat.jsx` now starts with an explicit instruction that the chatbot can compare listings, prices, discounts, reviews, and merchant details only.
+  - `api/ai_help_chat.php` now tells the model it is read-only and cannot checkout, book services, edit carts, manage wishlists, apply vouchers, place orders, message merchants, or change account data.
 - Validation performed for this batch:
   - Direct Groq request using the local `.env` key returned `groq-ok`.
   - `C:\xampp\php\php.exe -l api\config.php`
