@@ -30,6 +30,16 @@ function formatOrderDate(?string $value): string {
     return $timestamp ? date('M j, Y', $timestamp) : $value;
 }
 
+function serviceRequirementsPayload(array $info, ?string $scheduledDate, ?string $note): array {
+    return [
+        'deadline' => formatOrderDate($scheduledDate),
+        'package' => trim((string) ($info['package'] ?? $info['complexity'] ?? '')),
+        'businessType' => trim((string) ($info['businessType'] ?? '')),
+        'brief' => trim((string) ($info['brief'] ?? '')),
+        'note' => trim((string) ($note ?? '')),
+    ];
+}
+
 function mapDbStatusToUi(string $status): string {
     $normalized = strtoupper(trim($status));
     $map = [
@@ -108,8 +118,8 @@ function productOrderRows(PDO $db, int $merchantId): array {
 
 function serviceRequestRows(PDO $db, int $merchantId): array {
     $stmt = $db->prepare(
-        "SELECT sr.REQUEST_ID, sr.REQUEST_DATE, sr.REQ_STATUS, sr.TOTAL_PRICE, sr.PHONE_NUM, sr.ADDRESS,
-	                sr.RECEIPT_NAME, sr.RECIPIENT_NAME, sr.CUSTOMER_INFO, u.EMAIL,
+        "SELECT sr.REQUEST_ID, sr.REQUEST_DATE, sr.SCHEDULED_DATE, sr.REQ_STATUS, sr.TOTAL_PRICE, sr.PHONE_NUM, sr.ADDRESS,
+		                sr.RECEIPT_NAME, sr.RECIPIENT_NAME, sr.CUSTOMER_INFO, sr.NOTE, u.EMAIL,
 	                (SELECT pay.PROOF_URL
 	                 FROM PAYMENT pay
 	                 WHERE pay.REQUEST_ID = sr.REQUEST_ID
@@ -133,7 +143,7 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
         $customer = trim(($row['FNAME'] ?? '') . ' ' . ($row['LNAME'] ?? ''));
         $items = array_map(function (string $item): array {
             [$name, $qty, $price] = array_pad(explode('||', $item), 3, '');
-            return [
+	        return [
                 'name' => trim($name) !== '' ? trim($name) : 'Order item',
                 'qty' => max(1, (int) $qty),
                 'price' => moneyValue($price),
@@ -179,12 +189,17 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             'sortDate' => (string) ($row['REQUEST_DATE'] ?? ''),
             'customer' => $customerName !== '' ? $customerName : 'Customer',
             'email' => $row['EMAIL'] ?: '',
-            'items' => [[
-                'name' => $row['service_name'] ?: 'Service Request',
-                'qty' => $quantity,
-                'price' => moneyValue($unitPrice),
-            ]],
-            'total' => $total,
+	            'items' => [[
+	                'name' => $row['service_name'] ?: 'Service Request',
+	                'qty' => $quantity,
+	                'price' => moneyValue($unitPrice),
+	            ]],
+	            'serviceRequirements' => serviceRequirementsPayload(
+	                $info,
+	                $row['SCHEDULED_DATE'] ?? null,
+	                $row['NOTE'] ?? null
+	            ),
+	            'total' => $total,
             'method' => 'Service booking',
             'paymentStatus' => paymentStatusLabel($paymentStatus),
             'paymentStatusCode' => $paymentStatus,
