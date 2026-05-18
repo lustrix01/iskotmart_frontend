@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
+import { clearRememberedClientSession } from "../api/clientSession";
 import logo from "../assets/logo.png";
 
 export default function CustomerSignup() {
@@ -83,6 +84,7 @@ export default function CustomerSignup() {
         }
 
         login(payload.user);
+        clearRememberedClientSession();
         navigate("/");
       } catch (err) {
         setError(err.message);
