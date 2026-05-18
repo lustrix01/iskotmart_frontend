@@ -3,16 +3,8 @@ import { Link } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
-  Laptop,
-  Shirt,
-  Coffee,
-  BookOpen,
-  GraduationCap,
-  PenTool,
-  Camera,
   ShoppingBag,
-  Home,
-  Paperclip,
+  Wrench,
   Star,
 } from "lucide-react";
 import { useStorefrontListings } from "../../data/storefrontData";
@@ -24,28 +16,16 @@ const slides = [
 ];
 const slideCount = slides.length;
 
-const categories = [
-  { name: "Electronics", icon: Laptop, path: "/products?category=electronics" },
-  { name: "Apparel", icon: Shirt, path: "/products?category=apparel" },
-  { name: "Food & Drink", icon: Coffee, path: "/products?category=food" },
-  { name: "Books", icon: BookOpen, path: "/products?category=books" },
-  { name: "Tutoring", icon: GraduationCap, path: "/services?category=tutoring" },
-  { name: "Design", icon: PenTool, path: "/services?category=design" },
-  { name: "Photography", icon: Camera, path: "/services?category=photo" },
-  { name: "Errands", icon: ShoppingBag, path: "/services?category=errands" },
-  { name: "Dorm Needs", icon: Home, path: "/products?category=dorm" },
-  { name: "Stationery", icon: Paperclip, path: "/products?category=stationery" },
-];
-
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
 
-function ProductCard({ item }) {
+function OfferingCard({ item }) {
   const image = item.img || item.images?.[0]?.url || FALLBACK_IMAGE;
   const hasDiscount = Boolean(item.discount);
+  const isService = item.type === "service";
 
   return (
-    <Link to={`/product/${item.id}`} className="block h-full">
+    <Link to={`/${isService ? "service" : "product"}/${item.id}`} className="block h-full">
       <div className="bg-white p-2 rounded-sm border border-transparent hover:border-gray-100 hover:shadow-md transition-all cursor-pointer group h-full flex flex-col">
         <div className="bg-gray-50 aspect-square mb-2 overflow-hidden rounded-sm shrink-0 relative">
           <img
@@ -61,6 +41,9 @@ function ProductCard({ item }) {
               {item.discount}
             </span>
           ) : null}
+          <span className="absolute right-2 top-2 bg-white/90 text-[#003366] rounded-sm p-1 shadow-sm">
+            {isService ? <Wrench size={12} /> : <ShoppingBag size={12} />}
+          </span>
         </div>
         <div className="flex flex-col flex-grow justify-between">
           <div>
@@ -74,11 +57,11 @@ function ProductCard({ item }) {
           <div>
             <div className="flex items-baseline gap-1.5 mt-1">
               <p className="text-[#FF851B] font-semibold text-xs">
-                PHP {Number(item.price || 0).toFixed(2)}
+                ₱{Number(item.price || 0).toFixed(2)}
               </p>
               {hasDiscount ? (
                 <p className="text-[9px] text-gray-300 line-through">
-                  PHP {Number(item.oldPrice || 0).toFixed(2)}
+                  ₱{Number(item.oldPrice || 0).toFixed(2)}
                 </p>
               ) : null}
             </div>
@@ -89,6 +72,8 @@ function ProductCard({ item }) {
               </span>
               {Number(item.weeklySold || 0) > 0 ? (
                 <span className="ml-auto text-gray-300">{item.weeklySold} sold/week</span>
+              ) : isService && Number(item.completed || 0) > 0 ? (
+                <span className="ml-auto text-gray-300">{item.completed} booked</span>
               ) : null}
             </div>
           </div>
@@ -98,7 +83,7 @@ function ProductCard({ item }) {
   );
 }
 
-function ProductSection({ title, titleClassName = "text-[#003366]", to, products, empty }) {
+function OfferingSection({ title, titleClassName = "text-[#003366]", to, offerings, empty }) {
   return (
     <section className="bg-white p-4 border border-gray-100 shadow-sm rounded-sm">
       <div className="flex justify-between items-center mb-4 border-b pb-2">
@@ -110,10 +95,10 @@ function ProductSection({ title, titleClassName = "text-[#003366]", to, products
           See All &gt;
         </Link>
       </div>
-      {products.length > 0 ? (
+      {offerings.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-          {products.slice(0, 10).map((item) => (
-            <ProductCard key={item.id} item={item} />
+          {offerings.slice(0, 10).map((item) => (
+            <OfferingCard key={`${item.type}-${item.id}`} item={item} />
           ))}
         </div>
       ) : (
@@ -127,7 +112,7 @@ function ProductSection({ title, titleClassName = "text-[#003366]", to, products
 
 export default function CustomerHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const { featuredProducts, onSaleProducts, loading, error } = useStorefrontListings();
+  const { featuredProducts, featuredServices, onSaleProducts, loading, error } = useStorefrontListings();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -225,10 +210,10 @@ export default function CustomerHome() {
       </div>
 
       {/* FEATURED PRODUCTS */}
-      <ProductSection
+      <OfferingSection
         title="Featured Products"
         to="/products"
-        products={featuredProducts}
+        offerings={featuredProducts}
         empty={
           loading
             ? "Loading featured products..."
@@ -236,41 +221,24 @@ export default function CustomerHome() {
         }
       />
 
-      {/* CATEGORIES */}
-      <section className="bg-white border border-gray-100 shadow-sm rounded-sm">
-        <div className="bg-gray-50/50 py-3 border-b border-gray-100 text-center">
-          <h3 className="font-semibold text-gray-500 text-xs uppercase tracking-widest italic">
-            CATEGORIES
-          </h3>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5">
-          {categories.map((cat, i) => (
-            <Link
-              to={cat.path}
-              key={i}
-              className="border-r border-b border-gray-100 p-8 flex flex-col items-center gap-3 hover:bg-gray-50 transition-colors cursor-pointer group"
-            >
-              <div className="w-14 h-14 flex items-center justify-center transition-transform group-hover:scale-110">
-                <cat.icon
-                  size={32}
-                  className="text-[#003366]"
-                  strokeWidth={1.5}
-                />
-              </div>
-              <span className="text-[11px] font-semibold text-gray-600">
-                {cat.name}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
+      {/* FEATURED SERVICES */}
+      <OfferingSection
+        title="Featured Services"
+        to="/services"
+        offerings={featuredServices}
+        empty={
+          loading
+            ? "Loading featured services..."
+            : error || "No services have enough completed bookings to be featured yet."
+        }
+      />
 
       {/* ON SALE NOW */}
-      <ProductSection
+      <OfferingSection
         title="On Sale Now"
         titleClassName="text-[#FF851B]"
         to="/products?sale=true"
-        products={onSaleProducts}
+        offerings={onSaleProducts}
         empty={
           loading
             ? "Loading on-sale products..."
