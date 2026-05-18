@@ -5,7 +5,11 @@ import {
   useStorefrontListings,
 } from "../../data/storefrontData";
 
+const FALLBACK_IMAGE = "/placeholders/offering.svg";
+
 function ProductResultCard({ item }) {
+  const image = item.img || item.images?.[0]?.url || FALLBACK_IMAGE;
+
   return (
     <Link
       to={`/product/${item.id}`}
@@ -13,9 +17,12 @@ function ProductResultCard({ item }) {
     >
       <div className="aspect-square bg-gray-50 relative overflow-hidden">
         <img
-          src={item.img}
+          src={image}
           alt={item.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          onError={(event) => {
+            event.currentTarget.src = FALLBACK_IMAGE;
+          }}
         />
         <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-md shadow-sm">
           <ShoppingBag size={14} className="text-[#FF851B]" />
@@ -50,6 +57,8 @@ function ProductResultCard({ item }) {
 }
 
 function ServiceResultCard({ item }) {
+  const image = item.img || item.images?.[0]?.url || FALLBACK_IMAGE;
+
   return (
     <Link
       to={`/service/${item.id}`}
@@ -57,9 +66,12 @@ function ServiceResultCard({ item }) {
     >
       <div className="aspect-square bg-gray-50 relative overflow-hidden">
         <img
-          src={item.img}
+          src={image}
           alt={item.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          onError={(event) => {
+            event.currentTarget.src = FALLBACK_IMAGE;
+          }}
         />
         <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm p-1.5 rounded-md shadow-sm">
           <Wrench size={14} className="text-[#0074D9]" />
