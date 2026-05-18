@@ -14,8 +14,7 @@ import {
 } from "lucide-react";
 import { useCart } from "../../context/useCart";
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
+const FALLBACK_IMAGE = "/placeholders/offering.svg";
 
 function formatAddedOn(value) {
   if (!value) {
@@ -226,7 +225,9 @@ export default function Wishlist() {
                       <div className="flex items-center gap-1 text-[#FF851B]">
                         <Star size={12} fill="#FF851B" />
                         <span className="text-xs font-bold">
-                          {Number(item.rating || 0).toFixed(1)}
+                          {item.rating !== null && item.rating !== undefined
+                            ? Number(item.rating).toFixed(1)
+                            : "No ratings"}
                         </span>
                       </div>
                     </div>
