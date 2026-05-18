@@ -1,31 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { CartContext } from "./cartContextObject";
+import { useAuth } from "./useAuth";
 
-const STORAGE_KEY = "iskotmart_cart_v1";
+const STORAGE_KEY_PREFIX = "iskotmart_cart_v1";
 
 const makeInitialCart = () => ({
   product: [],
   service: [],
 });
 
+const cartStorageKey = (user) =>
+  user?.role === "customer" && user?.id
+    ? `${STORAGE_KEY_PREFIX}_customer_${user.id}`
+    : `${STORAGE_KEY_PREFIX}_guest`;
+
+const loadCart = (storageKey) => {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return makeInitialCart();
+    const parsed = JSON.parse(raw);
+    return {
+      product: Array.isArray(parsed.product) ? parsed.product : [],
+      service: Array.isArray(parsed.service) ? parsed.service : [],
+    };
+  } catch {
+    return makeInitialCart();
+  }
+};
+
 export function CartProvider({ children }) {
-  const [cart, setCart] = useState(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return makeInitialCart();
-      const parsed = JSON.parse(raw);
-      return {
-        product: Array.isArray(parsed.product) ? parsed.product : [],
-        service: Array.isArray(parsed.service) ? parsed.service : [],
-      };
-    } catch {
-      return makeInitialCart();
-    }
-  });
+  const { user } = useAuth();
+  const storageKey = cartStorageKey(user);
+
+  return (
+    <ScopedCartProvider key={storageKey} storageKey={storageKey}>
+      {children}
+    </ScopedCartProvider>
+  );
+}
+
+function ScopedCartProvider({ children, storageKey }) {
+  const [cart, setCart] = useState(() => loadCart(storageKey));
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
-  }, [cart]);
+    localStorage.setItem(storageKey, JSON.stringify(cart));
+  }, [cart, storageKey]);
 
   const addToCart = (type, nextItem, qty = 1) => {
     if (!nextItem || (type !== "product" && type !== "service")) return;
@@ -93,4 +112,3 @@ export function CartProvider({ children }) {
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
-
