@@ -170,8 +170,8 @@ try {
 
     $productPerformanceStmt = $db->prepare(
         "SELECT o.OFFERING_ID AS id, o.OFFERING_NAME AS name, 'Product' AS type,
-                COALESCE(SUM(CASE WHEN UPPER(ord.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED') AND UPPER(ord.PAYMENT_STATUS) = 'PAID' AND ord.ORDERED_ON BETWEEN :start_at AND :end_at THEN oi.QUANTITY ELSE 0 END), 0) AS quantity,
-                COALESCE(SUM(CASE WHEN UPPER(ord.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED') AND UPPER(ord.PAYMENT_STATUS) = 'PAID' AND ord.ORDERED_ON BETWEEN :start_at AND :end_at THEN oi.PRICE * oi.QUANTITY ELSE 0 END), 0) AS revenue
+                COALESCE(SUM(CASE WHEN UPPER(ord.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED') AND UPPER(ord.PAYMENT_STATUS) = 'PAID' AND ord.ORDERED_ON BETWEEN :quantity_start_at AND :quantity_end_at THEN oi.QUANTITY ELSE 0 END), 0) AS quantity,
+                COALESCE(SUM(CASE WHEN UPPER(ord.ORDER_STATUS) IN ('COMPLETED', 'DELIVERED') AND UPPER(ord.PAYMENT_STATUS) = 'PAID' AND ord.ORDERED_ON BETWEEN :revenue_start_at AND :revenue_end_at THEN oi.PRICE * oi.QUANTITY ELSE 0 END), 0) AS revenue
          FROM PRODUCT p
          INNER JOIN OFFERING o ON o.OFFERING_ID = p.PROD_ID
          LEFT JOIN ORDER_ITEM oi ON oi.PRODUCT_ID = p.PROD_ID
@@ -181,8 +181,10 @@ try {
     );
     $productPerformanceStmt->execute([
         ':merchant_id' => $merchantId,
-        ':start_at' => $start,
-        ':end_at' => $end,
+        ':quantity_start_at' => $start,
+        ':quantity_end_at' => $end,
+        ':revenue_start_at' => $start,
+        ':revenue_end_at' => $end,
     ]);
     $performers = array_map(fn (array $row): array => [
         'id' => (int) $row['id'],
