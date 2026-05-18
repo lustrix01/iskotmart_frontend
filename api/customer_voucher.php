@@ -52,7 +52,8 @@ function voucherOffering(PDO $db, string $type, int $id): ?array {
         $stmt = $db->prepare(
             "SELECT p.PROD_ID AS id, p.PRICE AS price, p.MERCHANT_ID AS merchant_id,
                     d.TYPE AS discount_type, d.VALUE AS discount_value
-             FROM PRODUCT p
+	             FROM PRODUCT p
+	             INNER JOIN USERS u ON u.USER_ID = p.MERCHANT_ID AND u.STATUS = 'ACTIVE'
              LEFT JOIN (
                  SELECT d1.*
                  FROM DISCOUNT d1
@@ -72,7 +73,8 @@ function voucherOffering(PDO $db, string $type, int $id): ?array {
         $stmt = $db->prepare(
             "SELECT s.SERVICE_ID AS id, s.PRICE AS price, s.MERCHANT_ID AS merchant_id,
                     d.TYPE AS discount_type, d.VALUE AS discount_value
-             FROM SERVICE s
+	             FROM SERVICE s
+	             INNER JOIN USERS u ON u.USER_ID = s.MERCHANT_ID AND u.STATUS = 'ACTIVE'
              LEFT JOIN (
                  SELECT d1.*
                  FROM DISCOUNT d1

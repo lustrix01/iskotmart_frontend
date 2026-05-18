@@ -286,6 +286,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     jsonResponse(['profile' => loadMerchantProfile($db, $merchantId)]);
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    $data = jsonInput();
+    $email = strtolower(trim((string) ($data['email'] ?? '')));
+    $sessionEmail = strtolower(trim((string) ($sessionUser['email'] ?? '')));
+
+    if ($email === '' || $email !== $sessionEmail) {
+        jsonResponse(['error' => 'Type your merchant email address to confirm shop closure.'], 422);
+    }
+
+    try {
+        $stmt = $db->prepare(
+            "UPDATE USERS
+             SET STATUS = 'INACTIVE'
+             WHERE USER_ID = :merchant_id
+               AND UPPER(ROLE) IN ('MRC', 'MERCHANT')
+               AND STATUS = 'ACTIVE'"
+        );
+        $stmt->execute([':merchant_id' => $merchantId]);
+
+        if ($stmt->rowCount() < 1) {
+            jsonResponse(['error' => 'Shop account is already inactive or could not be closed.'], 409);
+        }
+
+        jsonResponse(['ok' => true, 'status' => 'INACTIVE']);
+    } catch (Throwable $e) {
+        logApiError($e);
+        jsonResponse(['error' => 'Unable to close shop account.'], 500);
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'PATCH') {
     $data = jsonInput();
     $shopName = trim((string) ($data['shopName'] ?? ''));

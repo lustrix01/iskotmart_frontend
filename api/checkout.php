@@ -110,7 +110,8 @@ function dbOffering(PDO $db, string $type, int $id): ?array {
             "SELECT p.PROD_ID AS id, p.PRICE AS price, p.STOCK_QTY AS capacity,
                     p.STATUS AS status, p.MERCHANT_ID AS merchant_id,
                     d.TYPE AS discount_type, d.VALUE AS discount_value
-             FROM PRODUCT p
+	             FROM PRODUCT p
+	             INNER JOIN USERS u ON u.USER_ID = p.MERCHANT_ID AND u.STATUS = 'ACTIVE'
              LEFT JOIN (
                  SELECT d1.*
                  FROM DISCOUNT d1
@@ -131,7 +132,8 @@ function dbOffering(PDO $db, string $type, int $id): ?array {
             "SELECT s.SERVICE_ID AS id, s.PRICE AS price, s.SLOTS AS capacity,
                     s.STATUS AS status, s.MERCHANT_ID AS merchant_id,
                     d.TYPE AS discount_type, d.VALUE AS discount_value
-             FROM SERVICE s
+	             FROM SERVICE s
+	             INNER JOIN USERS u ON u.USER_ID = s.MERCHANT_ID AND u.STATUS = 'ACTIVE'
              LEFT JOIN (
                  SELECT d1.*
                  FROM DISCOUNT d1
