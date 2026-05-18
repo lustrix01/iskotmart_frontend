@@ -72,7 +72,7 @@ export default function MerchantDashboard() {
         value: summary?.stats?.totalSalesFormatted || formatMoney(0),
         trend: `${summary?.stats?.totalOrders || 0} paid completed orders`,
         icon: DollarSign,
-        path: "/merchant/earnings",
+        path: "/merchant/insights",
       },
       {
         title: "Active Orders",
@@ -93,7 +93,7 @@ export default function MerchantDashboard() {
         value: String(summary?.stats?.customers || 0),
         trend: "Unique customers with orders",
         icon: Users,
-        path: "/merchant/analytics",
+        path: "/merchant/insights",
       },
     ],
     [summary],

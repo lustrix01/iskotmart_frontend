@@ -40,8 +40,7 @@ const MerchantProducts = lazy(() => import("./pages/merchant/MerchantProducts"))
 const MerchantOrders = lazy(() => import("./pages/merchant/MerchantOrders"));
 const MerchantMessages = lazy(() => import("./pages/merchant/MerchantMessages"));
 const MerchantDiscounts = lazy(() => import("./pages/merchant/MerchantDiscounts"));
-const MerchantAnalytics = lazy(() => import("./pages/merchant/MerchantAnalytics"));
-const MerchantEarnings = lazy(() => import("./pages/merchant/MerchantEarnings"));
+const MerchantInsights = lazy(() => import("./pages/merchant/MerchantInsights"));
 
 // Auth Pages
 const LoginPage = lazy(() => import("./auth/LoginPage"));
@@ -135,8 +134,9 @@ function App() {
               <Route path="orders" element={withSuspense(MerchantOrders)} />
               <Route path="messages" element={withSuspense(MerchantMessages)} />
               <Route path="discounts" element={withSuspense(MerchantDiscounts)} />
-              <Route path="analytics" element={withSuspense(MerchantAnalytics)} />
-              <Route path="earnings" element={withSuspense(MerchantEarnings)} />
+              <Route path="insights" element={withSuspense(MerchantInsights)} />
+              <Route path="analytics" element={<Navigate to="/merchant/insights" replace />} />
+              <Route path="earnings" element={<Navigate to="/merchant/insights" replace />} />
             </Route>
           </Route>
 

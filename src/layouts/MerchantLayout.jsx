@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Tag,
   TrendingUp,
-  DollarSign,
   LogOut as LogOutIcon,
   AlertCircle,
   ShieldCheck,
@@ -37,8 +36,7 @@ export default function MerchantLayout() {
     { name: "Orders", path: "/merchant/orders", icon: ShoppingCart },
     { name: "Messages", path: "/merchant/messages", icon: MessageSquare },
     { name: "Discount and Voucher", path: "/merchant/discounts", icon: Tag },
-    { name: "Analytics", path: "/merchant/analytics", icon: TrendingUp },
-    { name: "Earnings", path: "/merchant/earnings", icon: DollarSign },
+    { name: "Insights", path: "/merchant/insights", icon: TrendingUp },
   ];
 
   const handleConfirmLogout = () => {
