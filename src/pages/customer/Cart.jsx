@@ -13,6 +13,38 @@ import {
 import { useAuth } from "../../context/useAuth";
 import { useCart } from "../../context/useCart";
 
+function merchantGroupKey(item) {
+  const merchantId = Number(item.merchantId || 0);
+  if (merchantId > 0) {
+    return `id:${merchantId}`;
+  }
+  return `name:${String(item.merchant || "Merchant").toLowerCase()}`;
+}
+
+function groupProductItemsByMerchant(items) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const key = merchantGroupKey(item);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        merchantId: Number(item.merchantId || 0),
+        merchant: item.merchant || "Merchant",
+        items: [],
+      });
+    }
+    groups.get(key).items.push(item);
+  });
+  return Array.from(groups.values());
+}
+
+function cartSubtotal(items) {
+  return items.reduce(
+    (acc, item) => acc + Number(item.price || 0) * Number(item.qty || 1),
+    0,
+  );
+}
+
 export default function Cart() {
   const [activeTab, setActiveTab] = useState("product");
   const navigate = useNavigate();
@@ -38,30 +70,40 @@ export default function Cart() {
   };
 
   const activeItems = activeTab === "product" ? productItems : serviceItems;
+  const productGroups = groupProductItemsByMerchant(productItems);
+  const hasMultipleProductMerchants =
+    activeTab === "product" && productGroups.length > 1;
   const totalItemsCount =
     activeTab === "product"
       ? productItems.reduce((acc, item) => acc + Number(item.qty || 1), 0)
       : serviceItems.length;
 
-  const subtotal = activeItems.reduce(
-    (acc, item) => acc + Number(item.price || 0) * Number(item.qty || 1),
-    0,
-  );
+  const subtotal = cartSubtotal(activeItems);
   const fee = 50.0;
   const estFee = 25.0;
   const totalAmount = subtotal + fee + estFee;
 
-  const handleCheckout = () => {
+  const handleCheckout = (checkoutItems = activeItems) => {
     if (!user) {
       navigate("/login", { state: { from: { pathname: "/cart" } } });
       return;
     }
 
+    if (checkoutItems.length === 0) {
+      return;
+    }
+
+    const checkoutSubtotal = cartSubtotal(checkoutItems);
     navigate(`/checkout?type=${activeTab}`, {
       state: {
         type: activeTab,
-        items: activeItems,
-        totals: { subtotal, fee, estFee, totalAmount },
+        items: checkoutItems,
+        totals: {
+          subtotal: checkoutSubtotal,
+          fee,
+          estFee,
+          totalAmount: checkoutSubtotal + fee + estFee,
+        },
       },
     });
   };
@@ -111,8 +153,10 @@ export default function Cart() {
             {activeTab === "product" ? (
               <ProductCartItems
                 items={productItems}
+                groups={productGroups}
                 onUpdateQty={handleUpdateQty}
                 onRemove={(item) => initiateRemove(item, "product")}
+                onCheckoutGroup={(items) => handleCheckout(items)}
               />
             ) : (
               <ServiceCartItems
@@ -130,8 +174,13 @@ export default function Cart() {
               fee={fee}
               estFee={estFee}
               totalAmount={totalAmount}
-              onCheckout={handleCheckout}
-              disabled={activeItems.length === 0}
+              onCheckout={() => handleCheckout()}
+              disabled={activeItems.length === 0 || hasMultipleProductMerchants}
+              note={
+                hasMultipleProductMerchants
+                  ? "Use a merchant checkout button from the product list."
+                  : ""
+              }
             />
 
             <div className="mt-6 bg-[#F8FAFC] p-4 rounded-md flex items-center gap-4 border border-gray-100">
@@ -190,7 +239,13 @@ export default function Cart() {
   );
 }
 
-function ProductCartItems({ items, onUpdateQty, onRemove }) {
+function ProductCartItems({
+  items,
+  groups,
+  onUpdateQty,
+  onRemove,
+  onCheckoutGroup,
+}) {
   if (items.length === 0) {
     return (
       <div className="bg-white rounded-sm shadow-sm border border-gray-100 p-12 text-center text-gray-400">
@@ -202,68 +257,81 @@ function ProductCartItems({ items, onUpdateQty, onRemove }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden">
-        <div className="bg-gray-50/50 px-6 py-3 border-b border-gray-100 flex items-center gap-3">
-          <h3 className="font-bold text-[#003366] text-[10px] tracking-widest">
-            {items[0].merchant || "Merchant"}
-          </h3>
-        </div>
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="p-6 flex gap-6 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors"
-          >
-            <div className="w-24 h-24 bg-gray-100 rounded-md overflow-hidden shrink-0 border border-gray-100">
-              <img
-                src={item.img}
-                className="w-full h-full object-cover"
-                alt="item"
-              />
-            </div>
-            <div className="flex-grow flex flex-col justify-between">
-              <div className="flex justify-between items-start">
-                <div className="space-y-0.5">
-                  <h4 className="font-bold text-gray-800 text-xs tracking-tight">
-                    {item.name}
-                  </h4>
-                  <p className="text-[9px] text-gray-400 font-semibold">
-                    Category: {item.category || "General"}
-                  </p>
-                </div>
-                <span className="font-bold text-[#FF851B] text-base">
-                  PHP {(Number(item.price || 0) * Number(item.qty || 1)).toFixed(1)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center mt-4">
-                <div className="flex items-center border border-gray-200 rounded-sm bg-white overflow-hidden shadow-sm">
-                  <button
-                    onClick={() => onUpdateQty(item.id, -1)}
-                    className="px-3 py-1 hover:bg-gray-50 text-gray-400 border-r border-gray-100"
-                  >
-                    <Minus size={12} />
-                  </button>
-                  <span className="px-4 font-bold text-[#003366] text-xs w-10 text-center">
-                    {item.qty}
-                  </span>
-                  <button
-                    onClick={() => onUpdateQty(item.id, 1)}
-                    className="px-3 py-1 hover:bg-gray-50 text-gray-400 border-l border-gray-100"
-                  >
-                    <Plus size={12} />
-                  </button>
-                </div>
-                <button
-                  onClick={() => onRemove(item)}
-                  className="text-gray-300 hover:text-red-500 flex items-center gap-1.5 transition-colors group"
-                >
-                  <Trash2 size={14} />
-                  <span className="text-[9px] font-bold">Remove</span>
-                </button>
-              </div>
-            </div>
+      {groups.map((group) => (
+        <div
+          key={group.key}
+          className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden"
+        >
+          <div className="bg-gray-50/50 px-6 py-3 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="font-bold text-[#003366] text-[10px] tracking-widest">
+              {group.merchant}
+            </h3>
+            <button
+              type="button"
+              onClick={() => onCheckoutGroup(group.items)}
+              className="self-start sm:self-auto rounded-sm bg-[#FF851B] px-4 py-2 text-[10px] font-bold tracking-widest text-white hover:bg-[#E67616]"
+            >
+              Checkout This Merchant
+            </button>
           </div>
-        ))}
-      </div>
+          {group.items.map((item) => (
+            <div
+              key={item.id}
+              className="p-6 flex gap-6 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors"
+            >
+              <div className="w-24 h-24 bg-gray-100 rounded-md overflow-hidden shrink-0 border border-gray-100">
+                <img
+                  src={item.img}
+                  className="w-full h-full object-cover"
+                  alt="item"
+                />
+              </div>
+              <div className="flex-grow flex flex-col justify-between">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-0.5">
+                    <h4 className="font-bold text-gray-800 text-xs tracking-tight">
+                      {item.name}
+                    </h4>
+                    <p className="text-[9px] text-gray-400 font-semibold">
+                      Category: {item.category || "General"}
+                    </p>
+                  </div>
+                  <span className="font-bold text-[#FF851B] text-base">
+                    PHP{" "}
+                    {(Number(item.price || 0) * Number(item.qty || 1)).toFixed(1)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center mt-4">
+                  <div className="flex items-center border border-gray-200 rounded-sm bg-white overflow-hidden shadow-sm">
+                    <button
+                      onClick={() => onUpdateQty(item.id, -1)}
+                      className="px-3 py-1 hover:bg-gray-50 text-gray-400 border-r border-gray-100"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="px-4 font-bold text-[#003366] text-xs w-10 text-center">
+                      {item.qty}
+                    </span>
+                    <button
+                      onClick={() => onUpdateQty(item.id, 1)}
+                      className="px-3 py-1 hover:bg-gray-50 text-gray-400 border-l border-gray-100"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => onRemove(item)}
+                    className="text-gray-300 hover:text-red-500 flex items-center gap-1.5 transition-colors group"
+                  >
+                    <Trash2 size={14} />
+                    <span className="text-[9px] font-bold">Remove</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -356,6 +424,7 @@ function CartSummary({
   totalAmount,
   onCheckout,
   disabled,
+  note,
 }) {
   return (
     <div className="bg-white rounded-sm shadow-sm border border-gray-100 p-8 flex flex-col">
@@ -415,6 +484,11 @@ function CartSummary({
       >
         {type === "product" ? "Proceed to Checkout" : "Place Order Now"}
       </button>
+      {note ? (
+        <p className="mb-4 text-center text-[10px] font-semibold text-gray-400">
+          {note}
+        </p>
+      ) : null}
 
       <Link
         to="/"
