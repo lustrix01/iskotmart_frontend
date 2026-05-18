@@ -856,6 +856,7 @@ if ($type === 'service' && $validatedBy === 'database') {
         );
 
         $createdIds = [];
+        $createdRequests = [];
         $requestTotals = serviceLineTotals($validatedItems, $total);
         foreach ($validatedItems as $index => $item) {
             $qty = max(1, (int) $item['quantity']);
@@ -909,6 +910,10 @@ if ($type === 'service' && $validatedBy === 'database') {
                 throw new RuntimeException('Unable to create service request.');
             }
             $createdIds[] = $requestId;
+            $createdRequests[] = [
+                'id' => $requestId,
+                'merchant_id' => (int) $item['merchant_id'],
+            ];
 
             $slotsStmt->execute([
                 ':decrement_quantity' => $qty,
@@ -927,9 +932,24 @@ if ($type === 'service' && $validatedBy === 'database') {
             }
         }
 
-        if ($createdIds) {
+        if ($createdRequests) {
             foreach ($vouchers as $voucher) {
-                recordVoucherUsage($db, $voucher, moneyValue($voucher['discountAmount'] ?? 0), null, (int) $createdIds[0]);
+                $voucherMerchantId = (int) ($voucher['merchantId'] ?? 0);
+                $matchingRequest = null;
+                foreach ($createdRequests as $createdRequest) {
+                    if ((int) $createdRequest['merchant_id'] === $voucherMerchantId) {
+                        $matchingRequest = $createdRequest;
+                        break;
+                    }
+                }
+
+                recordVoucherUsage(
+                    $db,
+                    $voucher,
+                    moneyValue($voucher['discountAmount'] ?? 0),
+                    null,
+                    (int) (($matchingRequest ?? $createdRequests[0])['id'])
+                );
             }
         }
 
