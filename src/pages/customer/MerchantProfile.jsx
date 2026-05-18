@@ -11,11 +11,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
+const FALLBACK_IMAGE = "/placeholders/offering.svg";
 
-const FALLBACK_AVATAR =
-  "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=250&auto=format&fit=crop";
+const FALLBACK_AVATAR = "/placeholders/avatar.svg";
 
 export default function MerchantProfile() {
   const { id } = useParams();
