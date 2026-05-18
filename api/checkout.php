@@ -20,6 +20,18 @@ function moneyValue(mixed $value): float {
     return round((float) $value, 2);
 }
 
+function normalizedServiceRequirements(mixed $value): array {
+    $requirements = is_array($value) ? $value : [];
+
+    return [
+        'deadline' => trim((string) ($requirements['deadline'] ?? '')),
+        'package' => trim((string) ($requirements['package'] ?? '')),
+        'businessType' => trim((string) ($requirements['businessType'] ?? '')),
+        'brief' => trim((string) ($requirements['brief'] ?? '')),
+        'complexity' => trim((string) ($requirements['complexity'] ?? ($requirements['package'] ?? ''))),
+    ];
+}
+
 function assertClose(float $expected, float $actual, string $label): void {
     if (abs($expected - $actual) > 0.01) {
         jsonResponse(['error' => "{$label} does not match server calculation."], 422);
@@ -651,6 +663,7 @@ foreach ($items as $item) {
             'price' => moneyValue($dbItem['price']),
             'capacity' => (int) $dbItem['capacity'],
             'merchant_id' => (int) $dbItem['merchant_id'],
+            'service_requirements' => normalizedServiceRequirements($item['serviceRequirements'] ?? []),
         ];
         continue;
     }
@@ -821,10 +834,7 @@ if ($type === 'service' && $validatedBy === 'database') {
         jsonResponse(['error' => 'Recipient name and phone are required.'], 422);
     }
 
-    $deadlineRaw = trim((string) ($service['deadline'] ?? ''));
-    $deadlineTimestamp = $deadlineRaw !== '' ? strtotime($deadlineRaw) : false;
-    $scheduledDate = $deadlineTimestamp ? date('Y-m-d H:i:s', $deadlineTimestamp) : date('Y-m-d H:i:s');
-    $complexity = trim((string) ($service['complexity'] ?? ''));
+    $fallbackRequirements = normalizedServiceRequirements($service);
 
     try {
         $db->beginTransaction();
@@ -852,11 +862,28 @@ if ($type === 'service' && $validatedBy === 'database') {
             $unitPrice = moneyValue($item['price']);
             $lineSubtotal = moneyValue($unitPrice * $qty);
             $lineTotal = $requestTotals[$index] ?? (int) round($lineSubtotal);
+            $requirements = array_merge($fallbackRequirements, array_filter(
+                $item['service_requirements'] ?? [],
+                fn ($value): bool => trim((string) $value) !== ''
+            ));
+            $deadlineRaw = trim((string) ($requirements['deadline'] ?? ''));
+            $deadlineTimestamp = $deadlineRaw !== '' ? strtotime($deadlineRaw) : false;
+            $scheduledDate = $deadlineTimestamp ? date('Y-m-d H:i:s', $deadlineTimestamp) : date('Y-m-d H:i:s');
+            $noteParts = [];
+            if (!empty($requirements['brief'])) {
+                $noteParts[] = 'Brief: ' . $requirements['brief'];
+            }
+            if ($qty > 1) {
+                $noteParts[] = 'Requested quantity: ' . $qty;
+            }
             $customerInfo = json_encode([
                 'paymentMethod' => $paymentMethod,
                 'paymentStatus' => $paymentStatus,
                 'referenceNumber' => $paymentMethod === 'gcash' ? $reference : '',
-                'complexity' => $complexity,
+                'complexity' => $requirements['complexity'] ?: $requirements['package'],
+                'package' => $requirements['package'],
+                'businessType' => $requirements['businessType'],
+                'brief' => $requirements['brief'],
                 'quantity' => $qty,
                 'lineSubtotal' => $lineSubtotal,
                 'serviceFee' => $serviceFee,
@@ -868,7 +895,7 @@ if ($type === 'service' && $validatedBy === 'database') {
                 ':req_status' => 'PENDING',
                 ':total_price' => $lineTotal,
                 ':customer_info' => $customerInfo !== false ? $customerInfo : '{}',
-                ':note' => $qty > 1 ? ('Requested quantity: ' . $qty) : null,
+                ':note' => $noteParts ? implode("\n", $noteParts) : null,
                 ':receipt_name' => $recipientName,
                 ':address' => $address !== '' ? $address : null,
                 ':phone_num' => $phone,
