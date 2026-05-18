@@ -589,3 +589,18 @@ Scope clarification: subscription and promo surfaces remain removed because they
   - `C:\xampp\php\php.exe -l api/customer_voucher.php`
   - `C:\xampp\php\php.exe -l api/merchant_insights.php`
   - `npm run build`
+
+### Code review remediation and local reset-link handling (May 19, 2026)
+
+- [T] Added rate limiting to login, forgot-password, and password-change flows.
+- [T] Added real customer and merchant password-change support through `api/change_password.php`.
+- [T] Kept local-demo reset links available only when `APP_ENV=local` and removed reset-link logging.
+- [T] Replaced request-time schema mutation with explicit schema-column validation helpers.
+- [T] Exposed uploaded GCash proof links in merchant order review.
+- [T] Enabled customer and merchant conversation search.
+- [T] Persisted customer preferences locally and removed misleading modal action-detail panels.
+- [T] Aligned AI help currency wording with the rest of the app and fixed the merchant insights duplicate-placeholder 500.
+- Validation performed for this batch:
+  - `npm run lint`
+  - `npm run build`
+  - `C:\xampp\php\php.exe -l` for touched PHP endpoints
