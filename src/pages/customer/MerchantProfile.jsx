@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
   ChevronRight,
-  Heart,
   MessageSquare,
   ShieldCheck,
   Star,
@@ -209,13 +208,6 @@ export default function MerchantProfile() {
                 >
                   <MessageSquare size={16} />
                   {messageLoading ? "Opening..." : "Message"}
-                </button>
-                <button
-                  onClick={() => showNotice("Shop followed.")}
-                  className="px-8 py-2.5 bg-[#FF851B] text-white text-xs font-bold rounded-lg hover:bg-[#E67616] shadow-sm shadow-orange-100 transition-all flex items-center gap-2"
-                >
-                  <Heart size={16} />
-                  Follow
                 </button>
               </div>
             </div>
