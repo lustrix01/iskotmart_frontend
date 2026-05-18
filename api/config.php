@@ -289,6 +289,7 @@ function userPayloadFromRow(array $user): array {
         'username' => $user['USERNAME'],
         'email' => $user['EMAIL'],
         'role' => normalizeRole($user['ROLE']),
+        'avatarUrl' => $user['AVATAR_URL'] ?? '',
     ];
 }
 
@@ -347,7 +348,7 @@ function currentUser(PDO $db): ?array {
     }
 
     $stmt = $db->prepare(
-        "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, ROLE
+        "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, ROLE, AVATAR_URL
          FROM USERS
          WHERE USER_ID = :user_id AND STATUS = 'ACTIVE'
          LIMIT 1"
