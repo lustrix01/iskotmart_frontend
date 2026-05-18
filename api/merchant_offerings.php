@@ -762,23 +762,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE' || ($_SERVER['REQUEST_METHOD'] === '
     try {
         $db->beginTransaction();
 
-        deleteOfferingImages($db, $offeringId);
+        $db->prepare(
+            "UPDATE OFFERING
+             SET AVAIL_STATUS = 'Retired'
+             WHERE OFFERING_ID = :id AND MERCHANT_ID = :merchant_id"
+        )->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
 
-        $db->prepare("DELETE FROM ALLOWED_PAYMENT WHERE OFFERING_ID = :id")
-            ->execute([':id' => $offeringId]);
-        $db->prepare("DELETE FROM DISCOUNT WHERE OFFERING_ID = :id")
-            ->execute([':id' => $offeringId]);
+        $db->prepare(
+            "UPDATE ALLOWED_PAYMENT
+             SET STATUS = 'INACTIVE'
+             WHERE OFFERING_ID = :id"
+        )->execute([':id' => $offeringId]);
 
         if ($offering['OFFERING_TYPE'] === 'P') {
-            $db->prepare("DELETE FROM PRODUCT WHERE PROD_ID = :id AND MERCHANT_ID = :merchant_id")
+            $db->prepare("UPDATE PRODUCT SET STATUS = 'Retired' WHERE PROD_ID = :id AND MERCHANT_ID = :merchant_id")
                 ->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
         } else {
-            $db->prepare("DELETE FROM SERVICE WHERE SERVICE_ID = :id AND MERCHANT_ID = :merchant_id")
+            $db->prepare("UPDATE SERVICE SET STATUS = 'Retired' WHERE SERVICE_ID = :id AND MERCHANT_ID = :merchant_id")
                 ->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
         }
-
-        $db->prepare("DELETE FROM OFFERING WHERE OFFERING_ID = :id AND MERCHANT_ID = :merchant_id")
-            ->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
 
         $db->commit();
         jsonResponse(['offerings' => listOfferings($db, $merchantId)]);
