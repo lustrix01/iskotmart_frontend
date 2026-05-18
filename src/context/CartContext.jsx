@@ -14,6 +14,31 @@ const cartStorageKey = (user) =>
     ? `${STORAGE_KEY_PREFIX}_customer_${user.id}`
     : `${STORAGE_KEY_PREFIX}_guest`;
 
+const makeCartLineId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
+const normalizeServiceCart = (items) => {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.flatMap((item) => {
+    const quantity = Math.max(1, Number(item.qty || 1));
+    return Array.from({ length: quantity }, (_, index) => ({
+      ...item,
+      qty: 1,
+      cartLineId:
+        quantity === 1 && item.cartLineId
+          ? item.cartLineId
+          : `${makeCartLineId()}-${index}`,
+    }));
+  });
+};
+
 const loadCart = (storageKey) => {
   try {
     const raw = localStorage.getItem(storageKey);
@@ -21,7 +46,7 @@ const loadCart = (storageKey) => {
     const parsed = JSON.parse(raw);
     return {
       product: Array.isArray(parsed.product) ? parsed.product : [],
-      service: Array.isArray(parsed.service) ? parsed.service : [],
+      service: normalizeServiceCart(parsed.service),
     };
   } catch {
     return makeInitialCart();
@@ -52,6 +77,19 @@ function ScopedCartProvider({ children, storageKey }) {
 
     setCart((prev) => {
       const existing = prev[type];
+
+      if (type === "service") {
+        const serviceEntries = Array.from({ length: quantity }, () => ({
+          ...nextItem,
+          qty: 1,
+          cartLineId: makeCartLineId(),
+        }));
+        return {
+          ...prev,
+          service: [...existing, ...serviceEntries],
+        };
+      }
+
       const matchIndex = existing.findIndex(
         (item) => Number(item.id) === Number(nextItem.id),
       );
@@ -89,7 +127,11 @@ function ScopedCartProvider({ children, storageKey }) {
     if (type !== "product" && type !== "service") return;
     setCart((prev) => ({
       ...prev,
-      [type]: prev[type].filter((item) => Number(item.id) !== Number(id)),
+      [type]: prev[type].filter((item) =>
+        type === "service"
+          ? String(item.cartLineId || item.id) !== String(id)
+          : Number(item.id) !== Number(id),
+      ),
     }));
   };
 
