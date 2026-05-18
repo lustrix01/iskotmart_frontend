@@ -142,6 +142,15 @@ export default function MerchantOrders() {
 
   const money = (value) => Number(value || 0).toLocaleString();
 
+  const serviceRequirementRows = (requirements = {}) =>
+    [
+      ["Deadline", requirements.deadline],
+      ["Package", requirements.package],
+      ["Business Type", requirements.businessType],
+      ["Brief", requirements.brief],
+      ["Notes", requirements.note],
+    ].filter(([, value]) => String(value || "").trim() !== "");
+
   const printReceipt = (order) => {
     const receiptWindow = window.open("", "_blank", "width=720,height=900");
     if (!receiptWindow) {
@@ -162,6 +171,12 @@ export default function MerchantOrders() {
           </tr>
         `;
       })
+      .join("");
+    const requirementRows = serviceRequirementRows(order.serviceRequirements)
+      .map(
+        ([label, value]) =>
+          `<div class="row"><strong>${escapeReceiptValue(label)}</strong><span>${escapeReceiptValue(value)}</span></div>`,
+      )
       .join("");
 
     receiptWindow.document.write(`
@@ -193,10 +208,15 @@ export default function MerchantOrders() {
             <div class="row"><strong>Status</strong><span>${escapeReceiptValue(order.status)}</span></div>
             <div class="row"><strong>Payment</strong><span>${escapeReceiptValue(order.paymentMethod || order.method)}</span></div>
             <div class="row"><strong>Payment status</strong><span>${escapeReceiptValue(order.paymentStatus)}</span></div>
-            <div class="row"><strong>Reference</strong><span>${escapeReceiptValue(order.paymentReference || "N/A")}</span></div>
-            <div class="row"><strong>Delivery mode</strong><span>${escapeReceiptValue(order.method)}</span></div>
-          </div>
-          <table>
+	            <div class="row"><strong>Reference</strong><span>${escapeReceiptValue(order.paymentReference || "N/A")}</span></div>
+	            <div class="row"><strong>Delivery mode</strong><span>${escapeReceiptValue(order.method)}</span></div>
+	          </div>
+	          ${
+              requirementRows
+                ? `<div style="margin-top: 24px;"><h2 style="font-size: 14px; color: #003366;">Service Requirements</h2>${requirementRows}</div>`
+                : ""
+            }
+	          <table>
             <thead>
               <tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Line Total</th></tr>
             </thead>
@@ -525,10 +545,10 @@ export default function MerchantOrders() {
                   </div>
                 )}
 
-              {/* INFO CARDS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white p-5 rounded-2xl border border-gray-100">
-                  <p className="text-[10px] font-bold text-[#FF851B] uppercase mb-3">
+	              {/* INFO CARDS */}
+	              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+	                <div className="bg-white p-5 rounded-2xl border border-gray-100">
+	                  <p className="text-[10px] font-bold text-[#FF851B] uppercase mb-3">
                     Customer Details
                   </p>
                   <div className="space-y-3">
@@ -540,15 +560,15 @@ export default function MerchantOrders() {
                       <Phone size={14} className="text-gray-300" />{" "}
                       {selectedOrder.phone}
                     </div>
-                    <div className="flex items-start gap-3 text-[11px] text-gray-500 font-medium">
-                      <MapPin size={14} className="text-gray-300 shrink-0" />{" "}
-                      {selectedOrder.address}
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white p-5 rounded-2xl border border-gray-100">
-                  <p className="text-[10px] font-bold text-[#FF851B] uppercase mb-3">
-                    Payment Info
+	                    <div className="flex items-start gap-3 text-[11px] text-gray-500 font-medium">
+	                      <MapPin size={14} className="text-gray-300 shrink-0" />{" "}
+	                      {selectedOrder.address}
+	                    </div>
+	                  </div>
+	                </div>
+	                <div className="bg-white p-5 rounded-2xl border border-gray-100">
+	                  <p className="text-[10px] font-bold text-[#FF851B] uppercase mb-3">
+	                    Payment Info
                   </p>
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 text-xs font-bold text-[#003366]">
@@ -559,10 +579,31 @@ export default function MerchantOrders() {
                       className={`w-fit px-2 py-1 rounded text-[9px] font-black uppercase ${isPaid(selectedOrder) ? "bg-green-50 text-green-500" : "bg-red-50 text-red-500"}`}
                     >
                       {selectedOrder.paymentStatus}
-                    </div>
-                  </div>
-                </div>
-              </div>
+	                    </div>
+	                  </div>
+	                </div>
+	                {serviceRequirementRows(selectedOrder.serviceRequirements).length > 0 && (
+	                  <div className="bg-white p-5 rounded-2xl border border-gray-100 md:col-span-2">
+	                    <p className="text-[10px] font-bold text-[#FF851B] uppercase mb-3">
+	                      Service Requirements
+	                    </p>
+	                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+	                      {serviceRequirementRows(selectedOrder.serviceRequirements).map(
+	                        ([label, value]) => (
+	                          <div key={label} className="rounded-xl bg-[#F8FAFC] p-3">
+	                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+	                              {label}
+	                            </p>
+	                            <p className="mt-1 text-xs font-bold text-[#003366] leading-relaxed">
+	                              {value}
+	                            </p>
+	                          </div>
+	                        ),
+	                      )}
+	                    </div>
+	                  </div>
+	                )}
+	              </div>
 
               {/* ITEM SUMMARY */}
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
