@@ -42,12 +42,10 @@ export default function ShopSettings() {
     name: "",
     bio: "",
     address: "",
-    banner:
-      "https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=1200",
+    banner: "/placeholders/shop-banner.svg",
     bannerImage: "",
     avatarImage: "",
-    avatar:
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=250",
+    avatar: "/placeholders/avatar.svg",
   });
 
   // Fulfillment Data State (FR-50 & FR-51)
