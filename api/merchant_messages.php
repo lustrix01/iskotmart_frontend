@@ -40,13 +40,7 @@ function customerExists(PDO $db, int $customerId): bool {
 }
 
 function ensureMessageAttachmentColumns(PDO $db): void {
-    $columns = $db->query("SHOW COLUMNS FROM MESSAGE")->fetchAll(PDO::FETCH_COLUMN);
-    if (!in_array('ATTACH_URL', $columns, true)) {
-        $db->exec("ALTER TABLE MESSAGE ADD COLUMN ATTACH_URL varchar(255) DEFAULT NULL AFTER STATUS");
-    }
-    if (!in_array('ATTACH_FILETYPE', $columns, true)) {
-        $db->exec("ALTER TABLE MESSAGE ADD COLUMN ATTACH_FILETYPE varchar(45) DEFAULT NULL AFTER ATTACH_URL");
-    }
+    requireTableColumns($db, 'MESSAGE', ['ATTACH_URL', 'ATTACH_FILETYPE']);
 }
 
 function storeMessageImage(int $senderId, string $dataUrl): array {
