@@ -137,17 +137,6 @@ export default function ProfileLayout() {
                   : "Are you sure you want to log out of IskoMart?"}
               </p>
 
-              {isLoggingOut && (
-                <div className="bg-[#F8FAFC] rounded-xl p-4 mb-8 border border-gray-100 text-left">
-                  <p className="text-[9px] font-bold tracking-widest uppercase opacity-40 mb-1">
-                    Action taken
-                  </p>
-                  <p className="text-[10px] font-medium text-[#003366]">
-                    Clearing Session - Invalidating Token - Redirecting to Login
-                  </p>
-                </div>
-              )}
-
               {!isLoggingOut && (
                 <div className="flex flex-col gap-3">
                   <button
