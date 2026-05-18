@@ -43,12 +43,12 @@ function ensureMerchantFulfillmentColumns(PDO $db): void {
     }
     $checked = true;
 
-    requireTableColumns($db, 'MERCHANT', [
-        'ACCEPTS_COD',
-        'ACCEPTS_GCASH',
-        'ALLOW_MEETUP',
-        'ALLOW_DELIVERY',
-        'DELIVERY_FEE',
+    ensureTableColumns($db, 'MERCHANT', [
+        'ACCEPTS_COD' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ACCEPTS_GCASH' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_MEETUP' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_DELIVERY' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'DELIVERY_FEE' => 'double NOT NULL DEFAULT 50',
     ]);
 }
 
