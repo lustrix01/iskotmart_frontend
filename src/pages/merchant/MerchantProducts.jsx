@@ -4,7 +4,6 @@ import {
   Wrench,
   Plus,
   Search,
-  Filter,
   Edit3,
   Trash2,
   X,
@@ -33,6 +32,7 @@ export default function MerchantProducts() {
   const [activeTab, setActiveTab] = useState("products");
   const [searchTerm, setSearchTerm] = useState("");
   const fileInputRef = useRef(null);
+  const newImagePreviewsRef = useRef([]);
 
   // --- MODAL STATES ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -105,7 +105,16 @@ export default function MerchantProducts() {
     removeImageIds: [],
   });
 
+  const cleanupNewImagePreviews = (images = newImagePreviewsRef.current) => {
+    images.forEach((image) => {
+      if (image.previewUrl) {
+        URL.revokeObjectURL(image.previewUrl);
+      }
+    });
+  };
+
   const handleOpenModal = (item = null) => {
+    cleanupNewImagePreviews();
     setFormError("");
     setFormNotice("");
     if (item) {
@@ -140,6 +149,25 @@ export default function MerchantProducts() {
     }
     setIsModalOpen(true);
   };
+
+  const handleCloseModal = () => {
+    cleanupNewImagePreviews();
+    setIsModalOpen(false);
+  };
+
+  useEffect(() => {
+    newImagePreviewsRef.current = formData.newImages || [];
+  }, [formData.newImages]);
+
+  useEffect(() => {
+    return () => {
+      newImagePreviewsRef.current.forEach((image) => {
+        if (image.previewUrl) {
+          URL.revokeObjectURL(image.previewUrl);
+        }
+      });
+    };
+  }, []);
 
   const syncItemsFromApi = (offerings) => {
     const dbProducts = offerings.filter((item) => item.type === "product");
@@ -279,6 +307,7 @@ export default function MerchantProducts() {
     try {
       await saveOfferingToApi();
       setFormNotice("Item saved to the database.");
+      cleanupNewImagePreviews();
       setIsModalOpen(false);
       return;
     } catch (error) {
@@ -364,9 +393,6 @@ export default function MerchantProducts() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <button className="p-2.5 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 transition-colors">
-            <Filter size={18} />
-          </button>
         </div>
       </div>
 
@@ -509,7 +535,7 @@ export default function MerchantProducts() {
         <div className="fixed inset-0 z-[100] flex justify-end">
           <div
             className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm animate-in fade-in"
-            onClick={() => setIsModalOpen(false)}
+            onClick={handleCloseModal}
           ></div>
           <div className="relative w-full max-w-lg bg-white h-screen shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
@@ -519,7 +545,7 @@ export default function MerchantProducts() {
                   : `Add New ${activeTab.slice(0, -1)}`}
               </h3>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={handleCloseModal}
                 className="p-2 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <X size={20} className="text-gray-400" />
@@ -778,7 +804,7 @@ export default function MerchantProducts() {
 
             <div className="p-6 border-t border-gray-100 flex gap-4">
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={handleCloseModal}
                 className="flex-1 py-3.5 rounded-xl text-xs font-bold text-gray-500 hover:bg-gray-50 transition-all border border-gray-100"
               >
                 Cancel
