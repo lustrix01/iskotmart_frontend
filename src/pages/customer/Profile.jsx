@@ -129,10 +129,20 @@ export default function Profile() {
         throw new Error(payload.error || "Unable to save profile.");
       }
 
-      setProfile({ ...emptyProfile, ...payload.profile, avatarImage: "" });
+      const nextProfile = { ...emptyProfile, ...payload.profile, avatarImage: "" };
+      setProfile(nextProfile);
       if (payload.user) {
         login(payload.user);
       }
+      window.dispatchEvent(
+        new CustomEvent("iskomart:customer-profile-updated", {
+          detail: {
+            name: nextProfile.name,
+            displayName: nextProfile.displayName,
+            avatarUrl: nextProfile.avatarUrl,
+          },
+        }),
+      );
       setSuccess("Profile information saved.");
     } catch (err) {
       setError(err.message);
