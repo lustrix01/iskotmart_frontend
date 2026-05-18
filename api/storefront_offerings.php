@@ -54,6 +54,7 @@ try {
 	                s.DELIVERY_METHOD AS rate,
                 o.MERCHANT_ID AS merchant_id,
                 COALESCE(m.SHOP_NAME, u.USERNAME) AS merchant_name,
+                u.AVATAR_URL AS merchant_avatar,
                 AVG(r.RATING) AS average_rating,
                 COUNT(DISTINCT r.REVIEW_ID) AS review_count,
 	                COALESCE(MAX(weekly_sales.quantity), 0) AS weekly_sold,
@@ -125,7 +126,7 @@ try {
          GROUP BY o.OFFERING_ID, o.OFFERING_TYPE, o.OFFERING_NAME, o.AVAIL_STATUS,
                   o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
 	                  pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY, s.SLOTS, s.DELIVERY_METHOD,
-                  o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME,
+                  o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME, u.AVATAR_URL,
                   discount.DISCOUNT_ID, discount.TYPE, discount.VALUE
          ORDER BY o.OFFERING_ID DESC"
     );
@@ -155,6 +156,7 @@ try {
             'description' => $row['description'] ?: '',
             'merchantId' => (int) $row['merchant_id'],
             'merchant' => $row['merchant_name'] ?: 'Merchant',
+            'merchantAvatar' => $row['merchant_avatar'] ?: '',
             'category' => $row['category'] ?: 'Uncategorized',
             'price' => $discount !== '' ? $discountedPrice : $originalPrice,
 	            'stock' => $row['stock'] !== null ? (int) $row['stock'] : null,
