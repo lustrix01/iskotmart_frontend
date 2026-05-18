@@ -16,8 +16,7 @@ import {
 } from "../../data/storefrontData";
 
 const PAGE_SIZE = 20;
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
+const FALLBACK_IMAGE = "/placeholders/offering.svg";
 const SERVICE_CATEGORIES = [
   { label: "Academics & Tutoring", value: "Academics & Tutoring" },
   { label: "Graphic Design", value: "Creative Services" },
