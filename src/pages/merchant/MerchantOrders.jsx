@@ -495,13 +495,23 @@ export default function MerchantOrders() {
                     <p className="text-xs text-gray-500 font-semibold">
                       {selectedOrder.paymentStatusCode ===
                       "PENDING_PAYMENT_REVIEW"
-                        ? "Review the GCash reference before marking this payment as paid."
+                        ? "Review the GCash reference and uploaded proof before marking this payment as paid."
                         : "Mark COD as paid after collecting cash from the buyer."}
                     </p>
                     {selectedOrder.paymentReference && (
                       <p className="text-[11px] font-bold text-[#003366]">
                         Reference: {selectedOrder.paymentReference}
                       </p>
+                    )}
+                    {selectedOrder.paymentProofUrl && (
+                      <a
+                        href={selectedOrder.paymentProofUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex text-[11px] font-bold text-[#0074D9] hover:underline"
+                      >
+                        View uploaded proof
+                      </a>
                     )}
                     <button
                       onClick={() => markPaymentPaid(selectedOrder.id)}
