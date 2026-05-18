@@ -129,7 +129,8 @@ try {
     $stmt = $db->prepare(
         "SELECT msg.MSG_ID, msg.MSG_TEXT, msg.SENT_ON, msg.STATUS, msg.ATTACH_URL, msg.ATTACH_FILETYPE,
                 msg.MESSAGEcol, msg.MSG_RECEIVER AS merchant_id,
-                COALESCE(m.SHOP_NAME, TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), 'Merchant') AS merchant_name
+                COALESCE(m.SHOP_NAME, TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), 'Merchant') AS merchant_name,
+                COALESCE(u.AVATAR_URL, '') AS merchant_avatar
          FROM MESSAGE msg
          INNER JOIN MERCHANT m ON m.MERCHANT_ID = msg.MSG_RECEIVER
          INNER JOIN USERS u ON u.USER_ID = m.MERCHANT_ID
@@ -151,6 +152,7 @@ try {
             $threadsByMerchant[$merchantId] = [
                 'id' => $merchantId,
                 'name' => $row['merchant_name'] ?: 'Merchant',
+                'avatarUrl' => (string) ($row['merchant_avatar'] ?? ''),
                 'messages' => [],
                 'lastMsg' => '',
                 'time' => '',
