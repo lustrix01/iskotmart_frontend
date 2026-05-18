@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCheck,
   Image as ImageIcon,
   Info,
   MoreVertical,
-  Paperclip,
   Search,
   Send,
   Smile,
@@ -19,6 +18,10 @@ export default function MerchantMessages() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
+  const [imageData, setImageData] = useState("");
+  const messagesRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const isAtBottomRef = useRef(true);
 
   const activeChat = useMemo(
     () => threads.find((thread) => thread.id === activeChatId) || threads[0] || null,
@@ -62,9 +65,34 @@ export default function MerchantMessages() {
     loadThreads();
   }, []);
 
+  const scrollMessagesToBottom = () => {
+    const container = messagesRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  };
+
+  const handleMessagesScroll = () => {
+    const container = messagesRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    isAtBottomRef.current = distanceFromBottom <= 12;
+  };
+
+  useEffect(() => {
+    isAtBottomRef.current = true;
+    requestAnimationFrame(scrollMessagesToBottom);
+  }, [activeChat?.id]);
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      requestAnimationFrame(scrollMessagesToBottom);
+    }
+  }, [activeChat?.messages.length]);
+
   const handleSend = async () => {
     const message = messageText.trim();
-    if (!message || !activeChat || sending) {
+    if ((!message && !imageData) || !activeChat || sending) {
       return;
     }
 
@@ -77,6 +105,7 @@ export default function MerchantMessages() {
         body: JSON.stringify({
           customerId: Number(activeChat.id),
           message,
+          imageData,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -85,12 +114,30 @@ export default function MerchantMessages() {
       }
 
       setMessageText("");
+      setImageData("");
       await loadThreads({ keepActive: true });
     } catch (sendError) {
       showNotice(sendError.message);
     } finally {
       setSending(false);
     }
+  };
+
+  const handleImageSelect = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showNotice("Messages only allow image files.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showNotice("Message image must be 5MB or smaller.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => setImageData(String(reader.result || ""));
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -198,7 +245,11 @@ export default function MerchantMessages() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-10 space-y-8 bg-[#FBFCFE]">
+            <div
+              ref={messagesRef}
+              onScroll={handleMessagesScroll}
+              className="flex-1 overflow-y-auto p-10 space-y-8 bg-[#FBFCFE]"
+            >
               {activeChat.messages.map((msg) => (
                 <div
                   key={msg.id}
@@ -216,6 +267,15 @@ export default function MerchantMessages() {
                     <p className="text-[14px] leading-relaxed whitespace-pre-line">
                       {msg.text}
                     </p>
+                    {msg.imageUrl ? (
+                      <a href={msg.imageUrl} target="_blank" rel="noreferrer">
+                        <img
+                          src={msg.imageUrl}
+                          alt="Message attachment"
+                          className={`${msg.text ? "mt-3" : ""} max-h-80 rounded-xl object-contain`}
+                        />
+                      </a>
+                    ) : null}
                   </div>
                   <div
                     className={`flex items-center gap-1 mt-2 text-[11px] text-gray-400 font-medium ${
@@ -233,8 +293,21 @@ export default function MerchantMessages() {
 
             <div className="p-6 border-t border-gray-100">
               <div className="flex items-center gap-4 bg-[#F8F9FB] rounded-2xl px-5 py-2 border border-gray-100">
-                <Paperclip size={20} className="text-gray-300" />
-                <ImageIcon size={20} className="text-gray-300" />
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="text-gray-300 hover:text-[#0074D9] transition-colors"
+                  title="Attach image"
+                >
+                  <ImageIcon size={20} />
+                </button>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
 
                 <input
                   type="text"
@@ -253,12 +326,25 @@ export default function MerchantMessages() {
 
                 <button
                   onClick={handleSend}
-                  disabled={sending || messageText.trim() === ""}
+                  disabled={sending || (messageText.trim() === "" && imageData === "")}
                   className="bg-[#FF851B] p-2.5 rounded-xl text-white shadow-lg hover:bg-[#E67716] transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send size={18} fill="white" />
                 </button>
               </div>
+              {imageData ? (
+                <div className="mt-3 flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <img src={imageData} alt="Selected attachment" className="h-16 w-16 rounded-lg object-cover" />
+                  <p className="flex-1 text-[11px] font-bold text-gray-500">Image ready to send</p>
+                  <button
+                    type="button"
+                    onClick={() => setImageData("")}
+                    className="text-xs font-bold text-red-500"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : null}
             </div>
           </>
         ) : (
