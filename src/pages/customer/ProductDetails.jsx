@@ -68,7 +68,12 @@ export default function ProductDetails() {
     return unique.length > 0 ? unique : [FALLBACK_IMAGE];
   }, [item]);
 
-  const maxQty = Math.max(1, Number(item?.stock ?? 1));
+  const availableQty = Math.max(
+    0,
+    Number(isServiceRoute ? item?.slots ?? 0 : item?.stock ?? 0),
+  );
+  const maxQty = Math.max(1, availableQty);
+  const isPurchasable = availableQty > 0;
   const description = String(item?.description || "").trim();
   const shouldClampDescription = description.length > 220;
   const visibleDescription =
@@ -80,6 +85,10 @@ export default function ProductDetails() {
     setSelectedImg(0);
     setIsDescriptionExpanded(false);
   }, [id, isServiceRoute]);
+
+  useEffect(() => {
+    setQuantity((current) => Math.min(Math.max(1, current), maxQty));
+  }, [maxQty]);
 
   useEffect(() => {
     let isMounted = true;
@@ -164,6 +173,14 @@ export default function ProductDetails() {
     if (!item) {
       return;
     }
+    if (!isPurchasable) {
+      showToast(
+        isServiceRoute
+          ? "This service has no available slots."
+          : "This product is out of stock.",
+      );
+      return;
+    }
 
     const cartType = isServiceRoute ? "service" : "product";
     addToCart(
@@ -192,21 +209,34 @@ export default function ProductDetails() {
     if (!item) {
       return;
     }
+    if (!isPurchasable) {
+      showToast(
+        isServiceRoute
+          ? "This service has no available slots."
+          : "This product is out of stock.",
+      );
+      return;
+    }
+
+    const checkoutItems = Array.from(
+      { length: isServiceRoute ? quantity : 1 },
+      () => ({
+        id: Number(item.id),
+        name: item.name,
+        img: imageUrls[0],
+        price: Number(item.price || 0),
+        qty: isServiceRoute ? 1 : quantity,
+        merchantId: Number(item.merchantId || 0),
+        merchant: item.merchant,
+        category: item.category || "",
+        rateType: item.rateType || "",
+      }),
+    );
 
     navigate(`/checkout?type=${item.type}`, {
       state: {
         type: item.type,
-        items: [
-          {
-            id: Number(item.id),
-            name: item.name,
-            img: imageUrls[0],
-            price: Number(item.price || 0),
-            qty: quantity,
-            merchantId: Number(item.merchantId || 0),
-            merchant: item.merchant,
-          },
-        ],
+        items: checkoutItems,
       },
     });
   };
@@ -390,7 +420,7 @@ export default function ProductDetails() {
 
           <div className="text-xs text-gray-500">
             {isServiceRoute
-              ? `Rate: ${item.rateType || "per project"}`
+              ? `${Number(item.slots || 0)} slots available`
               : `${Number(item.stock || 0)} in stock`}
           </div>
 
@@ -398,6 +428,7 @@ export default function ProductDetails() {
             <div className="flex items-center border border-gray-200 rounded-md overflow-hidden">
               <button
                 onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                disabled={!isPurchasable}
                 className="px-3 py-2 text-gray-500 hover:bg-gray-50"
               >
                 <Minus size={14} />
@@ -405,6 +436,7 @@ export default function ProductDetails() {
               <span className="px-4 text-sm font-bold min-w-10 text-center">{quantity}</span>
               <button
                 onClick={() => setQuantity((prev) => Math.min(maxQty, prev + 1))}
+                disabled={!isPurchasable}
                 className="px-3 py-2 text-gray-500 hover:bg-gray-50"
               >
                 <Plus size={14} />
@@ -418,15 +450,22 @@ export default function ProductDetails() {
           <div className="pt-2 flex gap-3">
             <button
               onClick={handleAddToCart}
-              className="flex-1 border-2 border-[#FF851B] text-[#FF851B] py-3 rounded-md text-xs font-black hover:bg-[#FF851B] hover:text-white transition-all flex items-center justify-center gap-2"
+              disabled={!isPurchasable}
+              className="flex-1 border-2 border-[#FF851B] text-[#FF851B] py-3 rounded-md text-xs font-black hover:bg-[#FF851B] hover:text-white transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-gray-100"
             >
-              <ShoppingCart size={16} /> {isServiceRoute ? "Add to bookings" : "Add to cart"}
+              <ShoppingCart size={16} />{" "}
+              {!isPurchasable
+                ? "Out of stock"
+                : isServiceRoute
+                  ? "Add to bookings"
+                  : "Add to cart"}
             </button>
             <button
               onClick={handleBuyNow}
-              className="flex-1 bg-[#FF851B] text-white py-3 rounded-md text-xs font-black hover:bg-[#E67616] transition-all"
+              disabled={!isPurchasable}
+              className="flex-1 bg-[#FF851B] text-white py-3 rounded-md text-xs font-black hover:bg-[#E67616] transition-all disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              {isServiceRoute ? "Book now" : "Buy now"}
+              {!isPurchasable ? "Unavailable" : isServiceRoute ? "Book now" : "Buy now"}
             </button>
             <button
               onClick={handleToggleWishlist}
