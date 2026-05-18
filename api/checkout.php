@@ -495,6 +495,14 @@ foreach ($items as $item) {
     jsonResponse(['error' => 'Item is not available for checkout.'], 409);
 }
 
+$merchantIds = array_values(array_unique(array_map(
+    fn (array $item): int => (int) $item['merchant_id'],
+    $validatedItems
+)));
+if ($type === 'product' && count($merchantIds) > 1) {
+    jsonResponse(['error' => 'Please check out items from one merchant at a time.'], 422);
+}
+
 $shippingFee = $type === 'product' && $deliveryMethod === 'standard' ? 50.00 : 0.00;
 $serviceFee = $type === 'service' ? 50.00 : 0.00;
 $vouchers = [];
