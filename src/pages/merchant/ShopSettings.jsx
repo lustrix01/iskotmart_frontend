@@ -93,6 +93,13 @@ export default function ShopSettings() {
             username: profile.username || "",
             email: profile.businessEmail || profile.email || "",
           });
+          setFulfillment({
+            acceptsCOD: Boolean(profile.fulfillment?.acceptsCOD ?? true),
+            acceptsGCash: Boolean(profile.fulfillment?.acceptsGCash ?? true),
+            allowMeetup: Boolean(profile.fulfillment?.allowMeetup ?? true),
+            allowDelivery: Boolean(profile.fulfillment?.allowDelivery ?? true),
+            deliveryFee: Number(profile.fulfillment?.deliveryFee ?? 50),
+          });
           setShopMetrics(
             metricsPayload.metrics || {
               rating: { average: null, count: 0 },
@@ -119,6 +126,18 @@ export default function ShopSettings() {
     setIsSaving(true);
     setLoadError("");
 
+    if (!fulfillment.acceptsCOD && !fulfillment.acceptsGCash) {
+      setLoadError("At least one payment method must be enabled.");
+      setIsSaving(false);
+      return;
+    }
+
+    if (!fulfillment.allowMeetup && !fulfillment.allowDelivery) {
+      setLoadError("At least one delivery option must be enabled.");
+      setIsSaving(false);
+      return;
+    }
+
     try {
       const response = await fetch("/api/merchant_profile.php", {
         method: "POST",
@@ -130,6 +149,13 @@ export default function ShopSettings() {
           address: shopData.address,
           bannerImage: shopData.bannerImage,
           avatarImage: shopData.avatarImage,
+          fulfillment: {
+            acceptsCOD: fulfillment.acceptsCOD,
+            acceptsGCash: fulfillment.acceptsGCash,
+            allowMeetup: fulfillment.allowMeetup,
+            allowDelivery: fulfillment.allowDelivery,
+            deliveryFee: Number(fulfillment.deliveryFee || 0),
+          },
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -148,6 +174,13 @@ export default function ShopSettings() {
         avatar: profile.avatarUrl || current.avatar,
         avatarImage: "",
       }));
+      setFulfillment({
+        acceptsCOD: Boolean(profile.fulfillment?.acceptsCOD ?? true),
+        acceptsGCash: Boolean(profile.fulfillment?.acceptsGCash ?? true),
+        allowMeetup: Boolean(profile.fulfillment?.allowMeetup ?? true),
+        allowDelivery: Boolean(profile.fulfillment?.allowDelivery ?? true),
+        deliveryFee: Number(profile.fulfillment?.deliveryFee ?? 50),
+      });
       setIsSaving(false);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
