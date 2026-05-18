@@ -483,10 +483,10 @@ try {
                     "If an item has a discount, mention the original price and discount label. " .
                     "When asked about reviews, summarize the average rating, review count, and recent review comments from the context only. " .
                     "When asked about merchants, mention product count, service count, total listings, rating, review count, and recent merchant reviews when present. " .
-                    "Example catalog answer: Test Item from LighthalStore is PHP 900.00 after discount. It was PHP 1,000.00 with -PHP 100 off. " .
+                    "Example catalog answer: Test Item from LighthalStore is ₱900.00 after discount. It was ₱1,000.00 with -₱100 off. " .
                     "Format listing answers with short plain-text lines, not markdown tables. Put each detail on its own bullet line. " .
                     "For greetings, small talk, and non-catalog help questions, answer normally without saying there is no matching listing. " .
-                    "Use PHP pesos. Keep replies concise."
+                    "Use the ₱ symbol for peso amounts. Keep replies concise."
             ],
             [
                 'role' => 'system',
