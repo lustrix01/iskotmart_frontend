@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:local": "powershell -ExecutionPolicy Bypass -File scripts/dev-local.ps1",
     "api": "C:\\xampp\\php\\php.exe -S 127.0.0.1:8000 -t .",
-    "build": "vite build .",
+    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
