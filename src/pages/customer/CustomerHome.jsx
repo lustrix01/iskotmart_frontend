@@ -10,14 +10,13 @@ import {
 import { useStorefrontListings } from "../../data/storefrontData";
 
 const slides = [
-  "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1200&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1200&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=1200&auto=format&fit=crop",
+  "/homepage/slide-products.jpg",
+  "/homepage/slide-audio.jpg",
+  "/homepage/slide-shoes.jpg",
 ];
 const slideCount = slides.length;
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?q=80&w=400&auto=format&fit=crop";
+const FALLBACK_IMAGE = "/placeholders/offering.svg";
 
 function OfferingCard({ item }) {
   const image = item.img || item.images?.[0]?.url || FALLBACK_IMAGE;
@@ -179,7 +178,7 @@ export default function CustomerHome() {
             className="flex-1 relative overflow-hidden group cursor-pointer shadow-sm rounded-sm border border-gray-100 block"
           >
             <img
-              src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=600&auto=format&fit=crop"
+              src="/homepage/shop-products.jpg"
               className="w-full h-full object-cover brightness-75 transition-transform group-hover:scale-105"
               alt="Shop Products"
             />
@@ -196,7 +195,7 @@ export default function CustomerHome() {
             className="flex-1 relative overflow-hidden group cursor-pointer shadow-sm rounded-sm border border-gray-100 block"
           >
             <img
-              src="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=400&auto=format&fit=crop"
+              src="/homepage/book-services.jpg"
               className="w-full h-full object-cover brightness-75 transition-transform group-hover:scale-105"
               alt="Book Services"
             />
