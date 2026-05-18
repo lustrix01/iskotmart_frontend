@@ -49,34 +49,17 @@ function storeMessageImage(int $senderId, string $dataUrl): array {
         return ['', ''];
     }
 
-    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
-        jsonResponse(['error' => 'Messages only allow JPG, PNG, WebP, or GIF images.'], 422);
-    }
-
-    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
-    if ($binary === false || strlen($binary) === 0) {
-        jsonResponse(['error' => 'Message image could not be read.'], 422);
-    }
-    if (strlen($binary) > 5 * 1024 * 1024) {
-        jsonResponse(['error' => 'Message image must be 5MB or smaller.'], 422);
-    }
+    $image = verifiedImageDataUrlPayload($dataUrl, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], 'Message', 5 * 1024 * 1024);
     if (!is_dir(MESSAGE_UPLOAD_DIR) && !mkdir(MESSAGE_UPLOAD_DIR, 0775, true)) {
         jsonResponse(['error' => 'Unable to prepare message image storage.'], 500);
     }
 
-    $extension = match ($matches[1]) {
-        'image/jpeg', 'image/jpg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        'image/gif' => 'gif',
-        default => 'img',
-    };
-    $fileName = sprintf('message-%d-%s.%s', $senderId, bin2hex(random_bytes(8)), $extension);
-    if (file_put_contents(MESSAGE_UPLOAD_DIR . '/' . $fileName, $binary) === false) {
+    $fileName = sprintf('message-%d-%s.%s', $senderId, bin2hex(random_bytes(8)), $image['extension']);
+    if (file_put_contents(MESSAGE_UPLOAD_DIR . '/' . $fileName, $image['binary']) === false) {
         jsonResponse(['error' => 'Unable to store message image.'], 500);
     }
 
-    return [MESSAGE_UPLOAD_URL . '/' . $fileName, $matches[1]];
+    return [MESSAGE_UPLOAD_URL . '/' . $fileName, $image['mime']];
 }
 
 $sessionUser = requireMerchantForMessages($db);
