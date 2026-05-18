@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   AlertCircle,
   CheckCheck,
@@ -10,6 +11,8 @@ import {
 } from "lucide-react";
 
 export default function Messages() {
+  const location = useLocation();
+  const requestedMerchantId = Number(location.state?.merchantId || 0);
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [messageText, setMessageText] = useState("");
@@ -50,6 +53,9 @@ export default function Messages() {
         if (keepActive && current && nextThreads.some((thread) => thread.id === current)) {
           return current;
         }
+        if (requestedMerchantId && nextThreads.some((thread) => thread.id === requestedMerchantId)) {
+          return requestedMerchantId;
+        }
         return current || nextThreads[0]?.id || null;
       });
     } catch (fetchError) {
@@ -62,7 +68,7 @@ export default function Messages() {
 
   useEffect(() => {
     loadThreads();
-  }, []);
+  }, [requestedMerchantId]);
 
   const scrollMessagesToBottom = () => {
     const container = messagesRef.current;

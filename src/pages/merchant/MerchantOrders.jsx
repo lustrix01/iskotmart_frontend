@@ -132,6 +132,92 @@ export default function MerchantOrders() {
     }
   };
 
+  const escapeReceiptValue = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+  const money = (value) => Number(value || 0).toLocaleString();
+
+  const printReceipt = (order) => {
+    const receiptWindow = window.open("", "_blank", "width=720,height=900");
+    if (!receiptWindow) {
+      setLoadError("Allow popups to print the receipt.");
+      return;
+    }
+
+    const itemRows = order.items
+      .map((item) => {
+        const qty = Number(item.qty || 0);
+        const price = Number(item.price || 0);
+        return `
+          <tr>
+            <td>${escapeReceiptValue(item.name)}</td>
+            <td style="text-align:center;">${qty}</td>
+            <td style="text-align:right;">PHP ${money(price)}</td>
+            <td style="text-align:right;">PHP ${money(price * qty)}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    receiptWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt ${escapeReceiptValue(order.id)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #1f2937; padding: 32px; }
+            h1 { color: #003366; margin: 0 0 4px; }
+            .muted { color: #6b7280; font-size: 12px; }
+            .row { display: flex; justify-content: space-between; gap: 24px; margin: 8px 0; }
+            .row span { text-align: right; }
+            table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+            th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; font-size: 12px; }
+            th { text-align: left; color: #003366; background: #f9fafb; }
+            .total { font-size: 22px; font-weight: 800; color: #ff851b; }
+            .footer { margin-top: 28px; font-size: 11px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <h1>IskoMart Merchant Receipt</h1>
+          <p class="muted">Generated from merchant order record ${escapeReceiptValue(order.id)}</p>
+          <div style="margin-top: 24px;">
+            <div class="row"><strong>Customer</strong><span>${escapeReceiptValue(order.customer)}</span></div>
+            <div class="row"><strong>Email</strong><span>${escapeReceiptValue(order.email || "Not provided")}</span></div>
+            <div class="row"><strong>Phone</strong><span>${escapeReceiptValue(order.phone || "Not provided")}</span></div>
+            <div class="row"><strong>Address</strong><span>${escapeReceiptValue(order.address || "Not provided")}</span></div>
+            <div class="row"><strong>Date</strong><span>${escapeReceiptValue(order.date)}</span></div>
+            <div class="row"><strong>Status</strong><span>${escapeReceiptValue(order.status)}</span></div>
+            <div class="row"><strong>Payment</strong><span>${escapeReceiptValue(order.paymentMethod || order.method)}</span></div>
+            <div class="row"><strong>Payment status</strong><span>${escapeReceiptValue(order.paymentStatus)}</span></div>
+            <div class="row"><strong>Reference</strong><span>${escapeReceiptValue(order.paymentReference || "N/A")}</span></div>
+            <div class="row"><strong>Delivery mode</strong><span>${escapeReceiptValue(order.method)}</span></div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Line Total</th></tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <div class="row" style="margin-top: 24px;">
+            <strong>Total</strong><span class="total">PHP ${money(order.total)}</span>
+          </div>
+          <p class="footer">Receipt values are based on the selected merchant order record displayed in IskoMart.</p>
+          <script>
+            window.onload = () => {
+              window.focus();
+              setTimeout(() => window.print(), 150);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    receiptWindow.document.close();
+  };
+
   const getStatusStyle = (status) => {
     switch (status) {
       case "Pending":
@@ -507,7 +593,10 @@ export default function MerchantOrders() {
             </div>
 
             <div className="p-6 bg-white border-t border-gray-100 flex gap-3 shrink-0">
-              <button className="flex-1 py-3 rounded-xl border border-gray-100 text-[10px] font-bold text-gray-500 flex items-center justify-center gap-2 hover:bg-gray-50">
+              <button
+                onClick={() => printReceipt(selectedOrder)}
+                className="flex-1 py-3 rounded-xl border border-gray-100 text-[10px] font-bold text-gray-500 flex items-center justify-center gap-2 hover:bg-gray-50"
+              >
                 <Printer size={16} /> Print Receipt
               </button>
             </div>
