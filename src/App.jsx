@@ -48,6 +48,8 @@ const LoginPage = lazy(() => import("./auth/LoginPage"));
 const SignupPage = lazy(() => import("./auth/SignupPage"));
 const CustomerSignup = lazy(() => import("./auth/CustomerSignup"));
 const MerchantSignup = lazy(() => import("./auth/MerchantSignup"));
+const ForgotPassword = lazy(() => import("./auth/ForgotPassword"));
+const ResetPassword = lazy(() => import("./auth/ResetPassword"));
 
 const withSuspense = (Component) => (
   <Suspense fallback={<div className="p-4 text-sm text-gray-500">Loading...</div>}>
@@ -83,6 +85,8 @@ function App() {
           {/* Auth */}
           <Route path="/login" element={withSuspense(LoginPage)} />
           <Route path="/signup" element={withSuspense(SignupPage)} />
+          <Route path="/forgot-password" element={withSuspense(ForgotPassword)} />
+          <Route path="/reset-password" element={withSuspense(ResetPassword)} />
 
           {/* Simulation Routes - Points to your real components now */}
           <Route
