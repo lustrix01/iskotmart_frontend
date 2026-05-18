@@ -40,6 +40,7 @@ export const storefrontDataDecision =
 export function useStorefrontListings() {
   const [listings, setListings] = useState([]);
   const [featuredProducts, setFeaturedProducts] = useState([]);
+  const [featuredServices, setFeaturedServices] = useState([]);
   const [onSaleProducts, setOnSaleProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -62,6 +63,9 @@ export function useStorefrontListings() {
           setFeaturedProducts(
             Array.isArray(payload.featuredProducts) ? payload.featuredProducts : [],
           );
+          setFeaturedServices(
+            Array.isArray(payload.featuredServices) ? payload.featuredServices : [],
+          );
           setOnSaleProducts(
             Array.isArray(payload.onSaleProducts) ? payload.onSaleProducts : [],
           );
@@ -71,6 +75,7 @@ export function useStorefrontListings() {
           setError(err.message);
           setListings([]);
           setFeaturedProducts([]);
+          setFeaturedServices([]);
           setOnSaleProducts([]);
         }
       } finally {
@@ -89,5 +94,5 @@ export function useStorefrontListings() {
   const products = listings.filter((item) => item.type === "product");
   const services = listings.filter((item) => item.type === "service");
 
-  return { products, services, featuredProducts, onSaleProducts, loading, error };
+  return { products, services, featuredProducts, featuredServices, onSaleProducts, loading, error };
 }
