@@ -37,6 +37,13 @@ export default function ShopSettings() {
     next: false,
     confirm: false,
   });
+  const [passwordForm, setPasswordForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [closeEmail, setCloseEmail] = useState("");
   const [closeError, setCloseError] = useState("");
@@ -247,6 +254,47 @@ export default function ShopSettings() {
     }
   };
 
+  const updatePasswordField = (field, value) => {
+    setPasswordForm((current) => ({ ...current, [field]: value }));
+    setPasswordMessage("");
+    setLoadError("");
+  };
+
+  const handlePasswordSave = async () => {
+    setPasswordMessage("");
+    setLoadError("");
+
+    if (passwordForm.next !== passwordForm.confirm) {
+      setLoadError("New password and confirmation do not match.");
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const response = await fetch("/api/change_password.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.next,
+          confirmPassword: passwordForm.confirm,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update password.");
+      }
+
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      setPasswordMessage(payload.message || "Password has been updated.");
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
   const handleBannerUpload = (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -336,19 +384,21 @@ export default function ShopSettings() {
           </button>
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="w-full md:w-auto bg-[#FF851B] text-white px-8 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2 shrink-0"
-        >
-          {isSaving ? (
-            "Saving..."
-          ) : (
-            <>
-              <Save size={16} /> Save Changes
-            </>
-          )}
-        </button>
+        {activeTab !== "security" && (
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="w-full md:w-auto bg-[#FF851B] text-white px-8 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2 shrink-0"
+          >
+            {isSaving ? (
+              "Saving..."
+            ) : (
+              <>
+                <Save size={16} /> Save Changes
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* --- TAB CONTENT: SHOP PROFILE (FR-47) --- */}
@@ -732,6 +782,8 @@ export default function ShopSettings() {
                   />
                   <input
                     type={showPassword.current ? "text" : "password"}
+                    value={passwordForm.current}
+                    onChange={(event) => updatePasswordField("current", event.target.value)}
                     placeholder="••••••••"
                     className="w-full pl-12 pr-12 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
@@ -770,7 +822,9 @@ export default function ShopSettings() {
                   />
                   <input
                     type={showPassword.next ? "text" : "password"}
-                    placeholder="Min. 8 characters"
+                    value={passwordForm.next}
+                    onChange={(event) => updatePasswordField("next", event.target.value)}
+                    placeholder="Min. 10 characters"
                     className="w-full pl-12 pr-12 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
                   <button
@@ -803,6 +857,8 @@ export default function ShopSettings() {
                   />
                   <input
                     type={showPassword.confirm ? "text" : "password"}
+                    value={passwordForm.confirm}
+                    onChange={(event) => updatePasswordField("confirm", event.target.value)}
                     placeholder="Confirm password"
                     className="w-full pl-12 pr-12 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
@@ -829,6 +885,26 @@ export default function ShopSettings() {
                   </button>
                 </div>
               </div>
+            </div>
+            {passwordMessage && (
+              <p className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-xs font-bold text-green-600">
+                {passwordMessage}
+              </p>
+            )}
+            <div className="flex justify-end border-t border-gray-50 pt-5">
+              <button
+                type="button"
+                onClick={handlePasswordSave}
+                disabled={
+                  isSavingPassword ||
+                  !passwordForm.current ||
+                  !passwordForm.next ||
+                  !passwordForm.confirm
+                }
+                className="bg-[#FF851B] text-white px-8 py-3 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all disabled:opacity-50"
+              >
+                {isSavingPassword ? "Updating..." : "Update password"}
+              </button>
             </div>
           </div>
 
