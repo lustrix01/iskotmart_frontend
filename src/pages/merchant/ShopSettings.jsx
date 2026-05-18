@@ -3,7 +3,6 @@ import {
   Camera,
   Save,
   ShieldCheck,
-  Heart,
   MessageSquare,
   CheckCircle,
   X,
@@ -23,6 +22,7 @@ import {
 
 export default function ShopSettings() {
   const bannerInputRef = useRef(null);
+  const avatarInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState("profile"); // 'profile', 'fulfillment', or 'security'
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -45,6 +45,7 @@ export default function ShopSettings() {
     banner:
       "https://images.unsplash.com/photo-1555680202-c86f0e12f086?q=80&w=1200",
     bannerImage: "",
+    avatarImage: "",
     avatar:
       "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=250",
   });
@@ -128,6 +129,7 @@ export default function ShopSettings() {
           shopDescription: shopData.bio,
           address: shopData.address,
           bannerImage: shopData.bannerImage,
+          avatarImage: shopData.avatarImage,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -143,6 +145,8 @@ export default function ShopSettings() {
         address: profile.address || "",
         banner: profile.bannerUrl || current.banner,
         bannerImage: "",
+        avatar: profile.avatarUrl || current.avatar,
+        avatarImage: "",
       }));
       setIsSaving(false);
       setShowToast(true);
@@ -176,6 +180,35 @@ export default function ShopSettings() {
         ...current,
         banner: result,
         bannerImage: result,
+      }));
+      setLoadError("");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAvatarUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setLoadError("Profile image must be 5MB or smaller.");
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setLoadError("Profile image must be a JPG, PNG, or WebP image.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = String(reader.result || "");
+      setShopData((current) => ({
+        ...current,
+        avatar: result,
+        avatarImage: result,
       }));
       setLoadError("");
     };
@@ -260,7 +293,11 @@ export default function ShopSettings() {
           <div className="px-10 pb-10 relative">
             {/* Avatar Row */}
             <div className="flex justify-between items-end -mt-16 mb-8">
-              <div className="relative group cursor-pointer">
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                className="relative group cursor-pointer text-left"
+              >
                 <div className="w-36 h-36 rounded-full border-[6px] border-white shadow-xl overflow-hidden bg-gray-100">
                   <img
                     src={shopData.avatar}
@@ -271,13 +308,17 @@ export default function ShopSettings() {
                 <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center border-[6px] border-white text-white">
                   <Camera size={24} />
                 </div>
-              </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleAvatarUpload}
+                  className="hidden"
+                />
+              </button>
               <div className="flex gap-3 opacity-20 grayscale pointer-events-none select-none mb-4">
                 <div className="px-6 py-2.5 bg-white border border-gray-200 text-gray-400 text-xs font-bold rounded-xl flex items-center gap-2">
                   <MessageSquare size={16} /> Message
-                </div>
-                <div className="px-8 py-2.5 bg-[#FF851B] text-white text-xs font-bold rounded-xl flex items-center gap-2">
-                  <Heart size={16} /> Follow
                 </div>
               </div>
             </div>
