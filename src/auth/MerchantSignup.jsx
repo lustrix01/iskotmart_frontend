@@ -5,6 +5,137 @@ import { clearRememberedClientSession } from "../api/clientSession";
 import logo from "../assets/logo.png";
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 
+const BICOL_LOCATIONS = {
+  Albay: [
+    "Bacacay",
+    "Camalig",
+    "Daraga",
+    "Guinobatan",
+    "Jovellar",
+    "Legazpi City",
+    "Libon",
+    "Ligao City",
+    "Malilipot",
+    "Malinao",
+    "Manito",
+    "Oas",
+    "Pio Duran",
+    "Polangui",
+    "Rapu-Rapu",
+    "Santo Domingo",
+    "Tabaco City",
+    "Tiwi",
+  ],
+  "Camarines Norte": [
+    "Basud",
+    "Capalonga",
+    "Daet",
+    "Jose Panganiban",
+    "Labo",
+    "Mercedes",
+    "Paracale",
+    "San Lorenzo Ruiz",
+    "San Vicente",
+    "Santa Elena",
+    "Talisay",
+    "Vinzons",
+  ],
+  "Camarines Sur": [
+    "Baao",
+    "Balatan",
+    "Bato",
+    "Bombon",
+    "Buhi",
+    "Bula",
+    "Cabusao",
+    "Calabanga",
+    "Camaligan",
+    "Canaman",
+    "Caramoan",
+    "Del Gallego",
+    "Gainza",
+    "Garchitorena",
+    "Goa",
+    "Iriga City",
+    "Lagonoy",
+    "Libmanan",
+    "Lupi",
+    "Magarao",
+    "Milaor",
+    "Minalabac",
+    "Nabua",
+    "Naga City",
+    "Ocampo",
+    "Pamplona",
+    "Pasacao",
+    "Pili",
+    "Presentacion",
+    "Ragay",
+    "Sagnay",
+    "San Fernando",
+    "San Jose",
+    "Sipocot",
+    "Siruma",
+    "Tigaon",
+    "Tinambac",
+  ],
+  Catanduanes: [
+    "Bagamanoc",
+    "Baras",
+    "Bato",
+    "Caramoran",
+    "Gigmoto",
+    "Pandan",
+    "Panganiban",
+    "San Andres",
+    "San Miguel",
+    "Viga",
+    "Virac",
+  ],
+  Masbate: [
+    "Aroroy",
+    "Baleno",
+    "Balud",
+    "Batuan",
+    "Cataingan",
+    "Cawayan",
+    "Claveria",
+    "Dimasalang",
+    "Esperanza",
+    "Mandaon",
+    "Masbate City",
+    "Milagros",
+    "Mobo",
+    "Monreal",
+    "Palanas",
+    "Pio V. Corpuz",
+    "Placer",
+    "San Fernando",
+    "San Jacinto",
+    "San Pascual",
+    "Uson",
+  ],
+  Sorsogon: [
+    "Barcelona",
+    "Bulan",
+    "Bulusan",
+    "Casiguran",
+    "Castilla",
+    "Donsol",
+    "Gubat",
+    "Irosin",
+    "Juban",
+    "Magallanes",
+    "Matnog",
+    "Pilar",
+    "Prieto Diaz",
+    "Santa Magdalena",
+    "Sorsogon City",
+  ],
+};
+
+const PROVINCES = Object.keys(BICOL_LOCATIONS);
+
 export default function MerchantSignup() {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -16,6 +147,7 @@ export default function MerchantSignup() {
   const [emailError, setEmailError] = useState("");
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [legalModal, setLegalModal] = useState(null);
   const [showPassword, setShowPassword] = useState({
     password: false,
     confirm: false,
@@ -41,7 +173,6 @@ export default function MerchantSignup() {
     dobDay: "",
     dobMonth: "",
     dobYear: "",
-    idFile: null, // Holds the uploaded file object
     password: "",
     confirmPassword: "",
     agreeTerms: false,
@@ -64,6 +195,8 @@ export default function MerchantSignup() {
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
+      ...(name === "bizProvince" ? { bizCity: "" } : {}),
+      ...(name === "postalProvince" ? { postalCity: "" } : {}),
     }));
 
     // Clear email error automatically when user starts typing again
@@ -94,12 +227,6 @@ export default function MerchantSignup() {
         alert(
           "Registration failed: Please use your official @bicol-u.edu.ph email.",
         );
-        return;
-      }
-
-      // 3. Manual File Upload Validation (Fixes the silent block error)
-      if (!formData.idFile) {
-        alert("Please upload your COR or valid Student ID to continue.");
         return;
       }
     }
@@ -150,7 +277,6 @@ export default function MerchantSignup() {
           studentNumber: formData.studentNumber,
           dob: `${formData.dobYear}-${formData.dobMonth.padStart(2, "0")}-${formData.dobDay.padStart(2, "0")}`,
           address,
-          idImageUrl: formData.idFile?.name || null,
           password: formData.password,
         }),
       });
@@ -360,28 +486,23 @@ export default function MerchantSignup() {
                       Business Address
                     </label>
                     <div className="grid grid-cols-2 gap-2 mb-2">
-                      <select
+                      <LocationSelect
                         name="bizProvince"
                         value={formData.bizProvince}
                         onChange={handleChange}
+                        options={PROVINCES}
+                        placeholder="Province"
                         required
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                      >
-                        <option value="">Province</option>
-                        <option value="Albay">Albay</option>
-                        <option value="CamSur">Camarines Sur</option>
-                      </select>
-                      <select
+                      />
+                      <LocationSelect
                         name="bizCity"
                         value={formData.bizCity}
                         onChange={handleChange}
+                        options={BICOL_LOCATIONS[formData.bizProvince] || []}
+                        placeholder="Municipality/City"
+                        disabled={!formData.bizProvince}
                         required
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                      >
-                        <option value="">Municipality/City</option>
-                        <option value="Legazpi">Legazpi</option>
-                        <option value="Naga">Naga</option>
-                      </select>
+                      />
                     </div>
                   </div>
 
@@ -401,26 +522,25 @@ export default function MerchantSignup() {
                     </label>
                     {!formData.sameAsBiz && (
                       <div className="grid grid-cols-2 gap-2">
-                        <select
+                        <LocationSelect
                           name="postalProvince"
                           value={formData.postalProvince}
                           onChange={handleChange}
+                          options={PROVINCES}
+                          placeholder="Province"
                           required={!formData.sameAsBiz}
-                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                        >
-                          <option value="">Province</option>
-                          <option value="Albay">Albay</option>
-                        </select>
-                        <select
+                        />
+                        <LocationSelect
                           name="postalCity"
                           value={formData.postalCity}
                           onChange={handleChange}
+                          options={
+                            BICOL_LOCATIONS[formData.postalProvince] || []
+                          }
+                          placeholder="Municipality/City"
+                          disabled={!formData.postalProvince}
                           required={!formData.sameAsBiz}
-                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                        >
-                          <option value="">Municipality/City</option>
-                          <option value="Legazpi">Legazpi</option>
-                        </select>
+                        />
                       </div>
                     )}
                   </div>
@@ -608,90 +728,41 @@ export default function MerchantSignup() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
-                        Date of birth
-                      </label>
-                      <div className="grid grid-cols-3 gap-1">
-                        <input
-                          type="text"
-                          name="dobDay"
-                          value={formData.dobDay}
-                          onChange={handleChange}
-                          placeholder="DD"
-                          maxLength="2"
-                          required
-                          className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                        />
-                        <input
-                          type="text"
-                          name="dobMonth"
-                          value={formData.dobMonth}
-                          onChange={handleChange}
-                          placeholder="MM"
-                          maxLength="2"
-                          required
-                          className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                        />
-                        <input
-                          type="text"
-                          name="dobYear"
-                          value={formData.dobYear}
-                          onChange={handleChange}
-                          placeholder="YYYY"
-                          maxLength="4"
-                          required
-                          className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
-                        Upload ID{" "}
-                        <span className="font-normal text-gray-400">
-                          (COR/ID)
-                        </span>
-                      </label>
-                      {/* FIX applied here: removed 'required' from hidden input to allow submission */}
-                      <label
-                        className={`w-full flex justify-center items-center gap-2 px-2 py-1.5 bg-white border rounded-lg cursor-pointer transition-colors text-sm font-bold ${formData.idFile ? "border-green-500 text-green-600 bg-green-50 hover:bg-green-100" : "border-[#1EA1F2] text-[#1EA1F2] hover:bg-blue-50"}`}
-                      >
-                        {formData.idFile ? (
-                          <span className="flex items-center gap-1 text-[11px] truncate max-w-[100px]">
-                            <CheckCircle2 size={14} /> {formData.idFile.name}
-                          </span>
-                        ) : (
-                          <>
-                            UPLOAD{" "}
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                              stroke="currentColor"
-                              className="w-4 h-4"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-                              />
-                            </svg>
-                          </>
-                        )}
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/*,.pdf"
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              idFile: e.target.files[0],
-                            })
-                          }
-                        />
-                      </label>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
+                      Date of birth
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        name="dobDay"
+                        value={formData.dobDay}
+                        onChange={handleChange}
+                        placeholder="DD"
+                        maxLength="2"
+                        required
+                        className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                      />
+                      <input
+                        type="text"
+                        name="dobMonth"
+                        value={formData.dobMonth}
+                        onChange={handleChange}
+                        placeholder="MM"
+                        maxLength="2"
+                        required
+                        className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                      />
+                      <input
+                        type="text"
+                        name="dobYear"
+                        value={formData.dobYear}
+                        onChange={handleChange}
+                        placeholder="YYYY"
+                        maxLength="4"
+                        required
+                        className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                      />
                     </div>
                   </div>
 
@@ -838,19 +909,21 @@ export default function MerchantSignup() {
                       />
                       <span>
                         I agree to the{" "}
-                        <a
-                          href="#"
+                        <button
+                          type="button"
+                          onClick={() => setLegalModal("terms")}
                           className="text-[#0074D9] font-bold hover:underline"
                         >
                           Terms and Conditions
-                        </a>{" "}
+                        </button>{" "}
                         and{" "}
-                        <a
-                          href="#"
+                        <button
+                          type="button"
+                          onClick={() => setLegalModal("privacy")}
                           className="text-[#0074D9] font-bold hover:underline"
                         >
                           Privacy Policy
-                        </a>
+                        </button>
                       </span>
                     </label>
                   </div>
@@ -882,8 +955,63 @@ export default function MerchantSignup() {
               )}
             </form>
           </div>
-        </div>
-      </div>
-    </div>
+	        </div>
+	      </div>
+	      {legalModal && (
+	        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+	          <button
+	            type="button"
+	            aria-label="Close legal details"
+	            className="absolute inset-0 bg-[#001a33]/60 backdrop-blur-sm"
+	            onClick={() => setLegalModal(null)}
+	          />
+	          <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 text-left text-black shadow-2xl">
+	            <h3 className="text-lg font-bold text-[#003366]">
+	              {legalModal === "terms" ? "Terms and Conditions" : "Privacy Policy"}
+	            </h3>
+	            <p className="mt-3 text-sm leading-6 text-gray-600">
+	              {legalModal === "terms"
+	                ? "Merchant accounts must use accurate registration details, follow campus marketplace policies, and keep order, payment, and customer communication records truthful."
+	                : "IskoMart stores account, shop, order, and contact details needed to operate the marketplace. Information is used for account access, transactions, fulfillment, and support."}
+	            </p>
+	            <button
+	              type="button"
+	              onClick={() => setLegalModal(null)}
+	              className="mt-6 w-full rounded-xl bg-[#003366] py-3 text-xs font-bold text-white hover:bg-[#002244]"
+	            >
+	              Close
+	            </button>
+	          </div>
+	        </div>
+	      )}
+	    </div>
+	  );
+	}
+
+function LocationSelect({
+  name,
+  value,
+  onChange,
+  options,
+  placeholder,
+  required = false,
+  disabled = false,
+}) {
+  return (
+    <select
+      name={name}
+      value={value}
+      onChange={onChange}
+      required={required}
+      disabled={disabled}
+      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
   );
 }
