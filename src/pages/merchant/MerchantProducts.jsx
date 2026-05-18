@@ -12,6 +12,25 @@ import {
   AlertCircle, // Added AlertCircle for the delete modal
 } from "lucide-react";
 
+const CATALOG_TABS = [
+  { id: "products", label: "Products", icon: Package, type: "product", retired: false },
+  { id: "services", label: "Services", icon: Wrench, type: "service", retired: false },
+  {
+    id: "retired-products",
+    label: "Retired Products",
+    icon: Package,
+    type: "product",
+    retired: true,
+  },
+  {
+    id: "retired-services",
+    label: "Retired Services",
+    icon: Wrench,
+    type: "service",
+    retired: true,
+  },
+];
+
 const PRODUCT_CATEGORIES = [
   "Electronics & Technology",
   "Fashion & Apparel",
@@ -45,7 +64,24 @@ export default function MerchantProducts() {
   const [services, setServices] = useState([]);
   const [loadError, setLoadError] = useState("");
 
-  const currentItems = activeTab === "products" ? products : services;
+  const activeTabMeta =
+    CATALOG_TABS.find((tab) => tab.id === activeTab) || CATALOG_TABS[0];
+  const isRetiredTab = activeTabMeta.retired;
+  const activeProducts = products.filter((item) => item.status !== "Retired");
+  const activeServices = services.filter((item) => item.status !== "Retired");
+  const retiredProducts = products.filter((item) => item.status === "Retired");
+  const retiredServices = services.filter((item) => item.status === "Retired");
+  const currentItems =
+    activeTab === "retired-products"
+      ? retiredProducts
+      : activeTab === "retired-services"
+        ? retiredServices
+        : activeTab === "products"
+          ? activeProducts
+          : activeServices;
+  const visibleItems = currentItems.filter((item) =>
+    item.name.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -65,12 +101,19 @@ export default function MerchantProducts() {
           return;
         }
 
-        const dbProducts = payload.offerings.filter(
-          (item) => item.type === "product",
-        );
-        const dbServices = payload.offerings.filter(
-          (item) => item.type === "service",
-        );
+	        const normalizeStatus = (item) => ({
+	          ...item,
+	          status:
+	            ["retired", "deleted"].includes(String(item.status).toLowerCase())
+	              ? "Retired"
+	              : item.status,
+	        });
+	        const dbProducts = payload.offerings
+	          .filter((item) => item.type === "product")
+	          .map(normalizeStatus);
+	        const dbServices = payload.offerings
+	          .filter((item) => item.type === "service")
+	          .map(normalizeStatus);
 
         setProducts(dbProducts);
         setServices(dbServices);
@@ -133,7 +176,7 @@ export default function MerchantProducts() {
       setFormData({
         name: "",
         category:
-          activeTab === "products" ? PRODUCT_CATEGORIES[0] : SERVICE_CATEGORIES[0],
+	          activeTabMeta.type === "product" ? PRODUCT_CATEGORIES[0] : SERVICE_CATEGORIES[0],
         price: 0,
         stock: 0,
         slots: 1,
@@ -169,9 +212,20 @@ export default function MerchantProducts() {
     };
   }, []);
 
-  const syncItemsFromApi = (offerings) => {
-    const dbProducts = offerings.filter((item) => item.type === "product");
-    const dbServices = offerings.filter((item) => item.type === "service");
+	  const syncItemsFromApi = (offerings) => {
+	    const normalizeStatus = (item) => ({
+	      ...item,
+	      status:
+	        ["retired", "deleted"].includes(String(item.status).toLowerCase())
+	          ? "Retired"
+	          : item.status,
+	    });
+	    const dbProducts = offerings
+	      .filter((item) => item.type === "product")
+	      .map(normalizeStatus);
+	    const dbServices = offerings
+	      .filter((item) => item.type === "service")
+	      .map(normalizeStatus);
 
     setProducts(dbProducts);
     setServices(dbServices);
@@ -239,7 +293,7 @@ export default function MerchantProducts() {
   const saveOfferingToApi = async () => {
     const payload = new FormData();
     payload.append("_method", editingItem ? "PATCH" : "POST");
-    payload.append("type", activeTab === "products" ? "product" : "service");
+	    payload.append("type", activeTabMeta.type);
     payload.append("name", formData.name);
     payload.append("category", formData.category);
     payload.append("price", String(formData.price));
@@ -287,13 +341,13 @@ export default function MerchantProducts() {
       return;
     }
 
-    if (activeTab === "products" && Number(formData.stock) < 0) {
+	    if (activeTabMeta.type === "product" && Number(formData.stock) < 0) {
       setFormError("Stock must be zero or greater.");
       return;
     }
 
     if (
-      activeTab === "services" &&
+	      activeTabMeta.type === "service" &&
       (!Number.isInteger(Number(formData.slots)) || Number(formData.slots) < 1)
     ) {
       setFormError("Service slots must be at least 1.");
@@ -350,34 +404,36 @@ export default function MerchantProducts() {
             Inventory Management
           </h2>
           <p className="text-xs text-gray-400 mt-1 uppercase tracking-widest font-bold opacity-70">
-            Total Items: {products.length + services.length}
-          </p>
-        </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-[#FF851B] text-white px-6 py-3 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all active:scale-95"
-        >
-          <Plus size={18} />
-          Add New {activeTab === "products" ? "Product" : "Service"}
-        </button>
+	            Active Items: {activeProducts.length + activeServices.length}
+	          </p>
+	        </div>
+	        {!isRetiredTab && (
+	          <button
+	            onClick={() => handleOpenModal()}
+	            className="flex items-center gap-2 bg-[#FF851B] text-white px-6 py-3 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all active:scale-95"
+	          >
+	            <Plus size={18} />
+	            Add New {activeTabMeta.type === "product" ? "Product" : "Service"}
+	          </button>
+	        )}
       </div>
 
       {/* TABS & SEARCH */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col lg:flex-row justify-between items-center gap-4">
-        <div className="flex bg-gray-50 p-1 rounded-xl w-full lg:w-auto">
-          <button
-            onClick={() => setActiveTab("products")}
-            className={`flex-1 lg:flex-none px-8 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${activeTab === "products" ? "bg-white text-[#FF851B] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
-          >
-            <Package size={16} /> Products
-          </button>
-          <button
-            onClick={() => setActiveTab("services")}
-            className={`flex-1 lg:flex-none px-8 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${activeTab === "services" ? "bg-white text-[#FF851B] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
-          >
-            <Wrench size={16} /> Services
-          </button>
-        </div>
+	        <div className="grid grid-cols-2 xl:flex bg-gray-50 p-1 rounded-xl w-full lg:w-auto gap-1">
+	          {CATALOG_TABS.map((tab) => {
+	            const Icon = tab.icon;
+	            return (
+	              <button
+	                key={tab.id}
+	                onClick={() => setActiveTab(tab.id)}
+	                className={`px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${activeTab === tab.id ? "bg-white text-[#FF851B] shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+	              >
+	                <Icon size={16} /> {tab.label}
+	              </button>
+	            );
+	          })}
+	        </div>
 
         <div className="flex gap-3 w-full lg:w-auto">
           <div className="relative flex-grow lg:w-80">
@@ -387,7 +443,7 @@ export default function MerchantProducts() {
             />
             <input
               type="text"
-              placeholder={`Search ${activeTab}...`}
+	              placeholder={`Search ${activeTabMeta.label.toLowerCase()}...`}
               className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl text-xs focus:ring-2 focus:ring-[#FF851B]/20 outline-none transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -411,18 +467,14 @@ export default function MerchantProducts() {
                 <th className="p-5">Category</th>
                 <th className="p-5">Price</th>
 	                <th className="p-5">
-	                  {activeTab === "products" ? "Stock" : "Slots / Rate"}
+		                  {activeTabMeta.type === "product" ? "Stock" : "Slots / Rate"}
 	                </th>
                 <th className="p-5">Status</th>
                 <th className="p-5 pr-8 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="text-xs font-medium text-gray-600">
-              {currentItems
-                .filter((item) =>
-                  item.name.toLowerCase().includes(searchTerm.toLowerCase()),
-                )
-                .map((item) => (
+	              {visibleItems.map((item) => (
                   <tr
                     key={item.id}
                     className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors group"
@@ -463,7 +515,7 @@ export default function MerchantProducts() {
                       ₱{item.price.toLocaleString()}
                     </td>
                     <td className="p-5">
-                      {activeTab === "products" ? (
+	                      {activeTabMeta.type === "product" ? (
                         <span
                           className={`font-bold ${item.stock <= 5 ? "text-red-500" : "text-gray-500"}`}
                         >
@@ -486,42 +538,57 @@ export default function MerchantProducts() {
                     </td>
                     <td className="p-5">
                       <span
-                        className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 w-fit ${item.status === "Active" ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}
-                      >
-                        <div
-                          className={`w-1.5 h-1.5 rounded-full ${item.status === "Active" ? "bg-green-500" : "bg-red-500"}`}
-                        ></div>
+	                        className={`px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 w-fit ${
+	                          item.status === "Active"
+	                            ? "bg-green-50 text-green-600"
+	                            : item.status === "Retired"
+	                              ? "bg-gray-100 text-gray-500"
+	                              : "bg-red-50 text-red-500"
+	                        }`}
+	                      >
+	                        <div
+	                          className={`w-1.5 h-1.5 rounded-full ${
+	                            item.status === "Active"
+	                              ? "bg-green-500"
+	                              : item.status === "Retired"
+	                                ? "bg-gray-400"
+	                                : "bg-red-500"
+	                          }`}
+	                        ></div>
                         {item.status}
                       </span>
                     </td>
                     <td className="p-5 pr-8 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenModal(item)}
-                          className="p-2.5 text-gray-400 hover:text-[#0074D9] hover:bg-blue-50 rounded-xl transition-all"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                        {/* --- Trigger Custom Delete Modal Here --- */}
-                        <button
-                          onClick={() => setItemToDelete(item)}
-                          className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+	                      {isRetiredTab ? (
+	                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+	                          Retired
+	                        </span>
+	                      ) : (
+	                        <div className="flex justify-end gap-2">
+	                          <button
+	                            onClick={() => handleOpenModal(item)}
+	                            className="p-2.5 text-gray-400 hover:text-[#0074D9] hover:bg-blue-50 rounded-xl transition-all"
+	                          >
+	                            <Edit3 size={16} />
+	                          </button>
+	                          <button
+	                            onClick={() => setItemToDelete(item)}
+	                            className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+	                          >
+	                            <Trash2 size={16} />
+	                          </button>
+	                        </div>
+	                      )}
                     </td>
                   </tr>
                 ))}
-              {currentItems.filter((item) =>
-                item.name.toLowerCase().includes(searchTerm.toLowerCase()),
-              ).length === 0 && (
+	              {visibleItems.length === 0 && (
                 <tr>
                   <td
                     colSpan={6}
                     className="p-10 text-center text-xs font-bold text-gray-400"
                   >
-                    No merchant-owned {activeTab} found in the database.
+	                    No merchant-owned {activeTabMeta.label.toLowerCase()} found in the database.
                   </td>
                 </tr>
               )}
@@ -689,7 +756,7 @@ export default function MerchantProducts() {
                     }
                     rows={5}
                     maxLength={1000}
-                    placeholder={`Describe this ${activeTab === "products" ? "product" : "service"} for customers.`}
+                    placeholder={`Describe this ${activeTabMeta.type} for customers.`}
                     className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all resize-none leading-relaxed"
                   />
                   <p className="text-[10px] font-semibold text-gray-400">
@@ -709,7 +776,7 @@ export default function MerchantProducts() {
                       }
                       className="w-full px-4 py-3 bg-gray-50 rounded-xl text-sm border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all appearance-none"
                     >
-	                      {(activeTab === "products"
+	                      {(activeTabMeta.type === "product"
 	                        ? PRODUCT_CATEGORIES
 	                        : SERVICE_CATEGORIES
 	                      ).map((category) => (
@@ -734,7 +801,7 @@ export default function MerchantProducts() {
                   </div>
                 </div>
 
-                {activeTab === "products" ? (
+                {activeTabMeta.type === "product" ? (
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">
                       Current Stock
