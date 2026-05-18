@@ -43,6 +43,52 @@ function ensureCheckoutDiscountStatusColumn(PDO $db): void {
     }
 }
 
+function ensureMerchantFulfillmentColumns(PDO $db): void {
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    $columns = $db->query("SHOW COLUMNS FROM MERCHANT")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('ACCEPTS_COD', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_COD tinyint(1) NOT NULL DEFAULT 1 AFTER ID_IMAGE_URL");
+    }
+    if (!in_array('ACCEPTS_GCASH', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_GCASH tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_COD");
+    }
+    if (!in_array('ALLOW_MEETUP', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_MEETUP tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_GCASH");
+    }
+    if (!in_array('ALLOW_DELIVERY', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_DELIVERY tinyint(1) NOT NULL DEFAULT 1 AFTER ALLOW_MEETUP");
+    }
+    if (!in_array('DELIVERY_FEE', $columns, true)) {
+        $db->exec("ALTER TABLE MERCHANT ADD COLUMN DELIVERY_FEE double NOT NULL DEFAULT 50 AFTER ALLOW_DELIVERY");
+    }
+}
+
+function checkoutMerchantFulfillmentSettings(PDO $db, int $merchantId): array {
+    ensureMerchantFulfillmentColumns($db);
+
+    $stmt = $db->prepare(
+        "SELECT ACCEPTS_COD, ACCEPTS_GCASH, ALLOW_MEETUP, ALLOW_DELIVERY, DELIVERY_FEE
+         FROM MERCHANT
+         WHERE MERCHANT_ID = :merchant_id
+         LIMIT 1"
+    );
+    $stmt->execute([':merchant_id' => $merchantId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    return [
+        'acceptsCOD' => (bool) ($row['ACCEPTS_COD'] ?? 1),
+        'acceptsGCash' => (bool) ($row['ACCEPTS_GCASH'] ?? 1),
+        'allowMeetup' => (bool) ($row['ALLOW_MEETUP'] ?? 1),
+        'allowDelivery' => (bool) ($row['ALLOW_DELIVERY'] ?? 1),
+        'deliveryFee' => max(0, (float) ($row['DELIVERY_FEE'] ?? 50)),
+    ];
+}
+
 function applyCheckoutDiscount(float $price, mixed $type, mixed $value): float {
     $discountValue = (float) ($value ?? 0);
     if ($discountValue <= 0 || $type === null) {
@@ -119,6 +165,14 @@ function dbOffering(PDO $db, string $type, int $id): ?array {
 }
 
 function merchantAllowsPayment(PDO $db, int $merchantId, int $offeringId, string $paymentMethod): bool {
+    $settings = checkoutMerchantFulfillmentSettings($db, $merchantId);
+    if ($paymentMethod === 'gcash' && !$settings['acceptsGCash']) {
+        return false;
+    }
+    if ($paymentMethod === 'cod' && !$settings['acceptsCOD']) {
+        return false;
+    }
+
     $stmt = $db->prepare(
         "SELECT pm.SERVICE
          FROM ALLOWED_PAYMENT ap
@@ -135,7 +189,15 @@ function merchantAllowsPayment(PDO $db, int $merchantId, int $offeringId, string
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     if (!$rows) {
-        return false;
+        ensureCheckoutPaymentDefaults($db, $merchantId, $offeringId);
+        $stmt->execute([
+            ':offering_id' => $offeringId,
+            ':merchant_id' => $merchantId,
+        ]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$rows) {
+            return false;
+        }
     }
 
     $allowsGcash = false;
@@ -164,7 +226,97 @@ function merchantAllowsPayment(PDO $db, int $merchantId, int $offeringId, string
     return $paymentMethod === 'gcash' ? $allowsGcash : $allowsCod;
 }
 
-function resolveDeliveryMethodId(PDO $db, int $productId, string $deliveryMethod): ?int {
+function checkoutPaymentMethodIdForKind(PDO $db, int $merchantId, string $kind): int {
+    $labels = $kind === 'gcash'
+        ? ['gcash']
+        : ['cod', 'cash on delivery', 'cash', 'meetup'];
+
+    $conditions = [];
+    $params = [':merchant_id' => $merchantId];
+    foreach ($labels as $index => $label) {
+        $key = ':label_' . $index;
+        $conditions[] = "LOWER(SERVICE) LIKE {$key}";
+        $params[$key] = '%' . $label . '%';
+    }
+
+    $stmt = $db->prepare(
+        "SELECT PM_ID
+         FROM PAYMENT_METHOD
+         WHERE MERCHANT_ID = :merchant_id
+           AND (" . implode(' OR ', $conditions) . ")
+         ORDER BY PM_ID ASC
+         LIMIT 1"
+    );
+    $stmt->execute($params);
+    $existingId = (int) ($stmt->fetchColumn() ?: 0);
+    if ($existingId > 0) {
+        return $existingId;
+    }
+
+    $insert = $db->prepare(
+        "INSERT INTO PAYMENT_METHOD (SERVICE, LINK, QR_URL, NUMBER, USERNAME, OTHER, MERCHANT_ID)
+         VALUES (:service, NULL, NULL, NULL, NULL, :other, :merchant_id)"
+    );
+    $insert->execute([
+        ':service' => $kind === 'gcash' ? 'GCash' : 'COD / Cash on Delivery',
+        ':other' => $kind === 'gcash'
+            ? 'Merchant can provide GCash details through chat.'
+            : 'Cash payment on delivery or meetup.',
+        ':merchant_id' => $merchantId,
+    ]);
+
+    return (int) $db->lastInsertId();
+}
+
+function ensureCheckoutPaymentDefaults(PDO $db, int $merchantId, int $offeringId): void {
+    $settings = checkoutMerchantFulfillmentSettings($db, $merchantId);
+    foreach (['cod', 'gcash'] as $kind) {
+        $paymentMethodId = checkoutPaymentMethodIdForKind($db, $merchantId, $kind);
+        if ($paymentMethodId <= 0) {
+            continue;
+        }
+        $status = ($kind === 'gcash' ? $settings['acceptsGCash'] : $settings['acceptsCOD'])
+            ? 'ACTIVE'
+            : 'INACTIVE';
+
+        $existing = $db->prepare(
+            "SELECT ALLOWED_PM_ID
+             FROM ALLOWED_PAYMENT
+             WHERE OFFERING_ID = :offering_id AND PM_ID = :pm_id
+             LIMIT 1"
+        );
+        $existing->execute([
+            ':offering_id' => $offeringId,
+            ':pm_id' => $paymentMethodId,
+        ]);
+
+        if ($existing->fetch(PDO::FETCH_ASSOC)) {
+            $update = $db->prepare(
+                "UPDATE ALLOWED_PAYMENT
+                 SET STATUS = :status
+                 WHERE OFFERING_ID = :offering_id AND PM_ID = :pm_id"
+            );
+            $update->execute([
+                ':status' => $status,
+                ':offering_id' => $offeringId,
+                ':pm_id' => $paymentMethodId,
+            ]);
+            continue;
+        }
+
+        $insert = $db->prepare(
+            "INSERT INTO ALLOWED_PAYMENT (STATUS, PM_ID, OFFERING_ID)
+             VALUES (:status, :pm_id, :offering_id)"
+        );
+        $insert->execute([
+            ':status' => $status,
+            ':pm_id' => $paymentMethodId,
+            ':offering_id' => $offeringId,
+        ]);
+    }
+}
+
+function resolveDeliveryMethodId(PDO $db, int $productId, string $deliveryMethod, float $deliveryFee = 50): ?int {
     $normalized = strtolower(trim($deliveryMethod));
     $methodLabels = $normalized === 'pickup'
         ? ['pickup', 'meetup', 'meet-up', 'campus meetup']
@@ -209,7 +361,7 @@ function resolveDeliveryMethodId(PDO $db, int $productId, string $deliveryMethod
     // so checkout can proceed instead of failing on missing DM_ID.
     $dmName = $normalized === 'pickup' ? 'Campus Meetup' : 'Standard Delivery';
     $dmProvider = $normalized === 'pickup' ? 'Meetup' : 'Campus Rider';
-    $dmFee = $normalized === 'pickup' ? 0 : 50;
+    $dmFee = $normalized === 'pickup' ? 0 : $deliveryFee;
 
     $insert = $db->prepare(
         "INSERT INTO DELIVERY_METHOD (DM_NAME, DM_FEE, DM_PROVIDER, NOTE, PROD_ID)
@@ -378,6 +530,31 @@ function totalVoucherDiscount(array $vouchers): float {
     ));
 }
 
+function serviceLineTotals(array $validatedItems, float $checkoutTotal): array {
+    $roundedTotal = (int) round($checkoutTotal);
+    $lineSubtotals = array_map(
+        fn (array $item): float => moneyValue((float) $item['price'] * (int) $item['quantity']),
+        $validatedItems
+    );
+    $subtotal = array_sum($lineSubtotals);
+    $remaining = $roundedTotal;
+    $totals = [];
+
+    foreach ($lineSubtotals as $index => $lineSubtotal) {
+        if ($index === array_key_last($lineSubtotals)) {
+            $totals[$index] = max(0, $remaining);
+            break;
+        }
+
+        $share = $subtotal > 0 ? $lineSubtotal / $subtotal : 1 / max(1, count($lineSubtotals));
+        $lineTotal = max(0, (int) round($roundedTotal * $share));
+        $totals[$index] = $lineTotal;
+        $remaining -= $lineTotal;
+    }
+
+    return $totals;
+}
+
 function recordVoucherUsage(PDO $db, array $voucher, float $discountAmount, ?int $orderId = null, ?int $requestId = null): void {
     if ($discountAmount <= 0) {
         return;
@@ -502,8 +679,28 @@ $merchantIds = array_values(array_unique(array_map(
 if ($type === 'product' && count($merchantIds) > 1) {
     jsonResponse(['error' => 'Please check out items from one merchant at a time.'], 422);
 }
+$primaryMerchantId = (int) ($merchantIds[0] ?? 0);
+$merchantSettings = $primaryMerchantId > 0
+    ? checkoutMerchantFulfillmentSettings($db, $primaryMerchantId)
+    : [
+        'acceptsCOD' => true,
+        'acceptsGCash' => true,
+        'allowMeetup' => true,
+        'allowDelivery' => true,
+        'deliveryFee' => 50,
+    ];
+if ($type === 'product') {
+    if ($deliveryMethod === 'standard' && !$merchantSettings['allowDelivery']) {
+        jsonResponse(['error' => 'Standard delivery is not enabled by this merchant.'], 422);
+    }
+    if ($deliveryMethod === 'pickup' && !$merchantSettings['allowMeetup']) {
+        jsonResponse(['error' => 'Campus meetup is not enabled by this merchant.'], 422);
+    }
+}
 
-$shippingFee = $type === 'product' && $deliveryMethod === 'standard' ? 50.00 : 0.00;
+$shippingFee = $type === 'product' && $deliveryMethod === 'standard'
+    ? moneyValue($merchantSettings['deliveryFee'])
+    : 0.00;
 $serviceFee = $type === 'service' ? 50.00 : 0.00;
 $vouchers = [];
 $discountAmount = 0.0;
@@ -536,7 +733,7 @@ if ($type === 'product' && $validatedBy === 'database') {
         jsonResponse(['error' => 'Recipient name, phone, and address are required.'], 422);
     }
 
-    $dmId = resolveDeliveryMethodId($db, (int) $validatedItems[0]['id'], $deliveryMethod);
+    $dmId = resolveDeliveryMethodId($db, (int) $validatedItems[0]['id'], $deliveryMethod, (float) $merchantSettings['deliveryFee']);
     if (!$dmId) {
         jsonResponse(['error' => 'Delivery method is unavailable for this order.'], 422);
     }
@@ -663,16 +860,21 @@ if ($type === 'service' && $validatedBy === 'database') {
         );
 
         $createdIds = [];
-        foreach ($validatedItems as $item) {
+        $requestTotals = serviceLineTotals($validatedItems, $total);
+        foreach ($validatedItems as $index => $item) {
             $qty = max(1, (int) $item['quantity']);
             $unitPrice = moneyValue($item['price']);
-            $lineTotal = (int) round($unitPrice * $qty);
+            $lineSubtotal = moneyValue($unitPrice * $qty);
+            $lineTotal = $requestTotals[$index] ?? (int) round($lineSubtotal);
             $customerInfo = json_encode([
                 'paymentMethod' => $paymentMethod,
                 'paymentStatus' => $paymentStatus,
                 'referenceNumber' => $paymentMethod === 'gcash' ? $reference : '',
                 'complexity' => $complexity,
                 'quantity' => $qty,
+                'lineSubtotal' => $lineSubtotal,
+                'serviceFee' => $serviceFee,
+                'voucherDiscount' => $discountAmount,
             ]);
 
             $requestStmt->execute([
