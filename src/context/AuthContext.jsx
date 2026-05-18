@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AuthContext } from "./authContextObject";
+import { clearRememberedClientSession } from "../api/clientSession";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -44,6 +45,7 @@ export const AuthProvider = ({ children }) => {
   const login = (userData) => setUser(userData);
   const logout = async () => {
     setUser(null);
+    clearRememberedClientSession();
     try {
       await fetch("/api/logout.php", {
         method: "POST",
