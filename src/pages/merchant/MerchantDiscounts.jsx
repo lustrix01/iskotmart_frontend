@@ -62,6 +62,7 @@ export default function MerchantDiscounts() {
 
   const currentVouchers = voucherView === "active" ? vouchers : usedVouchers;
   const currentItems = activeTab === "vouchers" ? currentVouchers : productDiscounts;
+  const isRetired = (item) => String(item?.status || "").toUpperCase() === "RETIRED";
 
   const loadDiscounts = useCallback(async () => {
     try {
@@ -93,6 +94,11 @@ export default function MerchantDiscounts() {
   }, [loadDiscounts]);
 
   const openModal = (item = null) => {
+    if (isRetired(item)) {
+      setLoadError("Retired records cannot be edited.");
+      return;
+    }
+
     setFormError("");
     setFormNotice("");
     setEditingItem(item);
@@ -164,6 +170,12 @@ export default function MerchantDiscounts() {
       if (formData.expiryDate < todayInputValue()) {
         return "Expiry date cannot be in the past.";
       }
+      if (
+        editingItem &&
+        Number(formData.usageLimit || 0) < Number(editingItem.used || 0)
+      ) {
+        return `Usage limit cannot be lower than the ${editingItem.used} already-used voucher redemption(s).`;
+      }
     } else {
       if (!formData.offeringId) {
         return "Select a product or service.";
@@ -192,6 +204,7 @@ export default function MerchantDiscounts() {
       activeTab === "vouchers"
         ? {
             mode: "voucher",
+            id: editingItem?.id || 0,
             code: formData.code,
             discountType: formData.discountType,
             discountValue: Number(formData.discountValue),
@@ -202,6 +215,7 @@ export default function MerchantDiscounts() {
           }
         : {
             mode: "discount",
+            id: editingItem?.id || 0,
             offeringId: Number(formData.offeringId),
             discountType: formData.discountType,
             discountValue: Number(formData.discountValue),
@@ -253,14 +267,14 @@ export default function MerchantDiscounts() {
         body: JSON.stringify({
           mode:
             activeTab === "vouchers"
-              ? "delete-voucher"
-              : "delete-product-discount",
+              ? "retire-voucher"
+              : "retire-product-discount",
           id: deleteId,
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.error || "Unable to delete discount.");
+        throw new Error(payload.error || "Unable to retire discount.");
       }
       await loadDiscounts();
       setLoadError("");
@@ -331,7 +345,7 @@ export default function MerchantDiscounts() {
                     : "bg-white border border-gray-100 text-gray-400 hover:text-[#003366]"
                 }`}
               >
-                Used Vouchers ({usedVouchers.length})
+                Used / Retired Vouchers ({usedVouchers.length})
               </button>
             </div>
           )}
@@ -452,20 +466,24 @@ export default function MerchantDiscounts() {
                     : `${item.startDate} to ${item.endDate}`}
                 </td>
                 <td className="px-6 py-5 text-right">
-                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openModal(item)}
-                      className="p-2 text-gray-400 hover:text-[#003366] hover:bg-white rounded-lg shadow-sm"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(item.id)}
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-white rounded-lg shadow-sm"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  {!isRetired(item) && (
+                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => openModal(item)}
+                        className="p-2 text-gray-400 hover:text-[#003366] hover:bg-white rounded-lg shadow-sm"
+                        title="Edit"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(item.id)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-white rounded-lg shadow-sm"
+                        title="Retire"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -557,6 +575,7 @@ export default function MerchantDiscounts() {
                     <Field
                       label="Usage Limit"
                       type="number"
+                      min={editingItem ? String(editingItem.used || 1) : "1"}
                       value={formData.usageLimit}
                       onChange={(value) =>
                         setFormData({ ...formData, usageLimit: value })
@@ -693,16 +712,18 @@ export default function MerchantDiscounts() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-[#003366]/40 backdrop-blur-sm text-center">
           <div className="bg-white rounded-3xl p-8 max-w-xs w-full animate-in zoom-in">
             <AlertCircle className="text-red-500 mx-auto mb-4" size={40} />
-            <h3 className="font-black text-[#003366]">Delete Discount?</h3>
+            <h3 className="font-black text-[#003366]">
+              Retire {activeTab === "vouchers" ? "Voucher" : "Discount"}?
+            </h3>
             <p className="text-xs text-gray-400 my-4">
-              This removes the discount entry from your database-backed shop view.
+              This retires the record and keeps its history for checkout and usage auditing.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={handleDelete}
                 className="bg-red-500 text-white py-3 rounded-xl text-xs font-bold"
               >
-                Yes, Delete
+                Yes, Retire
               </button>
               <button
                 onClick={() => setDeleteId(null)}
