@@ -169,6 +169,26 @@ function requireTableColumns(PDO $db, string $table, array $columns): void {
     }
 }
 
+function ensureTableColumns(PDO $db, string $table, array $columnDefinitions): void {
+    $existing = array_map(
+        fn ($column): string => strtoupper((string) $column),
+        $db->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN)
+    );
+
+    foreach ($columnDefinitions as $column => $definition) {
+        if (in_array(strtoupper((string) $column), $existing, true)) {
+            continue;
+        }
+
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $column)) {
+            throw new RuntimeException('Invalid database column name: ' . $column);
+        }
+
+        $db->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+        $existing[] = strtoupper((string) $column);
+    }
+}
+
 function requireFields(array $data, array $fields): void {
     foreach ($fields as $field) {
         if (!isset($data[$field]) || trim((string) $data[$field]) === '') {
