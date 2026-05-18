@@ -32,6 +32,7 @@ function wishlistItems(PDO $db, int $customerId): array {
                 COALESCE(pc.CAT_NAME, sc.CAT_NAME) AS category,
                 COALESCE(p.PRICE, s.PRICE) AS price,
                 p.STOCK_QTY AS stock,
+                s.SLOTS AS slots,
                 s.DELIVERY_METHOD AS rate,
                 o.MERCHANT_ID AS merchant_id,
                 COALESCE(m.SHOP_NAME, u.USERNAME, 'Merchant') AS merchant_name,
@@ -62,7 +63,7 @@ function wishlistItems(PDO $db, int $customerId): array {
          GROUP BY cw.WISHLIST_ID, cw.ADDED_ON, o.OFFERING_ID, o.OFFERING_TYPE,
                   o.OFFERING_NAME, o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
                   pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY,
-                  s.DELIVERY_METHOD, o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME
+                  s.SLOTS, s.DELIVERY_METHOD, o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME
          ORDER BY cw.ADDED_ON DESC, cw.WISHLIST_ID DESC"
     );
     $stmt->execute([':customer_id' => $customerId]);
@@ -85,6 +86,7 @@ function wishlistItems(PDO $db, int $customerId): array {
             'category' => $row['category'] ?: 'Uncategorized',
             'price' => (float) $row['price'],
             'stock' => $row['stock'] !== null ? (int) $row['stock'] : null,
+            'slots' => $row['slots'] !== null ? (int) $row['slots'] : null,
             'rateType' => $row['rate'] ?: 'per project',
             'img' => $images[0]['url'] ?? '',
             'images' => $images,
