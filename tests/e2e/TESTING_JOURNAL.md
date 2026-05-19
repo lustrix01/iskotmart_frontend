@@ -21,7 +21,7 @@ Branch under test: `lighthal`
 ## Test Scenario Documentation
 
 Latest run: `npm run test:e2e -- --project=chromium`  
-Result: 26 passed, 3 skipped
+Result: 29 passed, 0 skipped
 
 | Functionality Tested | Objective | Steps/Procedure | Test Data/Input | Expected Result | Actual Result | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -36,6 +36,7 @@ Result: 26 passed, 3 skipped
 | Product/service browsing | Verify listing pages are public | Open `/products` and `/services` | Guest session | Listing pages load | Listing pages loaded | Passed | Playwright report |
 | Unknown route fallback | Verify invalid URLs do not show broken page | Open a missing route | `/this-route-does-not-exist` | Storefront opens | Storefront opened | Passed | Playwright report |
 | Storefront API failure | Verify page survives failed listing API | Mock listing API as 500 | Mock JSON error | Storefront remains usable | Storefront remained usable | Passed | `test-results/evidence/storefront-api-failure-survives.png` |
+| AI help guest prompt | Verify AI Help appears on storefront but blocks guest use | Open storefront, click AI launcher | Guest session | Login-required prompt appears and chat API is not called | Login-required prompt appeared and chat API was not called | Passed | `test-results/evidence/ai-help-guest-login-required.png` |
 | Customer password validation | Verify weak password is blocked | Fill customer signup with weak password | `weak` | Password policy error appears | Password policy error appeared | Passed | `test-results/evidence/customer-signup-weak-password.png` |
 | Password mismatch validation | Verify mismatched passwords are blocked | Fill customer signup with different passwords | `StrongPass!123`, `DifferentPass!123` | Validation dialog appears | Validation dialog appeared | Passed | Playwright report |
 | Merchant email validation | Verify merchant signup requires BU email | Complete merchant signup steps with non-BU email | `merchant@example.com` | BU email error appears | BU email error appeared | Passed | `test-results/evidence/merchant-signup-domain-validation.png` |
@@ -51,9 +52,8 @@ Result: 26 passed, 3 skipped
 | Reset password validation | Verify missing token and weak passwords are blocked | Open reset page without token, then weak password with token | `weak` | Button disabled without token, weak-password error with token | Expected validation appeared | Passed | `test-results/evidence/reset-password-validation.png` |
 | Role access control | Verify customer cannot open merchant routes | Mock customer session, open `/merchant/products` | Customer role | Redirect away from merchant route | Redirected to storefront | Passed | `test-results/evidence/customer-blocked-from-merchant.png` |
 | Role access control | Verify merchant cannot open customer profile routes | Mock merchant session, open `/profile/orders` | Merchant role | Redirect away from customer route | Redirected to storefront | Passed | `test-results/evidence/merchant-blocked-from-customer-profile.png` |
-| Real customer credential smoke test | Verify configured customer account can log in/out | Use `.env` customer credentials | Local `.env` | Customer session reaches profile and logs out | Skipped because configured credentials did not produce expected customer role in this run | Skipped | Playwright report |
-| Real merchant credential smoke test | Verify configured merchant account reaches dashboard | Use `.env` merchant credentials | Local `.env` | Merchant dashboard appears | Skipped because configured credentials did not produce expected merchant role in this run | Skipped | Playwright report |
-| AI help guest prompt | Verify AI help blocks guest chat API call | Open AI help launcher as guest | Guest session | Login prompt appears and API is not called | Skipped because launcher was not visible in the tested viewport | Skipped | Playwright report |
+| Real customer credential smoke test | Verify configured customer account can log in/out | Use `.env` customer credentials | Local `.env` | Customer session reaches profile and logs out | Customer reached profile and logged out | Passed | `test-results/evidence/customer-logout-clears-session.png` |
+| Real merchant credential smoke test | Verify configured merchant account reaches dashboard | Use `.env` merchant credentials | Local `.env` | Merchant dashboard appears | Merchant dashboard appeared | Passed | `test-results/evidence/merchant-login-dashboard.png` |
 
 ## Running The Tests
 
@@ -83,8 +83,8 @@ npm run test:e2e:report
 
 ## Reflection / Findings
 
-- Issues encountered: Real account smoke tests still depend on valid local `.env` customer and merchant accounts with the correct roles. Database-sensitive flows were stabilized with mocked authenticated sessions and mocked API responses.
+- Issues encountered: Real account smoke tests depend on valid local `.env` customer and merchant accounts with the correct roles. Database-sensitive flows were stabilized with mocked authenticated sessions and mocked API responses.
 - Warnings/errors detected: Login, storefront, and orders API failure cases showed user-facing errors instead of crashing the UI.
 - Bugs discovered: No blocking UI crash was found in the conducted guest, validation, checkout, merchant CRUD, receipt, and role-access tests.
-- Improvements made after testing: Added stable mock-session helpers, expanded checkout/order/merchant/password-reset/role-access coverage, and added screenshot evidence for the new scenarios.
+- Improvements made after testing: Added stable mock-session helpers, expanded checkout/order/merchant/password-reset/role-access coverage, corrected the storefront-only AI Help selector, and added screenshot evidence for the new scenarios.
 - Lessons learned: Automated E2E tests are most reliable when role/session setup and test data are controlled. Real credential tests are useful smoke tests, but repeatable report evidence should not depend on changing local database records.

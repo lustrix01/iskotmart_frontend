@@ -32,11 +32,12 @@ test.describe("routing and API edge cases", () => {
     });
 
     await page.goto("/");
-    const chatButton = page.getByRole("button", { name: /ai|help|chat|message/i }).first();
-    test.skip(!(await chatButton.isVisible().catch(() => false)), "AI help chat launcher is not visible on this viewport.");
+    const chatButton = page.getByRole("button", { name: "Open AI help chat" });
+    await expect(chatButton).toBeVisible({ timeout: 10_000 });
 
     await chatButton.click();
     await expect(page.getByText(/login required|login now|sign in/i).first()).toBeVisible();
     expect(chatApiCalled).toBe(false);
+    await screenshotEvidence(page, "ai-help-guest-login-required");
   });
 });
