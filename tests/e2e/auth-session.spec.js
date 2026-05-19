@@ -1,16 +1,19 @@
 /* global process */
 import { expect, test } from "@playwright/test";
-import { hasCredentials, loginAsRole, loginThroughUi } from "./support/auth.js";
-import { screenshotEvidence } from "./support/selectors.js";
+import { hasCredentials, loginThroughUi } from "./support/auth.js";
+import { screenshotEvidence, waitForLoginPage, waitForStorefrontReady } from "./support/selectors.js";
 
 test.describe("guest and auth session behavior", () => {
+  test.describe.configure({ mode: "serial" });
+
   test("guest can browse storefront and protected cart redirects to login", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("link", { name: /iskomart/i })).toBeVisible();
 
     await page.getByRole("link", { name: "Cart" }).click();
     await expect(page).toHaveURL(/\/login/);
-    await screenshotEvidence(page, "guest-cart-redirect");
+    await waitForLoginPage(page);
+    await screenshotEvidence(page, "01-guest-cart-redirect");
   });
 
   test("guest protected pages redirect to login with no session", async ({ page }) => {
@@ -19,9 +22,10 @@ test.describe("guest and auth session behavior", () => {
     for (const path of protectedPaths) {
       await page.goto(path);
       await expect(page).toHaveURL(/\/login/);
+      await waitForLoginPage(page);
     }
 
-    await screenshotEvidence(page, "guest-protected-route-redirects");
+    await screenshotEvidence(page, "02-guest-protected-route-redirects");
   });
 
   test("continue as guest returns to storefront", async ({ page }) => {
@@ -29,7 +33,8 @@ test.describe("guest and auth session behavior", () => {
     await page.getByRole("button", { name: /continue as guest/i }).click();
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("link", { name: /iskomart/i })).toBeVisible();
+    await waitForStorefrontReady(page);
+    await screenshotEvidence(page, "03-continue-as-guest");
   });
 
   test("invalid login displays an error", async ({ page }) => {
@@ -39,7 +44,7 @@ test.describe("guest and auth session behavior", () => {
     await page.getByRole("button", { name: "Sign In" }).click();
 
     await expect(page.getByText(/invalid email or password|too many attempts|login failed/i)).toBeVisible();
-    await screenshotEvidence(page, "invalid-login-error");
+    await screenshotEvidence(page, "04-invalid-login-error");
   });
 
   test("login handles non-json API response without crashing", async ({ page }) => {
@@ -57,11 +62,17 @@ test.describe("guest and auth session behavior", () => {
     await page.getByRole("button", { name: "Sign In" }).click();
 
     await expect(page.getByText(/login api returned a non-json response/i)).toBeVisible();
-    await screenshotEvidence(page, "login-non-json-api-error");
+    await screenshotEvidence(page, "05-login-non-json-api-error");
   });
 
   test("customer login and logout clear the active session", async ({ page }) => {
-    await loginAsRole(page, "customer", "/profile");
+    test.skip(!hasCredentials("customer"), "Set customer E2E credentials to run this test.");
+
+    await loginThroughUi(page, {
+      email: process.env.E2E_CUSTOMER_EMAIL,
+      password: process.env.E2E_CUSTOMER_PASSWORD,
+    });
+    await page.getByRole("link", { name: /my profile/i }).click();
     await expect(page).toHaveURL(/\/profile/);
 
     const logoutButton = page.getByRole("button", { name: /log out/i }).first();
@@ -69,7 +80,7 @@ test.describe("guest and auth session behavior", () => {
     await logoutButton.click();
     await page.getByRole("button", { name: /yes, log out/i }).click();
     await expect(page).toHaveURL(/\/login/, { timeout: 5_000 });
-    await screenshotEvidence(page, "customer-logout-clears-session");
+    await screenshotEvidence(page, "28-customer-logout-clears-session");
   });
 
   test("merchant credentials reach merchant area", async ({ page }) => {
@@ -80,19 +91,8 @@ test.describe("guest and auth session behavior", () => {
       password: process.env.E2E_MERCHANT_PASSWORD,
     });
 
-    const activeRole = await page.evaluate(async () => {
-      const response = await fetch("/api/me.php", { credentials: "include" });
-      if (!response.ok) {
-        return "";
-      }
-      const payload = await response.json().catch(() => ({}));
-      return payload.user?.role || "";
-    });
-    test.skip(activeRole !== "merchant", `Configured merchant credentials signed in as "${activeRole || "unknown"}".`);
-
-    await page.goto("/merchant");
     await expect(page).toHaveURL(/\/merchant/);
     await expect(page.getByText(/dashboard|merchant|orders|inventory/i).first()).toBeVisible();
-    await screenshotEvidence(page, "merchant-login-dashboard");
+    await screenshotEvidence(page, "29-merchant-login-dashboard");
   });
 });

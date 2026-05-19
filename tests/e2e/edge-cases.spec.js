@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { screenshotEvidence } from "./support/selectors.js";
+import { screenshotEvidence, waitForNoLoadingText, waitForStorefrontReady } from "./support/selectors.js";
 
 test.describe("routing and API edge cases", () => {
   test("unknown routes fall back to the storefront", async ({ page }) => {
     await page.goto("/this-route-does-not-exist");
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("link", { name: /iskomart/i })).toBeVisible();
+    await waitForStorefrontReady(page);
+    await screenshotEvidence(page, "10-unknown-route-fallback");
   });
 
   test("storefront survives failed listing API response", async ({ page }) => {
@@ -20,8 +21,9 @@ test.describe("routing and API edge cases", () => {
 
     await page.goto("/");
     await expect(page.getByRole("link", { name: /iskomart/i })).toBeVisible();
-    await expect(page.getByText(/store|shop|service|iskomart/i).first()).toBeVisible();
-    await screenshotEvidence(page, "storefront-api-failure-survives");
+    await waitForNoLoadingText(page);
+    await expect(page.getByText(/forced e2e storefront failure/i).first()).toBeVisible();
+    await screenshotEvidence(page, "11-storefront-api-failure-survives");
   });
 
   test("AI help prompts guests to log in instead of calling chat API", async ({ page }) => {
@@ -38,6 +40,6 @@ test.describe("routing and API edge cases", () => {
     await chatButton.click();
     await expect(page.getByText(/login required|login now|sign in/i).first()).toBeVisible();
     expect(chatApiCalled).toBe(false);
-    await screenshotEvidence(page, "ai-help-guest-login-required");
+    await screenshotEvidence(page, "12-ai-help-guest-login-required");
   });
 });

@@ -22,7 +22,7 @@ test.describe("registration and validation", () => {
     await expect(
       page.locator("p").filter({ hasText: /use at least 10 characters/i }).last(),
     ).toBeVisible();
-    await screenshotEvidence(page, "customer-signup-weak-password");
+    await screenshotEvidence(page, "13-customer-signup-weak-password");
   });
 
   test("customer signup mismatch password shows a validation dialog", async ({ page }) => {
@@ -51,6 +51,7 @@ test.describe("registration and validation", () => {
     await expect.poll(() => dialogMessage).toContain("Passwords don't match");
 
     await expect(page).toHaveURL(/\/signup\/customer/);
+    await screenshotEvidence(page, "14-customer-signup-password-mismatch");
   });
 
   test("merchant signup rejects non-Bicol University email domain", async ({ page }) => {
@@ -85,6 +86,6 @@ test.describe("registration and validation", () => {
 
     await expect(page.getByText(/only valid @bicol-u\.edu\.ph email addresses are allowed/i)).toBeVisible();
     await expect.poll(() => dialogMessage).toContain("@bicol-u.edu.ph");
-    await screenshotEvidence(page, "merchant-signup-domain-validation");
+    await screenshotEvidence(page, "15-merchant-signup-domain-validation");
   });
 });

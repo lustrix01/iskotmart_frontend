@@ -55,6 +55,7 @@ function Stop-ProcessTree {
 
 try {
     Import-LocalEnv -Path (Join-Path $repoRoot ".env")
+    Remove-Item -LiteralPath (Join-Path $repoRoot "test-results\evidence") -Recurse -Force -ErrorAction SilentlyContinue
 
     if (-not (Test-AppReady -Url $baseUrl)) {
         if ($reuseServer) {

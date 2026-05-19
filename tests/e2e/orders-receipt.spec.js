@@ -45,7 +45,7 @@ test.describe("orders and receipt generation", () => {
     const detailsButton = page.getByRole("button", { name: /view details|details/i }).first();
     await detailsButton.click();
     await expect(page.getByRole("button", { name: /print receipt/i })).toBeVisible();
-    await screenshotEvidence(page, "order-receipt-dialog");
+    await screenshotEvidence(page, "22-order-receipt-dialog");
   });
 
   test("customer orders show API errors without crashing", async ({ page }) => {
@@ -60,6 +60,6 @@ test.describe("orders and receipt generation", () => {
     await page.goto("/profile/orders");
 
     await expect(page.getByText(/forced orders failure/i)).toBeVisible();
-    await screenshotEvidence(page, "orders-api-error");
+    await screenshotEvidence(page, "23-orders-api-error");
   });
 });

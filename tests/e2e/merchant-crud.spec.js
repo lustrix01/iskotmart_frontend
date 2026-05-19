@@ -61,12 +61,12 @@ test.describe("merchant product and service CRUD", () => {
     await page.getByRole("button", { name: /create item/i }).click();
 
     await expect(page.getByText(itemName)).toBeVisible({ timeout: 15_000 });
-    await screenshotEvidence(page, "merchant-product-created");
+    await screenshotEvidence(page, "16-merchant-product-created");
 
     const row = page.getByRole("row", { name: new RegExp(itemName) });
     await row.locator("button").last().click();
     await expect(page.getByRole("heading", { name: /delete item/i })).toBeVisible();
-    await screenshotEvidence(page, "merchant-retire-confirmation");
+    await screenshotEvidence(page, "17-merchant-retire-confirmation");
   });
 
   test("merchant product form rejects negative price and stock edge cases", async ({ page }) => {
@@ -93,6 +93,7 @@ test.describe("merchant product and service CRUD", () => {
     await modal.locator('input[type="number"]').nth(1).fill("-5");
     await page.getByRole("button", { name: /create item/i }).click();
     await expect(page.getByText(/stock must be zero or greater/i)).toBeVisible();
+    await screenshotEvidence(page, "18-merchant-product-negative-values");
   });
 
   test("merchant service form rejects zero slots", async ({ page }) => {
@@ -115,6 +116,6 @@ test.describe("merchant product and service CRUD", () => {
     await page.getByRole("button", { name: /create item/i }).click();
 
     await expect(page.getByText(/service slots must be at least 1/i)).toBeVisible();
-    await screenshotEvidence(page, "merchant-service-slots-validation");
+    await screenshotEvidence(page, "19-merchant-service-slots-validation");
   });
 });

@@ -20,7 +20,7 @@ test.describe("password reset validation", () => {
 
     await expect(page.getByText(/reset instructions are ready/i)).toBeVisible();
     await expect(page.getByRole("link", { name: /reset-password\?token=e2e-token/i })).toBeVisible();
-    await screenshotEvidence(page, "forgot-password-reset-link");
+    await screenshotEvidence(page, "24-forgot-password-reset-link");
   });
 
   test("reset password blocks missing token and weak password inputs", async ({ page }) => {
@@ -34,6 +34,6 @@ test.describe("password reset validation", () => {
     await page.getByRole("button", { name: /reset password/i }).click();
 
     await expect(page.locator(".text-red-600").filter({ hasText: /password must be at least 10 characters/i })).toBeVisible();
-    await screenshotEvidence(page, "reset-password-validation");
+    await screenshotEvidence(page, "25-reset-password-validation");
   });
 });

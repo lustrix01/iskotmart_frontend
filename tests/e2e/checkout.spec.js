@@ -64,7 +64,7 @@ test.describe("customer cart and checkout", () => {
 
     const placeOrder = page.getByRole("button", { name: /place order now|proceed to gcash/i });
     await expect(placeOrder).toBeVisible();
-    await screenshotEvidence(page, "checkout-payment-options");
+    await screenshotEvidence(page, "20-checkout-payment-options");
   });
 
   test("checkout disables product order when the customer has no saved address", async ({ page }) => {
@@ -105,6 +105,6 @@ test.describe("customer cart and checkout", () => {
 
     await expect(page.getByRole("button", { name: /place order now/i })).toBeDisabled();
     await expect(page.getByText(/add a shipping address to continue/i)).toBeVisible();
-    await screenshotEvidence(page, "checkout-address-required");
+    await screenshotEvidence(page, "21-checkout-address-required");
   });
 });
