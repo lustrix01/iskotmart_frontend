@@ -69,7 +69,7 @@ const RequireAuth = ({ roles }) => {
   }
 
   if (roles && !roles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={user.role === "merchant" ? "/merchant" : "/"} replace />;
   }
 
   return <Outlet />;

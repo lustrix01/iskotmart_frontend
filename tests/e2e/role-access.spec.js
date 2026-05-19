@@ -18,8 +18,8 @@ test.describe("role-based access control", () => {
 
     await page.goto("/profile/orders");
 
-    await expect(page).toHaveURL(/\/$/);
-    await waitForStorefrontReady(page);
+    await expect(page).toHaveURL(/\/merchant$/);
+    await expect(page.getByText(/dashboard|merchant|orders|inventory/i).first()).toBeVisible();
     await screenshotEvidence(page, "27-merchant-blocked-from-customer-profile");
   });
 });
