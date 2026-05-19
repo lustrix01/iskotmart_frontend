@@ -34,3 +34,8 @@ development notes.md
 
 # Local uploaded files
 api/uploads/
+
+# Playwright artifacts and local auth state
+playwright-report/
+test-results/
+tests/.auth/
