@@ -97,7 +97,7 @@ export default function Checkout() {
     label: "",
     address: "",
   });
-  const [isLoadingAddress, setIsLoadingAddress] = useState(type === "product");
+  const [isLoadingAddress, setIsLoadingAddress] = useState(true);
   const [addressError, setAddressError] = useState("");
 
   const [serviceRequirementsByItem, setServiceRequirementsByItem] = useState(() =>
@@ -131,6 +131,10 @@ export default function Checkout() {
   const hasShippingAddress =
     type !== "product" ||
     Boolean(addressData.name && addressData.phone && addressData.address);
+  const hasRequiredCustomerInfo =
+    type === "product"
+      ? hasShippingAddress
+      : Boolean(addressData.name && addressData.phone);
   const optionItemsKey = useMemo(
     () =>
       checkoutItems
@@ -164,7 +168,7 @@ export default function Checkout() {
   };
 
   useEffect(() => {
-    if (!user || type !== "product") {
+    if (!user) {
       setIsLoadingAddress(false);
       return;
     }
@@ -222,7 +226,7 @@ export default function Checkout() {
     return () => {
       isMounted = false;
     };
-  }, [type, user]);
+  }, [user]);
 
   useEffect(() => {
     if (!user || !hasCheckoutItems) {
@@ -315,8 +319,12 @@ export default function Checkout() {
       return false;
     }
 
-    if (!hasShippingAddress) {
-      setCheckoutError("Add a shipping address before placing this order.");
+    if (!hasRequiredCustomerInfo) {
+      setCheckoutError(
+        type === "product"
+          ? "Add a shipping address before placing this order."
+          : "Add a saved address with recipient name and phone before booking this service.",
+      );
       return false;
     }
 
@@ -387,8 +395,12 @@ export default function Checkout() {
 
   // --- FR-30: Record selected payment methods ---
   const handlePlaceOrder = () => {
-    if (!hasShippingAddress) {
-      setCheckoutError("Add a shipping address before placing this order.");
+    if (!hasRequiredCustomerInfo) {
+      setCheckoutError(
+        type === "product"
+          ? "Add a shipping address before placing this order."
+          : "Add a saved address with recipient name and phone before booking this service.",
+      );
       return;
     }
 
@@ -637,6 +649,74 @@ export default function Checkout() {
                 )
               ) : (
                 <div className="space-y-4 animate-in fade-in">
+                  {isLoadingAddress ? (
+                    <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3 text-xs font-bold text-gray-400">
+                      Loading saved contact...
+                    </div>
+                  ) : addressData.name && addressData.phone ? (
+                    <div className="rounded-md border border-blue-100 bg-blue-50/50 px-4 py-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-[#0074D9]">
+                            Booking contact
+                          </p>
+                          <p className="text-xs font-bold text-[#003366]">
+                            {addressData.name}
+                          </p>
+                          <p className="text-[10px] font-semibold text-gray-500">
+                            {addressData.phone}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate("/profile/addresses", {
+                              state: { from: location },
+                            })
+                          }
+                          className="text-left text-[10px] font-bold text-[#FF851B] hover:underline sm:text-right"
+                        >
+                          Manage contact
+                        </button>
+                      </div>
+                      {addressData.address && (
+                        <p className="mt-2 text-[10px] font-semibold leading-relaxed text-gray-500">
+                          {addressData.address}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-orange-100 bg-orange-50 px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        <Info className="mt-0.5 shrink-0 text-[#FF851B]" size={16} />
+                        <div>
+                          <p className="text-xs font-bold text-[#003366]">
+                            Add a booking contact to continue.
+                          </p>
+                          <p className="mt-1 text-[10px] font-semibold leading-relaxed text-gray-500">
+                            Service requests use your saved recipient name and phone
+                            so the merchant can coordinate details with you.
+                          </p>
+                          {addressError && (
+                            <p className="mt-2 text-[10px] font-bold text-red-500">
+                              {addressError}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate("/profile/addresses", {
+                                state: { from: location },
+                              })
+                            }
+                            className="mt-3 rounded-md bg-[#003366] px-4 py-2 text-[10px] font-bold text-white hover:bg-[#002244]"
+                          >
+                            Add contact
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {checkoutItems.map((item, index) => {
                     const key = serviceRequirementKey(item, index);
                     return (
@@ -928,7 +1008,7 @@ export default function Checkout() {
                 isSubmittingOrder ||
                 !hasCheckoutItems ||
                 isLoadingAddress ||
-                !hasShippingAddress ||
+                !hasRequiredCustomerInfo ||
                 !isPaymentAllowed(paymentMethod) ||
                 !isDeliveryAllowed(deliveryMethod)
               }
