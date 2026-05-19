@@ -236,6 +236,31 @@ CREATE TABLE `order_item` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `order_activity_log`
+--
+
+CREATE TABLE `order_activity_log` (
+  `LOG_ID` int(11) NOT NULL AUTO_INCREMENT,
+  `SOURCE_TYPE` varchar(32) NOT NULL,
+  `SOURCE_ID` int(11) NOT NULL,
+  `EVENT_TYPE` varchar(64) NOT NULL,
+  `OLD_VALUE` varchar(255) DEFAULT NULL,
+  `NEW_VALUE` varchar(255) DEFAULT NULL,
+  `ACTOR_ID` int(11) DEFAULT NULL,
+  `ACTOR_ROLE` varchar(45) DEFAULT NULL,
+  `ACTOR_NAME` varchar(255) DEFAULT NULL,
+  `ITEMS_SNAPSHOT` text DEFAULT NULL,
+  `SUMMARY` text DEFAULT NULL,
+  `UNDO_OF_LOG_ID` int(11) DEFAULT NULL,
+  `CREATED_AT` datetime(1) NOT NULL DEFAULT current_timestamp(1),
+  PRIMARY KEY (`LOG_ID`),
+  KEY `ORDER_ACTIVITY_SOURCE_IDX` (`SOURCE_TYPE`,`SOURCE_ID`,`CREATED_AT`),
+  KEY `ORDER_ACTIVITY_UNDO_IDX` (`UNDO_OF_LOG_ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `payment`
 --
 

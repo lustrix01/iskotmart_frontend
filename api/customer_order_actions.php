@@ -3,6 +3,7 @@
 require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/payment_helpers.php');
 require_once(__DIR__ . '/order_inventory_helpers.php');
+require_once(__DIR__ . '/order_activity_helpers.php');
 
 function requireCustomerForOrderActions(PDO $db): array {
     $user = currentUser($db);
@@ -31,6 +32,24 @@ function parseOrderReference(string $reference): array {
     return ['type' => '', 'id' => 0];
 }
 
+function mapCustomerActivityStatus(string $status): string {
+    $map = [
+        'PENDING' => 'Pending',
+        'TO_CONFIRM' => 'Pending',
+        'CONFIRMED' => 'Confirmed',
+        'PROCESSING' => 'Confirmed',
+        'TO_SHIP' => 'Confirmed',
+        'SHIPPED' => 'Shipped',
+        'IN_TRANSIT' => 'Shipped',
+        'TO_RECEIVE' => 'Shipped',
+        'DELIVERED' => 'Completed',
+        'COMPLETED' => 'Completed',
+        'CANCELLED' => 'Cancelled',
+    ];
+
+    return $map[strtoupper(trim($status))] ?? 'Pending';
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'PATCH') {
     jsonResponse(['error' => 'Method not allowed'], 405);
 }
@@ -48,6 +67,13 @@ if (!in_array($action, ['cancel', 'confirm'], true)) {
 $parsed = parseOrderReference($reference);
 if ($parsed['id'] <= 0 || $parsed['type'] === '') {
     jsonResponse(['error' => 'Invalid order reference.'], 422);
+}
+
+try {
+    ensureOrderActivityLogTable($db);
+} catch (Throwable $e) {
+    logApiError($e);
+    jsonResponse(['error' => 'Unable to prepare order activity log.'], 500);
 }
 
 try {
@@ -86,6 +112,17 @@ try {
                     ':customer_id' => $customerId,
                 ]);
                 restoreProductOrderInventory($db, $parsed['id']);
+                insertOrderActivityLog(
+                    $db,
+                    'order',
+                    $parsed['id'],
+                    'customer_cancelled',
+                    mapCustomerActivityStatus($currentStatus),
+                    'Cancelled',
+                    actorPayload($sessionUser),
+                    activityItemsForProductOrder($db, $parsed['id']),
+                    'Customer cancelled this order.'
+                );
                 $db->commit();
             } catch (Throwable $e) {
                 if ($db->inTransaction()) {
@@ -103,17 +140,37 @@ try {
             jsonResponse(['error' => 'Payment must be marked paid before confirming receipt.'], 409);
         }
 
-        $stmt = $db->prepare(
-            "UPDATE ORDERS
-             SET ORDER_STATUS = 'COMPLETED',
-                 DELIVERY_STATUS = 'DELIVERED',
-                 RECEIVED_ON = NOW(1)
-             WHERE ORDER_ID = :order_id AND CUSTOMER_ID = :customer_id"
-        );
-        $stmt->execute([
-            ':order_id' => $parsed['id'],
-            ':customer_id' => $customerId,
-        ]);
+        $db->beginTransaction();
+        try {
+            $stmt = $db->prepare(
+                "UPDATE ORDERS
+                 SET ORDER_STATUS = 'COMPLETED',
+                     DELIVERY_STATUS = 'DELIVERED',
+                     RECEIVED_ON = NOW(1)
+                 WHERE ORDER_ID = :order_id AND CUSTOMER_ID = :customer_id"
+            );
+            $stmt->execute([
+                ':order_id' => $parsed['id'],
+                ':customer_id' => $customerId,
+            ]);
+            insertOrderActivityLog(
+                $db,
+                'order',
+                $parsed['id'],
+                'customer_received',
+                mapCustomerActivityStatus($currentStatus),
+                'Completed',
+                actorPayload($sessionUser),
+                activityItemsForProductOrder($db, $parsed['id']),
+                'Customer confirmed receipt of this order.'
+            );
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
         jsonResponse(['ok' => true, 'status' => 'Completed']);
     }
 
@@ -150,6 +207,17 @@ try {
                 ':customer_id' => $customerId,
             ]);
             restoreServiceRequestSlots($db, $parsed['id'], serviceQuantityFromInfo((string) ($request['CUSTOMER_INFO'] ?? '')));
+            insertOrderActivityLog(
+                $db,
+                'service_request',
+                $parsed['id'],
+                'customer_cancelled',
+                mapCustomerActivityStatus($currentStatus),
+                'Cancelled',
+                actorPayload($sessionUser),
+                activityItemsForServiceRequest($db, $parsed['id']),
+                'Customer cancelled this service request.'
+            );
             $db->commit();
         } catch (Throwable $e) {
             if ($db->inTransaction()) {
@@ -167,15 +235,35 @@ try {
         jsonResponse(['error' => 'Payment must be marked paid before confirming receipt.'], 409);
     }
 
-    $stmt = $db->prepare(
-        "UPDATE SERVICE_REQUEST
-         SET REQ_STATUS = 'COMPLETED'
-         WHERE REQUEST_ID = :request_id AND CUSTOMER_ID = :customer_id"
-    );
-    $stmt->execute([
-        ':request_id' => $parsed['id'],
-        ':customer_id' => $customerId,
-    ]);
+    $db->beginTransaction();
+    try {
+        $stmt = $db->prepare(
+            "UPDATE SERVICE_REQUEST
+             SET REQ_STATUS = 'COMPLETED'
+             WHERE REQUEST_ID = :request_id AND CUSTOMER_ID = :customer_id"
+        );
+        $stmt->execute([
+            ':request_id' => $parsed['id'],
+            ':customer_id' => $customerId,
+        ]);
+        insertOrderActivityLog(
+            $db,
+            'service_request',
+            $parsed['id'],
+            'customer_received',
+            mapCustomerActivityStatus($currentStatus),
+            'Completed',
+            actorPayload($sessionUser),
+            activityItemsForServiceRequest($db, $parsed['id']),
+            'Customer confirmed receipt of this service request.'
+        );
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $e;
+    }
     jsonResponse(['ok' => true, 'status' => 'Completed']);
 } catch (Throwable $e) {
     if ($db->inTransaction()) {

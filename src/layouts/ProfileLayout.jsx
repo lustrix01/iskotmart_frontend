@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   User,
@@ -17,8 +17,6 @@ import {
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/useAuth";
 
-const FALLBACK_AVATAR = "/placeholders/avatar.svg";
-
 export default function ProfileLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -27,10 +25,6 @@ export default function ProfileLayout() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [profileSummary, setProfileSummary] = useState({
-    name: "My Profile",
-    avatarUrl: "",
-  });
 
   const menuItems = [
     { name: "Profile information", path: "/profile", icon: User },
@@ -52,34 +46,6 @@ export default function ProfileLayout() {
       navigate("/login", { replace: true });
     }, 2000);
   };
-
-  const pageTitle = menuItems.find((item) => item.path === location.pathname)?.name || "Profile";
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadProfileSummary = async () => {
-      try {
-        const response = await fetch("/api/profile.php", { credentials: "include" });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !isMounted || !payload.profile) {
-          return;
-        }
-        const profile = payload.profile;
-        setProfileSummary({
-          name: profile.displayName || profile.name || "My Profile",
-          avatarUrl: profile.avatarUrl || "",
-        });
-      } catch {
-        // Keep the placeholder account chip if profile data is unavailable.
-      }
-    };
-
-    loadProfileSummary();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   return (
     <div className="min-h-screen bg-[#F5F7F9] font-sans">
@@ -169,34 +135,15 @@ export default function ProfileLayout() {
 
         {/* CONTENT AREA */}
         <main className="mt-16 flex-grow px-4 pb-10 pt-4 sm:px-6 lg:ml-64 lg:px-8">
-          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm sm:px-5">
-            <div className="flex min-w-0 items-center gap-3">
-              <button
-                type="button"
-                aria-label="Open account menu"
-                onClick={() => setIsMobileNavOpen(true)}
-                className="rounded-md border border-gray-100 p-2 text-[#003366] shadow-sm lg:hidden"
-              >
-                <Menu size={18} />
-              </button>
-              <h1 className="truncate text-lg font-bold text-[#003366]">
-                {pageTitle}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2 pl-3 border-l border-gray-100">
-              <span className="hidden text-xs font-bold text-gray-700 sm:inline">
-                {profileSummary.name}
-              </span>
-              <img
-                src={profileSummary.avatarUrl || FALLBACK_AVATAR}
-                alt={`${profileSummary.name} profile`}
-                className="h-8 w-8 rounded-full border border-orange-200 bg-orange-50 object-cover"
-                onError={(event) => {
-                  event.currentTarget.src = FALLBACK_AVATAR;
-                }}
-              />
-            </div>
-          </div>
+          <button
+            type="button"
+            aria-label="Open account menu"
+            onClick={() => setIsMobileNavOpen(true)}
+            className="mb-4 inline-flex items-center gap-2 rounded-md border border-gray-100 bg-white px-3 py-2 text-xs font-bold text-[#003366] shadow-sm lg:hidden"
+          >
+            <Menu size={18} />
+            Account menu
+          </button>
           <Outlet />
         </main>
       </div>

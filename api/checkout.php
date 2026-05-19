@@ -2,6 +2,7 @@
 
 require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/payment_helpers.php');
+require_once(__DIR__ . '/order_activity_helpers.php');
 
 function requireCustomerForCheckout(PDO $db): array {
     $user = currentUser($db);
@@ -724,6 +725,13 @@ assertClose($total, moneyValue($totals['total'] ?? -1), 'Total');
 $paymentStatus = $paymentMethod === 'gcash' ? PAYMENT_STATUS_PENDING_REVIEW : PAYMENT_STATUS_UNPAID;
 $validatedBy = 'database';
 
+try {
+    ensureOrderActivityLogTable($db);
+} catch (Throwable $e) {
+    logApiError($e);
+    jsonResponse(['error' => 'Unable to prepare order activity log.'], 500);
+}
+
 if ($type === 'product' && $validatedBy === 'database') {
     $recipientName = trim((string) ($customer['recipientName'] ?? ''));
     $phone = trim((string) ($customer['phone'] ?? ''));
@@ -808,6 +816,18 @@ if ($type === 'product' && $validatedBy === 'database') {
                 ensurePaymentRecord($db, $orderId, null, $allowedPaymentId, $total, $reference, $paymentProofUrl);
             }
         }
+
+        insertOrderActivityLog(
+            $db,
+            'order',
+            $orderId,
+            'created',
+            null,
+            'Pending',
+            actorPayload($sessionUser),
+            activityItemsForProductOrder($db, $orderId),
+            'Customer placed this order. Merchant received it for review.'
+        );
 
         $db->commit();
 
@@ -930,6 +950,18 @@ if ($type === 'service' && $validatedBy === 'database') {
                     ensurePaymentRecord($db, null, $requestId, $allowedPaymentId, $lineTotal, $reference, $paymentProofUrl);
                 }
             }
+
+            insertOrderActivityLog(
+                $db,
+                'service_request',
+                $requestId,
+                'created',
+                null,
+                'Pending',
+                actorPayload($sessionUser),
+                activityItemsForServiceRequest($db, $requestId),
+                'Customer placed this service request. Merchant received it for review.'
+            );
         }
 
         if ($createdRequests) {

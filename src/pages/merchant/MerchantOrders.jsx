@@ -14,14 +14,20 @@ import {
   ArrowUpRight,
   AlertCircle,
   Printer,
+  Undo2,
 } from "lucide-react";
 
 export default function MerchantOrders() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [viewTab, setViewTab] = useState("Orders");
+  const [logSearchTerm, setLogSearchTerm] = useState("");
   // --- FR-48 & FR-49: Tabs for filtering Ongoing vs Historical Orders ---
   const [activeTab, setActiveTab] = useState("All");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [loadError, setLoadError] = useState("");
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [actionNotice, setActionNotice] = useState(null);
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
   const [orders, setOrders] = useState([]);
 
@@ -65,6 +71,68 @@ export default function MerchantOrders() {
     });
   }, [searchTerm, activeTab, orders]);
 
+  const logSearchValue = logSearchTerm.trim().toUpperCase();
+  const activityEntries = useMemo(() => {
+    const entries = orders.flatMap((order) =>
+      (order.activityLog || []).map((entry, index) => ({
+        ...entry,
+        order,
+        isLatestForOrder: index === 0,
+      })),
+    );
+
+    const filtered = logSearchValue
+      ? entries.filter((entry) => {
+          const order = entry.order;
+          const haystack = [
+            order.id,
+            order.rawId,
+            order.customer,
+            order.status,
+            entry.summary,
+            itemSummary(entry.items),
+          ]
+            .join(" ")
+            .toUpperCase();
+          return haystack.includes(logSearchValue);
+        })
+      : entries;
+
+    return filtered.sort((a, b) => {
+      const aTime = Date.parse(a.createdAt || "") || 0;
+      const bTime = Date.parse(b.createdAt || "") || 0;
+      if (aTime !== bTime) {
+        return bTime - aTime;
+      }
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }, [logSearchValue, orders]);
+
+  const syncOrderState = (
+    nextOrders,
+    id,
+    fallback = null,
+    updateSelected = true,
+  ) => {
+    setOrders(nextOrders);
+    const nextSelected = nextOrders.find((item) => item.id === id) || fallback;
+    if (updateSelected) {
+      setSelectedOrder(nextSelected);
+    }
+    return nextSelected;
+  };
+
+  const latestUndoableLog = (order) => {
+    const latest = order?.activityLog?.[0];
+    if (
+      latest?.actorRole === "merchant" &&
+      ["status_changed", "payment_confirmed"].includes(latest.eventType)
+    ) {
+      return latest;
+    }
+    return null;
+  };
+
   const updateStatus = async (id, newStatus) => {
     const order = orders.find((item) => item.id === id);
     if (!order) {
@@ -88,13 +156,14 @@ export default function MerchantOrders() {
       }
 
       const nextOrders = payload.orders || [];
-      setOrders(nextOrders);
-      setSelectedOrder(
-        nextOrders.find((item) => item.id === id) || {
-          ...order,
-          status: newStatus,
-        },
-      );
+      const nextSelected = syncOrderState(nextOrders, id, {
+        ...order,
+        status: newStatus,
+      });
+      setActionNotice({
+        message: `Order ${id} changed from ${order.status} to ${newStatus}.`,
+        undoLog: latestUndoableLog(nextSelected),
+      });
       setLoadError("");
     } catch (error) {
       setLoadError(error.message);
@@ -124,11 +193,93 @@ export default function MerchantOrders() {
       }
 
       const nextOrders = payload.orders || [];
-      setOrders(nextOrders);
-      setSelectedOrder(nextOrders.find((item) => item.id === id) || null);
+      const nextSelected = syncOrderState(nextOrders, id, null);
+      setActionNotice({
+        message: `Payment for ${id} was marked as paid.`,
+        undoLog: latestUndoableLog(nextSelected),
+      });
       setLoadError("");
     } catch (error) {
       setLoadError(error.message);
+    }
+  };
+
+  const undoOrderAction = async (order, log) => {
+    if (!order || !log) {
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    try {
+      const response = await fetch("/api/merchant_orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          source: order.source,
+          rawId: order.rawId,
+          action: "undo",
+          logId: log.id,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to undo this order action.");
+      }
+
+      const nextOrders = payload.orders || [];
+      syncOrderState(nextOrders, order.id, order, selectedOrder?.id === order.id);
+      setActionNotice({
+        message: `Undid the latest action for ${order.id}.`,
+        undoLog: null,
+      });
+      setLoadError("");
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  const openStatusConfirmation = (order, newStatus) => {
+    setConfirmAction({
+      type: "status",
+      orderId: order.id,
+      currentValue: order.status,
+      targetValue: newStatus,
+      title: "Update order flow?",
+      description: "This will update the customer-visible order status.",
+      confirmLabel: newStatus === "Cancelled" ? "Cancel order" : `Mark ${newStatus}`,
+    });
+  };
+
+  const openPaymentConfirmation = (order) => {
+    setConfirmAction({
+      type: "payment",
+      orderId: order.id,
+      currentValue: order.paymentStatus,
+      targetValue: "Paid",
+      title: "Confirm payment?",
+      description: "Confirm only after reviewing the payment reference, proof, or COD collection.",
+      confirmLabel: "Confirm payment",
+    });
+  };
+
+  const executeConfirmedAction = async () => {
+    if (!confirmAction) {
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    try {
+      if (confirmAction.type === "payment") {
+        await markPaymentPaid(confirmAction.orderId);
+      } else {
+        await updateStatus(confirmAction.orderId, confirmAction.targetValue);
+      }
+      setConfirmAction(null);
+    } finally {
+      setIsSubmittingAction(false);
     }
   };
 
@@ -141,6 +292,104 @@ export default function MerchantOrders() {
       .replace(/'/g, "&#039;");
 
   const money = (value) => Number(value || 0).toLocaleString();
+
+  const paymentActivityLabel = (value) => {
+    switch (String(value || "").toUpperCase()) {
+      case "PAID":
+        return "Paid";
+      case "PENDING_PAYMENT_REVIEW":
+        return "Pending payment review";
+      case "UNPAID":
+        return "Unpaid";
+      default:
+        return value || "None";
+    }
+  };
+
+  const activityEventLabel = (eventType) => {
+    const labels = {
+      created: "Order received",
+      status_changed: "Status updated",
+      payment_confirmed: "Payment confirmed",
+      customer_cancelled: "Customer cancelled",
+      customer_received: "Customer received",
+      undo: "Action undone",
+    };
+    return labels[eventType] || "Order activity";
+  };
+
+  const activityValue = (entry, key) =>
+    entry.eventType === "payment_confirmed"
+      ? paymentActivityLabel(entry[key])
+      : entry[key] || "";
+
+  const itemSummary = (items = []) =>
+    items
+      .map((item) => `${item.name} x${item.qty}`)
+      .filter(Boolean)
+      .join(", ");
+
+  const renderActivityEntry = (entry, order, canUndo) => {
+    const oldValue = activityValue(entry, "oldValue");
+    const newValue = activityValue(entry, "newValue");
+
+    return (
+      <div
+        key={`${order.id}-${entry.id}`}
+        className="rounded-2xl border border-gray-100 bg-[#F8FAFC] p-4"
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-mono text-xs font-black text-[#0074D9]">
+                {order.id}
+              </p>
+              <span
+                className={`rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${getStatusStyle(order.status)}`}
+              >
+                {order.status}
+              </span>
+            </div>
+            <p className="mt-2 text-xs font-black text-[#003366]">
+              {activityEventLabel(entry.eventType)}
+            </p>
+            <p className="mt-1 text-[10px] font-bold text-gray-400">
+              {entry.createdAtLabel} by {entry.actorName}{" "}
+              {entry.actorRole ? `(${entry.actorRole})` : ""}
+            </p>
+            <p className="mt-1 text-[10px] font-bold text-gray-400">
+              Customer: {order.customer}
+            </p>
+          </div>
+          {canUndo && (
+            <button
+              onClick={() => undoOrderAction(order, entry)}
+              disabled={isSubmittingAction}
+              className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg bg-white px-3 py-2 text-[10px] font-black text-[#0074D9] shadow-sm hover:bg-blue-50 disabled:opacity-50"
+            >
+              <Undo2 size={13} /> Undo
+            </button>
+          )}
+        </div>
+        {(oldValue || newValue) && (
+          <p className="mt-3 text-[11px] font-bold text-gray-600">
+            {oldValue || "None"} <span className="text-gray-300">to</span>{" "}
+            {newValue || "None"}
+          </p>
+        )}
+        {entry.summary && (
+          <p className="mt-2 text-[11px] font-semibold leading-relaxed text-gray-500">
+            {entry.summary}
+          </p>
+        )}
+        {itemSummary(entry.items) && (
+          <p className="mt-2 text-[10px] font-bold text-gray-400">
+            Items: {itemSummary(entry.items)}
+          </p>
+        )}
+      </div>
+    );
+  };
 
   const serviceRequirementRows = (requirements = {}) =>
     [
@@ -256,6 +505,8 @@ export default function MerchantOrders() {
   };
 
   const isPaid = (order) => order?.paymentStatusCode === "PAID";
+  const orderStages = ["Pending", "Confirmed", "Shipped", "Completed"];
+  const stageIndex = (status) => orderStages.indexOf(status);
 
   return (
     <div className="animate-in fade-in duration-500 space-y-6">
@@ -264,6 +515,24 @@ export default function MerchantOrders() {
           {loadError}
         </div>
       )}
+      <div className="bg-white p-2 rounded-2xl border border-gray-100 shadow-sm flex w-full max-w-sm gap-2">
+        {["Orders", "Logs"].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setViewTab(tab)}
+            className={`flex-1 rounded-xl px-4 py-3 text-xs font-black transition-all ${
+              viewTab === tab
+                ? "bg-[#003366] text-white shadow-sm"
+                : "text-gray-400 hover:bg-gray-50"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {viewTab === "Orders" && (
+        <>
       {/* 1. QUICK STATS OVERVIEW */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
@@ -396,7 +665,10 @@ export default function MerchantOrders() {
                   </td>
                   <td className="p-5 pr-8 text-right">
                     <button
-                      onClick={() => setSelectedOrder(order)}
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        setActionNotice(null);
+                      }}
                       className="p-2.5 bg-gray-50 text-[#003366] rounded-xl hover:bg-[#003366] hover:text-white transition-all shadow-sm"
                     >
                       <ArrowUpRight size={18} />
@@ -418,6 +690,58 @@ export default function MerchantOrders() {
           </table>
         </div>
       </div>
+        </>
+      )}
+
+      {viewTab === "Logs" && (
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
+          <div className="border-b border-gray-100 bg-[#F8FAFC] p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#003366]">
+              Order Activity Logs
+            </p>
+	            <div className="relative mt-4 max-w-md">
+	              <Search
+	                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300"
+	                size={16}
+	              />
+	              <input
+	                type="text"
+	                placeholder="Filter by order ID, customer, or item"
+	                className="w-full rounded-2xl border border-gray-100 bg-white py-3 pl-12 pr-4 text-xs font-bold outline-none transition-all focus:ring-2 focus:ring-[#FF851B]/20"
+	                value={logSearchTerm}
+	                onChange={(event) => setLogSearchTerm(event.target.value)}
+	              />
+	            </div>
+	          </div>
+	          <div className="p-5">
+	            {activityEntries.length === 0 && !logSearchValue && (
+	              <p className="py-10 text-center text-xs font-bold text-gray-400">
+	                No order activity has been logged yet.
+	              </p>
+	            )}
+	            {activityEntries.length === 0 && logSearchValue && (
+	              <p className="py-10 text-center text-xs font-bold text-gray-400">
+	                No activity logs matched {logSearchTerm}.
+	              </p>
+	            )}
+	            {activityEntries.length > 0 && (
+	              <div className="space-y-4">
+	                {activityEntries.map((entry) =>
+	                  renderActivityEntry(
+	                    entry,
+	                    entry.order,
+	                    entry.isLatestForOrder &&
+	                      entry.actorRole === "merchant" &&
+	                      ["status_changed", "payment_confirmed"].includes(
+	                        entry.eventType,
+	                      ),
+	                  ),
+	                )}
+	              </div>
+	            )}
+	          </div>
+	        </div>
+      )}
 
       {/* 4. THE ACTION DRAWER */}
       {selectedOrder && (
@@ -444,9 +768,59 @@ export default function MerchantOrders() {
               </button>
             </div>
 
-            <div className="p-8 space-y-6 overflow-y-auto flex-grow">
-              {/* ACTION BAR */}
-              {selectedOrder.status !== "Completed" &&
+	            <div className="p-8 space-y-6 overflow-y-auto flex-grow">
+	              <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+	                <div className="flex items-center justify-between gap-3">
+	                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+	                    Current Order Stage
+	                  </p>
+	                  <div
+	                    className={`w-fit px-3 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider ${getStatusStyle(selectedOrder.status)}`}
+	                  >
+	                    {selectedOrder.status}
+	                  </div>
+	                </div>
+	                {selectedOrder.status === "Cancelled" ? (
+	                  <p className="mt-4 text-xs font-bold text-red-500">
+	                    This order was cancelled.
+	                  </p>
+	                ) : (
+	                  <div className="mt-4 grid grid-cols-4 gap-2">
+	                    {orderStages.map((stage, index) => {
+	                      const currentIndex = stageIndex(selectedOrder.status);
+	                      const isCurrent = selectedOrder.status === stage;
+	                      const isReached = currentIndex >= 0 && index <= currentIndex;
+	                      return (
+	                        <div key={stage} className="min-w-0">
+	                          <div
+	                            className={`h-2 rounded-full ${
+	                              isCurrent
+	                                ? "bg-[#FF851B]"
+	                                : isReached
+	                                  ? "bg-green-500"
+	                                  : "bg-gray-200"
+	                            }`}
+	                          ></div>
+	                          <p
+	                            className={`mt-2 truncate text-center text-[9px] font-black uppercase ${
+	                              isCurrent
+	                                ? "text-[#FF851B]"
+	                                : isReached
+	                                  ? "text-green-600"
+	                                  : "text-gray-400"
+	                            }`}
+	                          >
+	                            {stage}
+	                          </p>
+	                        </div>
+	                      );
+	                    })}
+	                  </div>
+	                )}
+	              </div>
+
+	              {/* ACTION BAR */}
+	              {selectedOrder.status !== "Completed" &&
                 selectedOrder.status !== "Cancelled" && (
                   <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
@@ -457,7 +831,7 @@ export default function MerchantOrders() {
                         <>
                           <button
                             onClick={() =>
-                              updateStatus(selectedOrder.id, "Confirmed")
+                              openStatusConfirmation(selectedOrder, "Confirmed")
                             }
                             className="flex-1 bg-[#0074D9] text-white py-3 rounded-xl text-xs font-bold hover:shadow-lg transition-all"
                           >
@@ -465,7 +839,7 @@ export default function MerchantOrders() {
                           </button>
                           <button
                             onClick={() =>
-                              updateStatus(selectedOrder.id, "Cancelled")
+                              openStatusConfirmation(selectedOrder, "Cancelled")
                             }
                             className="px-6 py-3 border border-red-100 text-red-500 rounded-xl text-xs font-bold hover:bg-red-50 transition-all"
                           >
@@ -476,7 +850,7 @@ export default function MerchantOrders() {
                       {selectedOrder.status === "Confirmed" && (
                         <button
                           onClick={() =>
-                            updateStatus(selectedOrder.id, "Shipped")
+                            openStatusConfirmation(selectedOrder, "Shipped")
                           }
                           className="flex-1 bg-purple-600 text-white py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
                         >
@@ -487,7 +861,7 @@ export default function MerchantOrders() {
                         <>
                           <button
                             onClick={() =>
-                              updateStatus(selectedOrder.id, "Completed")
+                              openStatusConfirmation(selectedOrder, "Completed")
                             }
                             disabled={!isPaid(selectedOrder)}
                             className="flex-1 bg-green-500 text-white py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -534,7 +908,7 @@ export default function MerchantOrders() {
                       </a>
                     )}
                     <button
-                      onClick={() => markPaymentPaid(selectedOrder.id)}
+                      onClick={() => openPaymentConfirmation(selectedOrder)}
                       className="w-full bg-[#FF851B] text-white py-3 rounded-xl text-xs font-bold hover:shadow-lg transition-all"
                     >
                       {selectedOrder.paymentStatusCode ===
@@ -544,6 +918,25 @@ export default function MerchantOrders() {
                     </button>
                   </div>
                 )}
+
+              {actionNotice && (
+                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <p className="text-xs font-bold text-[#003366]">
+                    {actionNotice.message}
+                  </p>
+                  {actionNotice.undoLog && (
+                    <button
+                      onClick={() =>
+                        undoOrderAction(selectedOrder, actionNotice.undoLog)
+                      }
+                      disabled={isSubmittingAction}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-[11px] font-black text-[#0074D9] shadow-sm hover:bg-blue-100 disabled:opacity-50"
+                    >
+                      <Undo2 size={14} /> Undo
+                    </button>
+                  )}
+                </div>
+              )}
 
 	              {/* INFO CARDS */}
 	              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -641,6 +1034,7 @@ export default function MerchantOrders() {
                   </div>
                 </div>
               </div>
+
             </div>
 
             <div className="p-6 bg-white border-t border-gray-100 flex gap-3 shrink-0">
@@ -649,6 +1043,65 @@ export default function MerchantOrders() {
                 className="flex-1 py-3 rounded-xl border border-gray-100 text-[10px] font-bold text-gray-500 flex items-center justify-center gap-2 hover:bg-gray-50"
               >
                 <Printer size={16} /> Print Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmAction && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-[#003366]/50 backdrop-blur-sm"
+            onClick={() => setConfirmAction(null)}
+          ></div>
+          <div className="relative z-10 w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-[#FF851B]">
+                <AlertCircle size={24} />
+              </div>
+              <h3 className="text-lg font-black text-[#003366]">
+                {confirmAction.title}
+              </h3>
+              <p className="mt-2 text-xs font-semibold leading-relaxed text-gray-500">
+                {confirmAction.description}
+              </p>
+              <div className="mt-5 rounded-2xl bg-[#F8FAFC] p-4 text-left">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  Order
+                </p>
+	                <p className="mt-1 text-sm font-black text-[#003366]">
+	                  {confirmAction.orderId}
+	                </p>
+	                <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-xs font-bold">
+                  <span className="rounded-xl bg-white px-3 py-2 text-gray-500">
+                    {confirmAction.currentValue || "None"}
+                  </span>
+                  <span className="text-gray-300">to</span>
+                  <span className="rounded-xl bg-white px-3 py-2 text-[#0074D9]">
+                    {confirmAction.targetValue}
+                  </span>
+                </div>
+                {selectedOrder && (
+                  <p className="mt-3 text-[10px] font-bold leading-relaxed text-gray-400">
+                    Items: {itemSummary(selectedOrder.items)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3 border-t border-gray-100 bg-[#F8FAFC] p-4">
+              <button
+                onClick={() => setConfirmAction(null)}
+                disabled={isSubmittingAction}
+                className="flex-1 rounded-xl border border-gray-200 bg-white py-3 text-xs font-black text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Keep current
+              </button>
+              <button
+                onClick={executeConfirmedAction}
+                disabled={isSubmittingAction}
+                className="flex-1 rounded-xl bg-[#003366] py-3 text-xs font-black text-white hover:bg-[#00284f] disabled:opacity-50"
+              >
+                {isSubmittingAction ? "Updating..." : confirmAction.confirmLabel}
               </button>
             </div>
           </div>
