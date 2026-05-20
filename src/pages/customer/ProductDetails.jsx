@@ -375,7 +375,7 @@ export default function ProductDetails() {
 
         <div className="flex flex-col gap-4">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{item.category}</p>
-          <h1 className="text-xl font-black text-[#003366]">{item.name}</h1>
+          <h1 className="item-name text-xl font-black text-[#003366]">{item.name}</h1>
 
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <span className="font-bold text-[#FF851B] flex items-center gap-1">
@@ -418,7 +418,7 @@ export default function ProductDetails() {
           <div className="pt-2 flex gap-3">
             <button
               onClick={handleAddToCart}
-              className="flex-1 border-2 border-[#FF851B] text-[#FF851B] py-3 rounded-md text-xs font-black hover:bg-[#FF851B] hover:text-white transition-all flex items-center justify-center gap-2"
+              className="add-to-cart flex-1 border-2 border-[#FF851B] text-[#FF851B] py-3 rounded-md text-xs font-black hover:bg-[#FF851B] hover:text-white transition-all flex items-center justify-center gap-2"
             >
               <ShoppingCart size={16} /> {isServiceRoute ? "Add to bookings" : "Add to cart"}
             </button>

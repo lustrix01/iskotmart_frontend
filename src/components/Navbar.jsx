@@ -12,7 +12,7 @@ const formatBadgeCount = (count) => {
 function Badge({ count }) {
   if (Number(count || 0) <= 0) return null;
   return (
-    <span className="absolute -top-2 -right-2 min-w-5 rounded-full bg-[#FF851B] px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
+    <span className="navbar-cart-badge absolute -top-2 -right-2 min-w-5 rounded-full bg-[#FF851B] px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
       {formatBadgeCount(count)}
     </span>
   );

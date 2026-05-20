@@ -289,7 +289,7 @@ function ProductCartItems({
               <div className="flex-grow flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                   <div className="space-y-0.5">
-                    <h4 className="font-bold text-gray-800 text-xs tracking-tight">
+                    <h4 className="cart-item-name font-bold text-gray-800 text-xs tracking-tight">
                       {item.name}
                     </h4>
                     <p className="text-[9px] text-gray-400 font-semibold">
