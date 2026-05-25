@@ -74,7 +74,7 @@ try {
 
         $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE);
         $safeLink = htmlspecialchars($resetLink, ENT_QUOTES | ENT_SUBSTITUTE);
-        $supportEmail = htmlspecialchars((string) (getenv('SUPPORT_EMAIL') ?: 'support@localhost'), ENT_QUOTES | ENT_SUBSTITUTE);
+        $supportEmail = htmlspecialchars((string) (getenv('SUPPORT_EMAIL') ?: 'bu.iskomart@gmail.com'), ENT_QUOTES | ENT_SUBSTITUTE);
 
         $html = '<span style="display:none;max-height:0;overflow:hidden;">IskoMart password reset</span>';
         $html .= '<div style="font-family:Segoe UI,Roboto,Arial,sans-serif;background:#f4f6f8;padding:24px;">';
