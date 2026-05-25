@@ -33,12 +33,13 @@ export default function Email2fa({ email, password, rememberMe, redirectTo = "/"
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Invalid code");
-      // show inline success, finish login and navigate shortly after
+      // show inline success, finish login and navigate immediately
       setSuccessMessage("Code verified — signing you in...");
       login(json.user);
       if (rememberMe) rememberClientSession(); else clearRememberedClientSession();
+      const destination = redirectTo || (json.user?.role === "merchant" ? "/merchant" : "/");
+      navigate(destination, { replace: true });
       onClose?.();
-      setTimeout(() => navigate(redirectTo, { replace: true }), 700);
     } catch (e) {
       setError(e.message);
     } finally {
