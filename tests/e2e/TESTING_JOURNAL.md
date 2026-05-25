@@ -8,15 +8,22 @@ Branch under test: `lighthal`
 - Test framework: Playwright
 - Application scope: Customer and merchant flows only
 
+## Members / Member Code
+1. Alvarez, Micaiah Devin / `ALVAREZ`
+2. Castillo, Angela Marielle / `CASTILLO`
+3. Dechavez, Mickole / `DECHAVEZ`
+4. Lumbang, Owhie / `LUMBANG`
+5. Nator, Jazmin Erika / `NATOR`
+
 ## Member Contribution Table
 
 | Member | Assigned Feature | Type of Test | Tool/Framework Used |
 | --- | --- | --- | --- |
-| TBD | Login/session handling | E2E automated UI test | Playwright |
-| TBD | Registration validation | E2E automated UI test | Playwright |
-| TBD | Search/filtering | E2E automated UI test | Playwright |
-| TBD | Merchant CRUD | E2E automated UI test | Playwright |
-| TBD | Checkout/orders/receipt | E2E automated UI test | Playwright |
+| `LUMBANG` | Login/session handling | E2E automated UI test | Playwright |
+| `CASTILLO` | Registration validation | E2E automated UI test | Playwright |
+| `ALVAREZ` | Search/filtering | E2E automated UI test | Playwright |
+| `DECHAVEZ` | Merchant CRUD | E2E automated UI test | Playwright |
+| `NATOR` | Checkout/orders/receipt | E2E automated UI test | Playwright |
 
 ## Test Scenario Documentation
 
