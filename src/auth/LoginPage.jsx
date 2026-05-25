@@ -63,7 +63,6 @@ export default function LoginPage() {
           email,
           password,
           rememberMe,
-          redirectTo: "/",
         });
         setIsSubmitting(false);
         return;
@@ -239,7 +238,6 @@ export default function LoginPage() {
           email={pending2fa.email}
           password={pending2fa.password}
           rememberMe={pending2fa.rememberMe}
-          redirectTo={pending2fa.redirectTo}
           onClose={() => setPending2fa(null)}
         />
       )}

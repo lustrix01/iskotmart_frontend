@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { rememberClientSession, clearRememberedClientSession } from "../api/clientSession";
 
-export default function Email2fa({ email, password, rememberMe, redirectTo = "/", onClose }) {
+export default function Email2fa({ email, password, rememberMe, redirectTo = "", onClose }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);

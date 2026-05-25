@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
+import PasswordConfirmModal from "../../components/PasswordConfirmModal";
 
 export default function ShopSettings() {
   const navigate = useNavigate();
@@ -44,6 +45,10 @@ export default function ShopSettings() {
   });
   const [passwordMessage, setPasswordMessage] = useState("");
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [email2faEnabled, setEmail2faEnabled] = useState(false);
+  const [isLoading2fa, setIsLoading2fa] = useState(true);
+  const [isSaving2fa, setIsSaving2fa] = useState(false);
+  const [is2faPasswordModalOpen, setIs2faPasswordModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [closeEmail, setCloseEmail] = useState("");
   const [closeError, setCloseError] = useState("");
@@ -81,15 +86,20 @@ export default function ShopSettings() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadProfile = async () => {
+    const loadSettings = async () => {
       try {
-        const [profileResponse, metricsResponse] = await Promise.all([
+        const [profileResponse, metricsResponse, settingsResponse] = await Promise.all([
           fetch("/api/merchant_profile.php", { credentials: "include" }),
           fetch("/api/merchant_shop_metrics.php", { credentials: "include" }),
+          fetch("/api/get_user_settings.php", { credentials: "include" }),
         ]);
         const metricsPayload = await metricsResponse.json().catch(() => ({}));
         if (!metricsResponse.ok) {
           throw new Error(metricsPayload.error || "Unable to load shop metrics.");
+        }
+        const settingsPayload = await settingsResponse.json().catch(() => ({}));
+        if (!settingsResponse.ok) {
+          throw new Error(settingsPayload.error || "Unable to load security settings.");
         }
         const response = profileResponse;
         const payload = await response.json().catch(() => ({}));
@@ -126,15 +136,18 @@ export default function ShopSettings() {
               joined: "",
             },
           );
+          setEmail2faEnabled(Boolean(settingsPayload.settings?.email2fa));
+          setIsLoading2fa(false);
         }
       } catch (error) {
         if (isMounted) {
           setLoadError(error.message);
+          setIsLoading2fa(false);
         }
       }
     };
 
-    loadProfile();
+    loadSettings();
 
     return () => {
       isMounted = false;
@@ -301,6 +314,48 @@ export default function ShopSettings() {
     } finally {
       setIsSavingPassword(false);
     }
+  };
+
+  const updateEmail2fa = async ({ enable, password = "" }) => {
+    setLoadError("");
+    setIsSaving2fa(true);
+
+    try {
+      const response = await fetch("/api/update_2fa.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          enable,
+          ...(enable ? { password } : {}),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update two-step verification.");
+      }
+
+      setEmail2faEnabled(Boolean(payload.settings?.email2fa));
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setIsSaving2fa(false);
+    }
+  };
+
+  const handleEmail2faToggle = () => {
+    if (isLoading2fa || isSaving2fa) {
+      return;
+    }
+
+    if (email2faEnabled) {
+      updateEmail2fa({ enable: false });
+      return;
+    }
+
+    setIs2faPasswordModalOpen(true);
   };
 
   const handleBannerUpload = (event) => {
@@ -918,6 +973,53 @@ export default function ShopSettings() {
 
           <div className="space-y-6">
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 bg-orange-50 text-[#FF851B] rounded-full flex items-center justify-center shrink-0">
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[#003366]">
+                      Two-step verification
+                    </h3>
+                    <p className="mt-1 text-[10px] text-gray-400 font-medium leading-relaxed">
+                      Require a one-time email code whenever this merchant account signs in.
+                    </p>
+                    <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      {isLoading2fa
+                        ? "Loading..."
+                        : email2faEnabled
+                          ? "Enabled"
+                          : "Disabled"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEmail2faToggle}
+                  disabled={isLoading2fa || isSaving2fa}
+                  className="shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={
+                    email2faEnabled
+                      ? "Disable two-step verification"
+                      : "Enable two-step verification"
+                  }
+                >
+                  {email2faEnabled ? (
+                    <ToggleRight size={36} className="text-[#FF851B]" />
+                  ) : (
+                    <ToggleLeft size={36} className="text-gray-300" />
+                  )}
+                </button>
+              </div>
+              {isSaving2fa && (
+                <p className="mt-4 text-[10px] font-bold text-gray-400">
+                  Updating security setting...
+                </p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
               <h3 className="text-xs font-bold text-[#003366] uppercase tracking-widest mb-6 border-b border-gray-50 pb-4">
                 Merchant ID Info
               </h3>
@@ -973,6 +1075,16 @@ export default function ShopSettings() {
           </div>
         </div>
 	      )}
+
+      <PasswordConfirmModal
+        isOpen={is2faPasswordModalOpen}
+        title="Confirm password to enable merchant two-step verification"
+        onCancel={() => setIs2faPasswordModalOpen(false)}
+        onConfirm={(password) => {
+          setIs2faPasswordModalOpen(false);
+          updateEmail2fa({ enable: true, password });
+        }}
+      />
 	
 	      {isCloseModalOpen && (
 	        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
