@@ -58,12 +58,12 @@ export default function LoginPage() {
 
       // server may require 2FA
       if (payload.requires2fa) {
-        // keep creds temporarily for resend and preserve the requested redirect path
+        // keep creds temporarily for resend while the user completes 2FA.
         setPending2fa({
           email,
           password,
           rememberMe,
-          redirectTo: requestedPath || "/",
+          redirectTo: "/",
         });
         setIsSubmitting(false);
         return;
@@ -82,7 +82,7 @@ export default function LoginPage() {
           : null;
       const destination = isMerchant
         ? merchantRequestedPath || "/merchant"
-        : requestedPath || redirectByRole[payload.user.role] || "/";
+        : redirectByRole[payload.user.role] || "/";
 
       navigate(destination, {
         replace: true,
