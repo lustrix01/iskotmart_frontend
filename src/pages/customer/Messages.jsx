@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   AlertCircle,
   CheckCheck,
@@ -9,7 +10,11 @@ import {
   Smile,
 } from "lucide-react";
 
+const FALLBACK_AVATAR = "/placeholders/avatar.svg";
+
 export default function Messages() {
+  const location = useLocation();
+  const requestedMerchantId = Number(location.state?.merchantId || 0);
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [messageText, setMessageText] = useState("");
@@ -18,6 +23,7 @@ export default function Messages() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [imageData, setImageData] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const messagesRef = useRef(null);
   const imageInputRef = useRef(null);
   const isAtBottomRef = useRef(true);
@@ -26,13 +32,25 @@ export default function Messages() {
     () => threads.find((thread) => thread.id === activeThreadId) || threads[0] || null,
     [activeThreadId, threads],
   );
+  const filteredThreads = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return threads;
+    }
+    return threads.filter((thread) =>
+      [thread.name, thread.lastMsg]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [searchQuery, threads]);
 
   const showNotice = (message) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 2500);
   };
 
-  const loadThreads = async ({ keepActive = false } = {}) => {
+  const loadThreads = useCallback(async ({ keepActive = false } = {}) => {
     try {
       setLoading(true);
       setError("");
@@ -50,6 +68,9 @@ export default function Messages() {
         if (keepActive && current && nextThreads.some((thread) => thread.id === current)) {
           return current;
         }
+        if (requestedMerchantId && nextThreads.some((thread) => thread.id === requestedMerchantId)) {
+          return requestedMerchantId;
+        }
         return current || nextThreads[0]?.id || null;
       });
     } catch (fetchError) {
@@ -58,11 +79,11 @@ export default function Messages() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [requestedMerchantId]);
 
   useEffect(() => {
     loadThreads();
-  }, []);
+  }, [loadThreads]);
 
   const scrollMessagesToBottom = () => {
     const container = messagesRef.current;
@@ -157,9 +178,10 @@ export default function Messages() {
               />
               <input
                 type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search conversations..."
-                disabled
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-xs text-gray-400"
+                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-xs text-gray-600 outline-none focus:border-[#0074D9]"
               />
             </div>
           </div>
@@ -171,9 +193,9 @@ export default function Messages() {
                   Loading conversations...
                 </p>
               </div>
-            ) : threads.length > 0 ? (
+            ) : filteredThreads.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {threads.map((thread) => (
+                {filteredThreads.map((thread) => (
                   <button
                     key={thread.id}
                     onClick={() => setActiveThreadId(thread.id)}
@@ -181,24 +203,36 @@ export default function Messages() {
                       activeThread?.id === thread.id ? "bg-white" : "hover:bg-white/70"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold text-[#003366] truncate">
-                        {thread.name}
-                      </p>
-                      <span className="text-[9px] text-gray-400 shrink-0">
-                        {thread.time}
-                      </span>
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={thread.avatarUrl || FALLBACK_AVATAR}
+                        alt={`${thread.name} profile`}
+                        className="h-10 w-10 rounded-full border border-gray-100 bg-gray-50 object-cover shrink-0"
+                        onError={(event) => {
+                          event.currentTarget.src = FALLBACK_AVATAR;
+                        }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold text-[#003366] truncate">
+                            {thread.name}
+                          </p>
+                          <span className="text-[9px] text-gray-400 shrink-0">
+                            {thread.time}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-gray-400 truncate">
+                          {thread.lastMsg || "No messages yet."}
+                        </p>
+                      </div>
                     </div>
-                    <p className="mt-1 text-[11px] text-gray-400 truncate">
-                      {thread.lastMsg || "No messages yet."}
-                    </p>
                   </button>
                 ))}
               </div>
             ) : (
               <div className="h-full flex items-center justify-center px-6 text-center">
                 <p className="text-[11px] font-medium text-gray-400">
-                  No conversations yet.
+                  {threads.length > 0 ? "No conversations match your search." : "No conversations yet."}
                 </p>
               </div>
             )}
@@ -208,13 +242,23 @@ export default function Messages() {
         <div className="flex-grow bg-[#F8FAFC]/30 flex flex-col min-w-0">
           {activeThread ? (
             <>
-              <div className="px-8 py-5 bg-white border-b border-gray-100">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                  Conversation with
-                </p>
-                <h2 className="text-lg font-bold text-[#003366]">
-                  {activeThread.name}
-                </h2>
+              <div className="px-8 py-5 bg-white border-b border-gray-100 flex items-center gap-3">
+                <img
+                  src={activeThread.avatarUrl || FALLBACK_AVATAR}
+                  alt={`${activeThread.name} profile`}
+                  className="h-11 w-11 rounded-full border border-gray-100 bg-gray-50 object-cover"
+                  onError={(event) => {
+                    event.currentTarget.src = FALLBACK_AVATAR;
+                  }}
+                />
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    Conversation with
+                  </p>
+                  <h2 className="text-lg font-bold text-[#003366]">
+                    {activeThread.name}
+                  </h2>
+                </div>
               </div>
 
               <div

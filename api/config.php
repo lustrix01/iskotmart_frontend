@@ -4,6 +4,31 @@ ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 ob_start();
 
+function loadLocalEnvIfMissing(string $path): void {
+    if (!is_file($path) || !is_readable($path)) {
+        return;
+    }
+
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) {
+            continue;
+        }
+
+        [$name, $value] = array_map('trim', explode('=', $line, 2));
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) || getenv($name) !== false) {
+            continue;
+        }
+
+        $value = trim($value, "\"'");
+        putenv($name . '=' . $value);
+        $_ENV[$name] = $value;
+        $_SERVER[$name] = $value;
+    }
+}
+
+loadLocalEnvIfMissing(__DIR__ . '/../.env');
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Isko-Client-Session');
 header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
@@ -20,7 +45,7 @@ if ($requestOrigin && in_array($requestOrigin, $allowedOrigins, true)) {
     header('Access-Control-Allow-Origin: ' . $requestOrigin);
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
@@ -110,6 +135,132 @@ function logApiError(Throwable $e): void {
         $e->getFile(),
         $e->getLine()
     ));
+}
+
+function enforceAuthRateLimit(string $bucket, string $identifier, int $limit = 8, int $seconds = 300): void {
+    startApiSession();
+
+    $now = time();
+    $key = hash('sha256', $bucket . '|' . strtolower(trim($identifier)) . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if (!isset($_SESSION['rate_limits']) || !is_array($_SESSION['rate_limits'])) {
+        $_SESSION['rate_limits'] = [];
+    }
+
+    $entry = $_SESSION['rate_limits'][$key] ?? ['started_at' => $now, 'count' => 0];
+    if (!is_array($entry) || $now - (int) ($entry['started_at'] ?? 0) >= $seconds) {
+        $entry = ['started_at' => $now, 'count' => 0];
+    }
+
+    $entry['count'] = (int) ($entry['count'] ?? 0) + 1;
+    $_SESSION['rate_limits'][$key] = $entry;
+
+    if ($entry['count'] > $limit) {
+        jsonResponse(['error' => 'Too many attempts. Please wait before trying again.'], 429);
+    }
+}
+
+function requireTableColumns(PDO $db, string $table, array $columns): void {
+    $existing = $db->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN);
+    $missing = array_values(array_diff($columns, $existing));
+    if ($missing) {
+        throw new RuntimeException(
+            'Database schema is missing required columns on ' . $table . ': ' . implode(', ', $missing)
+        );
+    }
+}
+
+function ensureTableColumns(PDO $db, string $table, array $columnDefinitions): void {
+    $existing = array_map(
+        fn ($column): string => strtoupper((string) $column),
+        $db->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN)
+    );
+
+    foreach ($columnDefinitions as $column => $definition) {
+        if (in_array(strtoupper((string) $column), $existing, true)) {
+            continue;
+        }
+
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $column)) {
+            throw new RuntimeException('Invalid database column name: ' . $column);
+        }
+
+        $db->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+        $existing[] = strtoupper((string) $column);
+    }
+}
+
+function ensurePasswordResetTable(PDO $db): void {
+    $db->exec(
+        "CREATE TABLE IF NOT EXISTS `PASSWORD_RESETS` (
+            `RESET_ID` int(11) NOT NULL AUTO_INCREMENT,
+            `USER_ID` int(11) NOT NULL,
+            `TOKEN_HASH` char(64) NOT NULL,
+            `EXPIRES_AT` datetime NOT NULL,
+            `USED_AT` datetime DEFAULT NULL,
+            `CREATED_AT` datetime NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (`RESET_ID`),
+            UNIQUE KEY `PASSWORD_RESETS_TOKEN_UNIQUE` (`TOKEN_HASH`),
+            KEY `PASSWORD_RESETS_USER_IDX` (`USER_ID`),
+            KEY `PASSWORD_RESETS_EXPIRES_IDX` (`EXPIRES_AT`),
+            CONSTRAINT `FK_PASSWORD_RESETS_USER`
+                FOREIGN KEY (`USER_ID`) REFERENCES `USERS` (`USER_ID`)
+                ON DELETE CASCADE ON UPDATE NO ACTION
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci"
+    );
+
+    requireTableColumns($db, 'PASSWORD_RESETS', [
+        'RESET_ID',
+        'USER_ID',
+        'TOKEN_HASH',
+        'EXPIRES_AT',
+        'USED_AT',
+        'CREATED_AT',
+    ]);
+}
+
+function normalizeImageMimeType(string $mime): string {
+    $normalized = strtolower(trim($mime));
+    return $normalized === 'image/jpg' ? 'image/jpeg' : $normalized;
+}
+
+function verifiedImageDataUrlPayload(string $dataUrl, array $allowedMimeTypes, string $label, int $maxBytes): array {
+    $allowed = array_values(array_unique(array_map('normalizeImageMimeType', $allowedMimeTypes)));
+    if (!preg_match('/^data:(image\/[A-Za-z0-9.+-]+);base64,([A-Za-z0-9+\/=\r\n]+)$/', trim($dataUrl), $matches)) {
+        jsonResponse(['error' => "{$label} must be a JPG, PNG, WebP, or GIF image."], 422);
+    }
+
+    $declaredMime = normalizeImageMimeType($matches[1]);
+    if (!in_array($declaredMime, $allowed, true)) {
+        jsonResponse(['error' => "{$label} uses an unsupported image type."], 422);
+    }
+
+    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
+    if ($binary === false || strlen($binary) === 0) {
+        jsonResponse(['error' => "{$label} image could not be read."], 422);
+    }
+
+    if (strlen($binary) > $maxBytes) {
+        jsonResponse(['error' => "{$label} image must be " . (int) ($maxBytes / 1024 / 1024) . "MB or smaller."], 422);
+    }
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $detectedMime = normalizeImageMimeType((string) $finfo->buffer($binary));
+    if (!in_array($detectedMime, $allowed, true)) {
+        jsonResponse(['error' => "{$label} image content does not match an allowed image type."], 422);
+    }
+
+    $extensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+
+    return [
+        'binary' => $binary,
+        'mime' => $detectedMime,
+        'extension' => $extensions[$detectedMime] ?? 'img',
+    ];
 }
 
 function requireFields(array $data, array $fields): void {
@@ -212,6 +363,7 @@ function userPayloadFromRow(array $user): array {
         'username' => $user['USERNAME'],
         'email' => $user['EMAIL'],
         'role' => normalizeRole($user['ROLE']),
+        'avatarUrl' => $user['AVATAR_URL'] ?? '',
     ];
 }
 
@@ -270,7 +422,7 @@ function currentUser(PDO $db): ?array {
     }
 
     $stmt = $db->prepare(
-        "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, ROLE
+        "SELECT USER_ID, FNAME, LNAME, EMAIL, USERNAME, ROLE, AVATAR_URL
          FROM USERS
          WHERE USER_ID = :user_id AND STATUS = 'ACTIVE'
          LIMIT 1"

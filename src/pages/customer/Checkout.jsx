@@ -38,6 +38,16 @@ const defaultServiceDeadline = () => {
   return date.toISOString().slice(0, 10);
 };
 
+const normalizeServiceRequirements = (requirements = {}) => ({
+  deadline: requirements.deadline || defaultServiceDeadline(),
+  package: requirements.package || "",
+  businessType: requirements.businessType || "",
+  brief: requirements.brief || "",
+  complexity: requirements.complexity || requirements.package || "",
+});
+
+const serviceRequirementKey = (item, index) => `${Number(item?.id || 0)}-${index}`;
+
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -87,13 +97,17 @@ export default function Checkout() {
     label: "",
     address: "",
   });
-  const [isLoadingAddress, setIsLoadingAddress] = useState(type === "product");
+  const [isLoadingAddress, setIsLoadingAddress] = useState(true);
   const [addressError, setAddressError] = useState("");
 
-  const [serviceData, setServiceData] = useState({
-    deadline: defaultServiceDeadline(),
-    complexity: "Premium Branding",
-  });
+  const [serviceRequirementsByItem, setServiceRequirementsByItem] = useState(() =>
+    Object.fromEntries(
+      checkoutItems.map((item, index) => [
+        serviceRequirementKey(item, index),
+        normalizeServiceRequirements(item.serviceRequirements),
+      ]),
+    ),
+  );
 
   // --- ADDED STATES FOR NEW GCASH LOGIC ---
   const [referenceNumber, setReferenceNumber] = useState("");
@@ -117,6 +131,10 @@ export default function Checkout() {
   const hasShippingAddress =
     type !== "product" ||
     Boolean(addressData.name && addressData.phone && addressData.address);
+  const hasRequiredCustomerInfo =
+    type === "product"
+      ? hasShippingAddress
+      : Boolean(addressData.name && addressData.phone);
   const optionItemsKey = useMemo(
     () =>
       checkoutItems
@@ -136,9 +154,21 @@ export default function Checkout() {
       methods: (merchant.methods || []).filter((method) => method.kind === "gcash"),
     }))
     .filter((merchant) => merchant.methods.length > 0);
+  const firstServiceRequirement =
+    serviceRequirementsByItem[serviceRequirementKey(checkoutItems[0], 0)] ||
+    normalizeServiceRequirements();
+  const updateServiceRequirement = (key, field, value) => {
+    setServiceRequirementsByItem((current) => ({
+      ...current,
+      [key]: {
+        ...normalizeServiceRequirements(current[key]),
+        [field]: value,
+      },
+    }));
+  };
 
   useEffect(() => {
-    if (!user || type !== "product") {
+    if (!user) {
       setIsLoadingAddress(false);
       return;
     }
@@ -196,7 +226,7 @@ export default function Checkout() {
     return () => {
       isMounted = false;
     };
-  }, [type, user]);
+  }, [user]);
 
   useEffect(() => {
     if (!user || !hasCheckoutItems) {
@@ -289,8 +319,12 @@ export default function Checkout() {
       return false;
     }
 
-    if (!hasShippingAddress) {
-      setCheckoutError("Add a shipping address before placing this order.");
+    if (!hasRequiredCustomerInfo) {
+      setCheckoutError(
+        type === "product"
+          ? "Add a shipping address before placing this order."
+          : "Add a saved address with recipient name and phone before booking this service.",
+      );
       return false;
     }
 
@@ -315,11 +349,19 @@ export default function Checkout() {
             phone: addressData.phone,
             address: addressData.address,
           },
-          service: serviceData,
-          items: checkoutItems.map((item) => ({
+          service: firstServiceRequirement,
+          items: checkoutItems.map((item, index) => ({
             id: Number(item.id),
             name: item.name,
             quantity: Number(item.qty || 1),
+            serviceRequirements:
+              type === "service"
+                ? normalizeServiceRequirements(
+                    serviceRequirementsByItem[
+                      serviceRequirementKey(item, index)
+                    ],
+                  )
+                : normalizeServiceRequirements(item.serviceRequirements),
           })),
           totals: {
             subtotal,
@@ -353,8 +395,12 @@ export default function Checkout() {
 
   // --- FR-30: Record selected payment methods ---
   const handlePlaceOrder = () => {
-    if (!hasShippingAddress) {
-      setCheckoutError("Add a shipping address before placing this order.");
+    if (!hasRequiredCustomerInfo) {
+      setCheckoutError(
+        type === "product"
+          ? "Add a shipping address before placing this order."
+          : "Add a saved address with recipient name and phone before booking this service.",
+      );
       return;
     }
 
@@ -601,68 +647,92 @@ export default function Checkout() {
                     </div>
                   </div>
                 )
-              ) : isEditing ? (
-                <div className="grid grid-cols-2 gap-6 animate-in fade-in">
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-gray-400 font-bold">
-                      Target deadline
-                    </label>
-                    <input
-                      type="date"
-                      value={serviceData.deadline}
-                      onChange={(e) =>
-                        setServiceData({
-                          ...serviceData,
-                          deadline: e.target.value,
-                        })
-                      }
-                      className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-gray-400 font-bold">
-                      Complexity
-                    </label>
-                    <select
-                      value={serviceData.complexity}
-                      onChange={(e) =>
-                        setServiceData({
-                          ...serviceData,
-                          complexity: e.target.value,
-                        })
-                      }
-                      className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                    >
-                      <option>Basic Design</option>
-                      <option>Premium Branding</option>
-                      <option>Full Agency Setup</option>
-                    </select>
-                  </div>
-                </div>
               ) : (
-                <div className="grid grid-cols-2 gap-6 animate-in fade-in">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="text-[#0074D9]" size={18} />
-                    <div>
-                      <p className="text-[9px] text-gray-400 font-bold">
-                        Target deadline
-                      </p>
-                      <p className="text-xs font-bold text-gray-700">
-                        {serviceData.deadline}
-                      </p>
+                <div className="space-y-4 animate-in fade-in">
+                  {isLoadingAddress ? (
+                    <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3 text-xs font-bold text-gray-400">
+                      Loading saved contact...
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Clock className="text-[#0074D9]" size={18} />
-                    <div>
-                      <p className="text-[9px] text-gray-400 font-bold">
-                        Complexity
-                      </p>
-                      <p className="text-xs font-bold text-gray-700">
-                        {serviceData.complexity}
-                      </p>
+                  ) : addressData.name && addressData.phone ? (
+                    <div className="rounded-md border border-blue-100 bg-blue-50/50 px-4 py-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-[#0074D9]">
+                            Booking contact
+                          </p>
+                          <p className="text-xs font-bold text-[#003366]">
+                            {addressData.name}
+                          </p>
+                          <p className="text-[10px] font-semibold text-gray-500">
+                            {addressData.phone}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate("/profile/addresses", {
+                              state: { from: location },
+                            })
+                          }
+                          className="text-left text-[10px] font-bold text-[#FF851B] hover:underline sm:text-right"
+                        >
+                          Manage contact
+                        </button>
+                      </div>
+                      {addressData.address && (
+                        <p className="mt-2 text-[10px] font-semibold leading-relaxed text-gray-500">
+                          {addressData.address}
+                        </p>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="rounded-md border border-orange-100 bg-orange-50 px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        <Info className="mt-0.5 shrink-0 text-[#FF851B]" size={16} />
+                        <div>
+                          <p className="text-xs font-bold text-[#003366]">
+                            Add a booking contact to continue.
+                          </p>
+                          <p className="mt-1 text-[10px] font-semibold leading-relaxed text-gray-500">
+                            Service requests use your saved recipient name and phone
+                            so the merchant can coordinate details with you.
+                          </p>
+                          {addressError && (
+                            <p className="mt-2 text-[10px] font-bold text-red-500">
+                              {addressError}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate("/profile/addresses", {
+                                state: { from: location },
+                              })
+                            }
+                            className="mt-3 rounded-md bg-[#003366] px-4 py-2 text-[10px] font-bold text-white hover:bg-[#002244]"
+                          >
+                            Add contact
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {checkoutItems.map((item, index) => {
+                    const key = serviceRequirementKey(item, index);
+                    return (
+                      <ServiceRequirementCard
+                        key={key}
+                        item={item}
+                        requirements={normalizeServiceRequirements(
+                          serviceRequirementsByItem[key],
+                        )}
+                        isEditing={isEditing}
+                        onChange={(field, value) =>
+                          updateServiceRequirement(key, field, value)
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -938,7 +1008,7 @@ export default function Checkout() {
                 isSubmittingOrder ||
                 !hasCheckoutItems ||
                 isLoadingAddress ||
-                !hasShippingAddress ||
+                !hasRequiredCustomerInfo ||
                 !isPaymentAllowed(paymentMethod) ||
                 !isDeliveryAllowed(deliveryMethod)
               }
@@ -1174,6 +1244,86 @@ export default function Checkout() {
             </div>
             <div className="h-1.5 bg-[#FF851B] w-full"></div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ServiceRequirementCard({ item, requirements, isEditing, onChange }) {
+  const fields = [
+    {
+      field: "deadline",
+      label: "Target deadline",
+      type: "date",
+      icon: Calendar,
+      value: requirements.deadline,
+      placeholder: "",
+    },
+    {
+      field: "package",
+      label: "Package",
+      type: "text",
+      icon: Clock,
+      value: requirements.package,
+      placeholder: "Package details",
+    },
+    {
+      field: "businessType",
+      label: "Business type",
+      type: "text",
+      icon: Info,
+      value: requirements.businessType,
+      placeholder: "Business type",
+    },
+    {
+      field: "brief",
+      label: "Brief",
+      type: "text",
+      icon: MessageSquare,
+      value: requirements.brief,
+      placeholder: "Service brief",
+    },
+  ];
+
+  return (
+    <div className="rounded-md border border-gray-100 bg-[#F8FAFC] p-4">
+      <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-[#003366]">
+        {item.name}
+      </p>
+      {isEditing ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fields.map(({ field, label, type, value, placeholder }) => (
+            <div key={field} className="space-y-1">
+              <label className="text-[9px] text-gray-400 font-bold">
+                {label}
+              </label>
+              <input
+                type={type}
+                value={value}
+                onChange={(event) => onChange(field, event.target.value)}
+                placeholder={placeholder}
+                className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fields.map(({ field, label, icon, value }) => (
+            <div key={field} className="flex items-center gap-3">
+              {React.createElement(icon, {
+                className: "text-[#0074D9] shrink-0",
+                size: 18,
+              })}
+              <div className="min-w-0">
+                <p className="text-[9px] text-gray-400 font-bold">{label}</p>
+                <p className="text-xs font-bold text-gray-700 truncate">
+                  {value || "Not specified"}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

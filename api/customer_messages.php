@@ -28,13 +28,7 @@ function formatMessageTime(?string $value): string {
 }
 
 function ensureMessageAttachmentColumns(PDO $db): void {
-    $columns = $db->query("SHOW COLUMNS FROM MESSAGE")->fetchAll(PDO::FETCH_COLUMN);
-    if (!in_array('ATTACH_URL', $columns, true)) {
-        $db->exec("ALTER TABLE MESSAGE ADD COLUMN ATTACH_URL varchar(255) DEFAULT NULL AFTER STATUS");
-    }
-    if (!in_array('ATTACH_FILETYPE', $columns, true)) {
-        $db->exec("ALTER TABLE MESSAGE ADD COLUMN ATTACH_FILETYPE varchar(45) DEFAULT NULL AFTER ATTACH_URL");
-    }
+    requireTableColumns($db, 'MESSAGE', ['ATTACH_URL', 'ATTACH_FILETYPE']);
 }
 
 function storeMessageImage(int $senderId, string $dataUrl): array {
@@ -43,34 +37,17 @@ function storeMessageImage(int $senderId, string $dataUrl): array {
         return ['', ''];
     }
 
-    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp|gif));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
-        jsonResponse(['error' => 'Messages only allow JPG, PNG, WebP, or GIF images.'], 422);
-    }
-
-    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
-    if ($binary === false || strlen($binary) === 0) {
-        jsonResponse(['error' => 'Message image could not be read.'], 422);
-    }
-    if (strlen($binary) > 5 * 1024 * 1024) {
-        jsonResponse(['error' => 'Message image must be 5MB or smaller.'], 422);
-    }
+    $image = verifiedImageDataUrlPayload($dataUrl, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], 'Message', 5 * 1024 * 1024);
     if (!is_dir(MESSAGE_UPLOAD_DIR) && !mkdir(MESSAGE_UPLOAD_DIR, 0775, true)) {
         jsonResponse(['error' => 'Unable to prepare message image storage.'], 500);
     }
 
-    $extension = match ($matches[1]) {
-        'image/jpeg', 'image/jpg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        'image/gif' => 'gif',
-        default => 'img',
-    };
-    $fileName = sprintf('message-%d-%s.%s', $senderId, bin2hex(random_bytes(8)), $extension);
-    if (file_put_contents(MESSAGE_UPLOAD_DIR . '/' . $fileName, $binary) === false) {
+    $fileName = sprintf('message-%d-%s.%s', $senderId, bin2hex(random_bytes(8)), $image['extension']);
+    if (file_put_contents(MESSAGE_UPLOAD_DIR . '/' . $fileName, $image['binary']) === false) {
         jsonResponse(['error' => 'Unable to store message image.'], 500);
     }
 
-    return [MESSAGE_UPLOAD_URL . '/' . $fileName, $matches[1]];
+    return [MESSAGE_UPLOAD_URL . '/' . $fileName, $image['mime']];
 }
 
 $sessionUser = requireCustomerForMessages($db);
@@ -135,7 +112,8 @@ try {
     $stmt = $db->prepare(
         "SELECT msg.MSG_ID, msg.MSG_TEXT, msg.SENT_ON, msg.STATUS, msg.ATTACH_URL, msg.ATTACH_FILETYPE,
                 msg.MESSAGEcol, msg.MSG_RECEIVER AS merchant_id,
-                COALESCE(m.SHOP_NAME, TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), 'Merchant') AS merchant_name
+                COALESCE(m.SHOP_NAME, TRIM(CONCAT(u.FNAME, ' ', u.LNAME)), 'Merchant') AS merchant_name,
+                COALESCE(u.AVATAR_URL, '') AS merchant_avatar
          FROM MESSAGE msg
          INNER JOIN MERCHANT m ON m.MERCHANT_ID = msg.MSG_RECEIVER
          INNER JOIN USERS u ON u.USER_ID = m.MERCHANT_ID
@@ -157,6 +135,7 @@ try {
             $threadsByMerchant[$merchantId] = [
                 'id' => $merchantId,
                 'name' => $row['merchant_name'] ?: 'Merchant',
+                'avatarUrl' => (string) ($row['merchant_avatar'] ?? ''),
                 'messages' => [],
                 'lastMsg' => '',
                 'time' => '',

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import logo from "../assets/logo.png";
+import { Eye, EyeOff } from "lucide-react";
 
 const passwordPolicyMessage =
   "Password must be at least 10 characters and include uppercase, lowercase, number, and special character.";
@@ -23,6 +24,10 @@ export default function ResetPassword() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState({
+    password: false,
+    confirm: false,
+  });
   const navigate = useNavigate();
 
   const handleSubmit = async (event) => {
@@ -94,15 +99,32 @@ export default function ResetPassword() {
             <label className="block text-sm font-semibold text-gray-700 mb-1.5" htmlFor="password">
               New Password
             </label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF851B] focus:border-[#FF851B] focus:bg-white outline-none transition-all"
-              placeholder="New password"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword.password ? "text" : "password"}
+                id="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="w-full px-4 py-2.5 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF851B] focus:border-[#FF851B] focus:bg-white outline-none transition-all"
+                placeholder="New password"
+                required
+              />
+              <button
+                type="button"
+                aria-label={
+                  showPassword.password ? "Hide password" : "Show password"
+                }
+                onClick={() =>
+                  setShowPassword((current) => ({
+                    ...current,
+                    password: !current.password,
+                  }))
+                }
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+              >
+                {showPassword.password ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             <p className="mt-1.5 text-xs text-gray-500">{passwordPolicyMessage}</p>
           </div>
 
@@ -110,15 +132,34 @@ export default function ResetPassword() {
             <label className="block text-sm font-semibold text-gray-700 mb-1.5" htmlFor="confirmPassword">
               Confirm Password
             </label>
-            <input
-              type="password"
-              id="confirmPassword"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF851B] focus:border-[#FF851B] focus:bg-white outline-none transition-all"
-              placeholder="Confirm password"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword.confirm ? "text" : "password"}
+                id="confirmPassword"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                className="w-full px-4 py-2.5 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF851B] focus:border-[#FF851B] focus:bg-white outline-none transition-all"
+                placeholder="Confirm password"
+                required
+              />
+              <button
+                type="button"
+                aria-label={
+                  showPassword.confirm
+                    ? "Hide confirm password"
+                    : "Show confirm password"
+                }
+                onClick={() =>
+                  setShowPassword((current) => ({
+                    ...current,
+                    confirm: !current.confirm,
+                  }))
+                }
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+              >
+                {showPassword.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           {error && <p className="text-sm font-semibold text-red-600">{error}</p>}

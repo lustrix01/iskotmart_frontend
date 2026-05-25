@@ -1,28 +1,44 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Shield,
   Save,
   AlertCircle,
 } from "lucide-react";
 
+const PREFERENCES_KEY = "iskotmart_customer_preferences";
+
 export default function Preferences() {
   const [modal, setModal] = useState({
     isOpen: false,
     title: "",
     message: "",
-    action: "",
   });
 
-  const handleAction = (title, message, action) => {
-    setModal({ isOpen: true, title, message, action });
+  const handleAction = (title, message) => {
+    setModal({ isOpen: true, title, message });
   };
 
   const closeModal = () => setModal({ ...modal, isOpen: false });
 
   // Local state mirrors currently supported preferences only.
-  const [prefs, setPrefs] = useState({
-    publicProfile: true,
+  const [prefs, setPrefs] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}");
+      return {
+        publicProfile: saved.publicProfile ?? true,
+        campusBranch: saved.campusBranch || "BU Main Campus",
+      };
+    } catch {
+      return {
+        publicProfile: true,
+        campusBranch: "BU Main Campus",
+      };
+    }
   });
+
+  useEffect(() => {
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
+  }, [prefs]);
 
   const togglePref = (key) => {
     setPrefs({ ...prefs, [key]: !prefs[key] });
@@ -59,7 +75,13 @@ export default function Preferences() {
               <label className="text-[11px] font-bold text-gray-500 tracking-wide ml-1">
                 Preferred campus branch
               </label>
-              <select className="w-full max-w-xs px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#003366] transition-all">
+              <select
+                value={prefs.campusBranch}
+                onChange={(event) =>
+                  setPrefs({ ...prefs, campusBranch: event.target.value })
+                }
+                className="w-full max-w-xs px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#003366] transition-all"
+              >
                 <option>BU Main Campus</option>
                 <option>BU East Campus</option>
                 <option>BU Daraga Campus</option>
@@ -75,8 +97,7 @@ export default function Preferences() {
             onClick={() =>
               handleAction(
                 "Preferences Saved",
-                "Your settings have been updated.",
-                "Updating profile visibility preferences for your account",
+                "Your settings have been saved on this device.",
               )
             }
             className="flex items-center gap-2 bg-[#FF851B] text-white px-8 py-3 rounded-xl font-bold text-xs shadow-lg hover:bg-[#E67616] transition-all active:scale-95"
@@ -105,17 +126,6 @@ export default function Preferences() {
               <p className="text-gray-400 text-[11px] mb-6 leading-relaxed">
                 {modal.message}
               </p>
-
-              <div className="bg-[#F8FAFC] rounded-xl p-4 mb-6 border border-gray-100 text-left">
-                <div className="flex items-center gap-2 mb-1.5 opacity-40 text-[#003366]">
-                  <span className="text-[9px] font-bold tracking-widest uppercase">
-                    Action taken
-                  </span>
-                </div>
-                <p className="text-[10px] font-medium text-[#003366] leading-relaxed">
-                  {modal.action}
-                </p>
-              </div>
 
               <button
                 onClick={closeModal}

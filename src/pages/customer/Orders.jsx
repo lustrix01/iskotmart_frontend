@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Package,
   Truck,
@@ -21,10 +21,12 @@ import {
 } from "lucide-react";
 
 export default function Orders() {
+  const navigate = useNavigate();
   // --- FR-27: Allow customers to track the status of their orders ---
   const [activeTab, setActiveTab] = useState("All");
 
   const [notification, setNotification] = useState(null);
+  const [chatLoadingOrder, setChatLoadingOrder] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null); // For "View Details" Modal
 
   // Modal states for FR-25 and FR-26
@@ -203,6 +205,42 @@ export default function Orders() {
     showToast(`Redirecting to Shop Profile...`);
   };
 
+  const merchantIdFromOrder = (order) => {
+    const value = String(order?.merchantId || "");
+    const match = value.match(/\d+/);
+    return match ? Number(match[0]) : 0;
+  };
+
+  const handleOpenChat = async (order) => {
+    const merchantId = merchantIdFromOrder(order);
+    if (!merchantId || chatLoadingOrder) {
+      return;
+    }
+
+    setChatLoadingOrder(order);
+    try {
+      const response = await fetch("/api/customer_messages.php", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchantId,
+          message: `Hi, I would like to ask about order ${order.id}.`,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to open IskoChat.");
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+      navigate("/profile/messages", { state: { merchantId } });
+    } catch (error) {
+      showToast(error.message || "Unable to open IskoChat.");
+      setChatLoadingOrder(null);
+    }
+  };
+
   // --- FR-15: Review Submission ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -305,6 +343,22 @@ export default function Orders() {
         <div className="fixed top-24 right-10 z-[200] bg-[#003366] text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right font-sans">
           <CheckCircle2 size={16} className="text-green-400" />
           <span className="text-xs font-bold">{notification}</span>
+        </div>
+      )}
+
+      {chatLoadingOrder && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-[#003366]/35 backdrop-blur-sm font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl border border-white/80 px-8 py-7 w-full max-w-xs text-center animate-in zoom-in duration-200">
+            <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+              <MessageSquare size={24} />
+            </div>
+            <p className="text-sm font-bold text-[#003366]">
+              Opening IskoChat...
+            </p>
+            <p className="text-xs text-gray-400 mt-2">
+              Connecting you to {chatLoadingOrder.merchant}.
+            </p>
+          </div>
         </div>
       )}
 
@@ -674,7 +728,8 @@ export default function Orders() {
                     View details
                   </button>
                   <button
-                    onClick={() => showToast("Opening IskoChat...")}
+                    onClick={() => handleOpenChat(order)}
+                    disabled={Boolean(chatLoadingOrder)}
                     className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 transition-all"
                   >
                     <MessageSquare size={18} />

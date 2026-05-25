@@ -45,6 +45,25 @@ function cartSubtotal(items) {
   );
 }
 
+function cartLineKey(item, index = 0) {
+  return item.cartLineId || `${item.id}-${index}`;
+}
+
+function defaultDeadline() {
+  const date = new Date();
+  date.setDate(date.getDate() + 7);
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultServiceRequirements() {
+  return {
+    deadline: defaultDeadline(),
+    package: "",
+    businessType: "",
+    brief: "",
+  };
+}
+
 export default function Cart() {
   const [activeTab, setActiveTab] = useState("product");
   const navigate = useNavigate();
@@ -52,6 +71,7 @@ export default function Cart() {
   const { productItems, serviceItems, updateItemQty, removeFromCart } = useCart();
 
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [serviceRequirements, setServiceRequirements] = useState({});
 
   const handleUpdateQty = (id, delta) => {
     const target = productItems.find((item) => Number(item.id) === Number(id));
@@ -65,7 +85,12 @@ export default function Cart() {
 
   const confirmRemove = () => {
     if (!deleteTarget) return;
-    removeFromCart(deleteTarget.type, deleteTarget.id);
+    removeFromCart(
+      deleteTarget.type,
+      deleteTarget.type === "service"
+        ? deleteTarget.cartLineId || deleteTarget.id
+        : deleteTarget.id,
+    );
     setDeleteTarget(null);
   };
 
@@ -79,9 +104,20 @@ export default function Cart() {
       : serviceItems.length;
 
   const subtotal = cartSubtotal(activeItems);
-  const fee = 50.0;
-  const estFee = 25.0;
-  const totalAmount = subtotal + fee + estFee;
+  const transactionFee =
+    activeTab === "service" && activeItems.length > 0 ? 50.0 : 0.0;
+  const totalAmount = subtotal + transactionFee;
+
+  const handleServiceRequirementChange = (id, field, value) => {
+    setServiceRequirements((current) => ({
+      ...current,
+      [id]: {
+        ...defaultServiceRequirements(),
+        ...(current[id] || {}),
+        [field]: value,
+      },
+    }));
+  };
 
   const handleCheckout = (checkoutItems = activeItems) => {
     if (!user) {
@@ -93,16 +129,25 @@ export default function Cart() {
       return;
     }
 
-    const checkoutSubtotal = cartSubtotal(checkoutItems);
+    const enrichedItems =
+      activeTab === "service"
+        ? checkoutItems.map((item, index) => ({
+            ...item,
+            serviceRequirements: {
+              ...defaultServiceRequirements(),
+              ...(serviceRequirements[cartLineKey(item, index)] || {}),
+            },
+          }))
+        : checkoutItems;
+    const checkoutSubtotal = cartSubtotal(enrichedItems);
     navigate(`/checkout?type=${activeTab}`, {
       state: {
         type: activeTab,
-        items: checkoutItems,
+        items: enrichedItems,
         totals: {
           subtotal: checkoutSubtotal,
-          fee,
-          estFee,
-          totalAmount: checkoutSubtotal + fee + estFee,
+          transactionFee,
+          totalAmount: checkoutSubtotal + transactionFee,
         },
       },
     });
@@ -161,6 +206,8 @@ export default function Cart() {
             ) : (
               <ServiceCartItems
                 items={serviceItems}
+                requirements={serviceRequirements}
+                onRequirementChange={handleServiceRequirementChange}
                 onRemove={(item) => initiateRemove(item, "service")}
               />
             )}
@@ -171,8 +218,7 @@ export default function Cart() {
               type={activeTab}
               itemCount={totalItemsCount}
               subtotal={subtotal}
-              fee={fee}
-              estFee={estFee}
+              transactionFee={transactionFee}
               totalAmount={totalAmount}
               onCheckout={() => handleCheckout()}
               disabled={activeItems.length === 0 || hasMultipleProductMerchants}
@@ -336,7 +382,7 @@ function ProductCartItems({
   );
 }
 
-function ServiceCartItems({ items, onRemove }) {
+function ServiceCartItems({ items, requirements, onRequirementChange, onRemove }) {
   if (items.length === 0) {
     return (
       <div className="bg-white rounded-sm shadow-sm border border-gray-100 p-12 text-center text-gray-400">
@@ -348,69 +394,118 @@ function ServiceCartItems({ items, onRemove }) {
 
   return (
     <div className="space-y-4">
-      {items.map((item) => (
-        <div
-          key={item.id}
-          className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden"
-        >
-          <div className="bg-gray-50/50 px-6 py-3 border-b border-gray-100 flex items-center gap-3">
-            <h3 className="font-bold text-[#003366] text-[10px] tracking-widest">
-              {item.merchant || "Merchant"}
-            </h3>
-          </div>
-          <div className="p-8 space-y-8">
-            <div className="flex gap-6">
-              <div className="w-24 h-24 bg-gray-100 rounded-md overflow-hidden shrink-0 border border-gray-100">
-                <img
-                  src={item.img}
-                  className="w-full h-full object-cover"
-                  alt="serv"
-                />
-              </div>
-              <div className="flex-grow flex flex-col justify-between py-1">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-bold text-gray-800 text-xs tracking-tight">
-                      {item.name}
-                    </h4>
-                    <p className="text-[9px] text-[#0074D9] font-bold mt-1">
-                      {item.rateType || "Per project"}
-                    </p>
+      {items.map((item, index) => {
+        const lineKey = cartLineKey(item, index);
+        return (
+          <div
+            key={lineKey}
+            className="bg-white rounded-sm shadow-sm border border-gray-100 overflow-hidden"
+          >
+            <div className="bg-gray-50/50 px-6 py-3 border-b border-gray-100 flex items-center gap-3">
+              <h3 className="font-bold text-[#003366] text-[10px] tracking-widest">
+                {item.merchant || "Merchant"}
+              </h3>
+            </div>
+            <div className="p-8 space-y-8">
+              <div className="flex gap-6">
+                <div className="w-24 h-24 bg-gray-100 rounded-md overflow-hidden shrink-0 border border-gray-100">
+                  <img
+                    src={item.img}
+                    className="w-full h-full object-cover"
+                    alt="serv"
+                  />
+                </div>
+                <div className="flex-grow flex flex-col justify-between py-1">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold text-gray-800 text-xs tracking-tight">
+                        {item.name}
+                      </h4>
+                      <p className="text-[9px] text-[#0074D9] font-bold mt-1">
+                        {item.rateType || "Per project"}
+                      </p>
+                    </div>
+                    <span className="font-bold text-[#FF851B] text-base">
+                      PHP {Number(item.price || 0).toFixed(1)}
+                    </span>
                   </div>
-                  <span className="font-bold text-[#FF851B] text-base">
-                    PHP {Number(item.price || 0).toFixed(1)}
-                  </span>
                 </div>
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-[#F8FAFC] p-6 rounded-md border border-gray-100">
-              {["Deadline", "Package", "Business Type", "Brief"].map(
-                (field) => (
-                  <div key={field} className="flex flex-col gap-1.5">
-                    <label className="text-[8px] font-bold text-gray-400 tracking-widest">
-                      {field}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={`Enter ${field.toLowerCase()} details`}
-                      className="bg-white border border-gray-200 rounded-sm px-3 py-2 text-[11px] focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                ),
-              )}
-            </div>
-            <div className="flex justify-end">
-              <button
-                onClick={() => onRemove(item)}
-                className="text-gray-300 hover:text-red-500 flex items-center gap-1.5 transition-colors group"
-              >
-                <Trash2 size={14} />
-                <span className="text-[9px] font-bold">Remove</span>
-              </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-[#F8FAFC] p-6 rounded-md border border-gray-100">
+                <ServiceRequirementInput
+                  lineKey={lineKey}
+                  field="deadline"
+                  label="Deadline"
+                  type="date"
+                  value={
+                    (requirements[lineKey] || defaultServiceRequirements())
+                      .deadline
+                  }
+                  onChange={onRequirementChange}
+                />
+                <ServiceRequirementInput
+                  lineKey={lineKey}
+                  field="package"
+                  label="Package"
+                  placeholder="Enter package details"
+                  value={requirements[lineKey]?.package || ""}
+                  onChange={onRequirementChange}
+                />
+                <ServiceRequirementInput
+                  lineKey={lineKey}
+                  field="businessType"
+                  label="Business Type"
+                  placeholder="Enter business type"
+                  value={requirements[lineKey]?.businessType || ""}
+                  onChange={onRequirementChange}
+                />
+                <ServiceRequirementInput
+                  lineKey={lineKey}
+                  field="brief"
+                  label="Brief"
+                  placeholder="Enter service brief"
+                  value={requirements[lineKey]?.brief || ""}
+                  onChange={onRequirementChange}
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => onRemove(item)}
+                  className="text-gray-300 hover:text-red-500 flex items-center gap-1.5 transition-colors group"
+                >
+                  <Trash2 size={14} />
+                  <span className="text-[9px] font-bold">Remove</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
+    </div>
+  );
+}
+
+function ServiceRequirementInput({
+  lineKey,
+  field,
+  label,
+  type = "text",
+  placeholder = "",
+  value,
+  onChange,
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[8px] font-bold text-gray-400 tracking-widest">
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(lineKey, field, event.target.value)}
+        className="bg-white border border-gray-200 rounded-sm px-3 py-2 text-[11px] focus:outline-none focus:border-[#003366]"
+      />
     </div>
   );
 }
@@ -419,8 +514,7 @@ function CartSummary({
   type,
   itemCount,
   subtotal,
-  fee,
-  estFee,
+  transactionFee,
   totalAmount,
   onCheckout,
   disabled,
@@ -444,12 +538,12 @@ function CartSummary({
           </span>
         </div>
         <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 tracking-widest">
-          <span>{type === "product" ? "Shipping fee" : "Platform fee"}</span>
-          <span className="text-gray-700">PHP {fee.toFixed(1)}</span>
-        </div>
-        <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 tracking-widest">
-          <span>Estimated fee</span>
-          <span className="text-gray-700">PHP {estFee.toFixed(1)}</span>
+          <span>{type === "product" ? "Shipping" : "Service fee"}</span>
+          <span className="text-gray-700">
+            {type === "product"
+              ? "Calculated at checkout"
+              : `PHP ${transactionFee.toFixed(1)}`}
+          </span>
         </div>
       </div>
 

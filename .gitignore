@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.env
+.env.*
+!.env.example
 *.local
 
 # Editor directories and files
@@ -31,3 +34,8 @@ development notes.md
 
 # Local uploaded files
 api/uploads/
+
+# Playwright artifacts and local auth state
+playwright-report/
+test-results/
+tests/.auth/

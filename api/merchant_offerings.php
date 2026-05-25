@@ -77,22 +77,13 @@ function ensureMerchantFulfillmentColumns(PDO $db): void {
     }
     $checked = true;
 
-    $columns = $db->query("SHOW COLUMNS FROM MERCHANT")->fetchAll(PDO::FETCH_COLUMN);
-    if (!in_array('ACCEPTS_COD', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_COD tinyint(1) NOT NULL DEFAULT 1 AFTER ID_IMAGE_URL");
-    }
-    if (!in_array('ACCEPTS_GCASH', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_GCASH tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_COD");
-    }
-    if (!in_array('ALLOW_MEETUP', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_MEETUP tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_GCASH");
-    }
-    if (!in_array('ALLOW_DELIVERY', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_DELIVERY tinyint(1) NOT NULL DEFAULT 1 AFTER ALLOW_MEETUP");
-    }
-    if (!in_array('DELIVERY_FEE', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN DELIVERY_FEE double NOT NULL DEFAULT 50 AFTER ALLOW_DELIVERY");
-    }
+    ensureTableColumns($db, 'MERCHANT', [
+        'ACCEPTS_COD' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ACCEPTS_GCASH' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_MEETUP' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_DELIVERY' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'DELIVERY_FEE' => 'double NOT NULL DEFAULT 50',
+    ]);
 }
 
 function resolveProductSubcategoryId(PDO $db, string $category): int {
@@ -771,23 +762,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE' || ($_SERVER['REQUEST_METHOD'] === '
     try {
         $db->beginTransaction();
 
-        deleteOfferingImages($db, $offeringId);
+        $db->prepare(
+            "UPDATE OFFERING
+             SET AVAIL_STATUS = 'Retired'
+             WHERE OFFERING_ID = :id AND MERCHANT_ID = :merchant_id"
+        )->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
 
-        $db->prepare("DELETE FROM ALLOWED_PAYMENT WHERE OFFERING_ID = :id")
-            ->execute([':id' => $offeringId]);
-        $db->prepare("DELETE FROM DISCOUNT WHERE OFFERING_ID = :id")
-            ->execute([':id' => $offeringId]);
+        $db->prepare(
+            "UPDATE ALLOWED_PAYMENT
+             SET STATUS = 'INACTIVE'
+             WHERE OFFERING_ID = :id"
+        )->execute([':id' => $offeringId]);
 
         if ($offering['OFFERING_TYPE'] === 'P') {
-            $db->prepare("DELETE FROM PRODUCT WHERE PROD_ID = :id AND MERCHANT_ID = :merchant_id")
+            $db->prepare("UPDATE PRODUCT SET STATUS = 'Retired' WHERE PROD_ID = :id AND MERCHANT_ID = :merchant_id")
                 ->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
         } else {
-            $db->prepare("DELETE FROM SERVICE WHERE SERVICE_ID = :id AND MERCHANT_ID = :merchant_id")
+            $db->prepare("UPDATE SERVICE SET STATUS = 'Retired' WHERE SERVICE_ID = :id AND MERCHANT_ID = :merchant_id")
                 ->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
         }
-
-        $db->prepare("DELETE FROM OFFERING WHERE OFFERING_ID = :id AND MERCHANT_ID = :merchant_id")
-            ->execute([':id' => $offeringId, ':merchant_id' => $merchantId]);
 
         $db->commit();
         jsonResponse(['offerings' => listOfferings($db, $merchantId)]);

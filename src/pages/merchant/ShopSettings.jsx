@@ -7,6 +7,7 @@ import {
   CheckCircle,
   X,
   Eye,
+  EyeOff,
   Lock,
   User as UserIcon,
   Mail,
@@ -19,14 +20,34 @@ import {
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/useAuth";
 
 export default function ShopSettings() {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const bannerInputRef = useRef(null);
   const avatarInputRef = useRef(null);
   const [activeTab, setActiveTab] = useState("profile"); // 'profile', 'fulfillment', or 'security'
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [showPassword, setShowPassword] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [closeEmail, setCloseEmail] = useState("");
+  const [closeError, setCloseError] = useState("");
+  const [isClosingShop, setIsClosingShop] = useState(false);
   const [accountInfo, setAccountInfo] = useState({
     username: "",
     email: "",
@@ -179,12 +200,106 @@ export default function ShopSettings() {
         allowDelivery: Boolean(profile.fulfillment?.allowDelivery ?? true),
         deliveryFee: Number(profile.fulfillment?.deliveryFee ?? 50),
       });
+      window.dispatchEvent(
+        new CustomEvent("iskomart:merchant-profile-updated", {
+          detail: {
+            shopName: profile.shopName || "",
+            avatarUrl: profile.avatarUrl || "",
+          },
+        }),
+      );
       setIsSaving(false);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
     } catch (error) {
       setLoadError(error.message);
       setIsSaving(false);
+    }
+  };
+
+  const openCloseShopModal = () => {
+    setCloseEmail("");
+    setCloseError("");
+    setIsCloseModalOpen(true);
+  };
+
+  const closeCloseShopModal = () => {
+    if (!isClosingShop) {
+      setIsCloseModalOpen(false);
+      setCloseEmail("");
+      setCloseError("");
+    }
+  };
+
+  const handleCloseShop = async () => {
+    const expectedEmail = String(accountInfo.email || "").trim().toLowerCase();
+    const typedEmail = closeEmail.trim().toLowerCase();
+
+    setCloseError("");
+    if (!expectedEmail || typedEmail !== expectedEmail) {
+      setCloseError("Type your merchant email address exactly to continue.");
+      return;
+    }
+
+    setIsClosingShop(true);
+    try {
+      const response = await fetch("/api/merchant_profile.php", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: closeEmail.trim() }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to close shop account.");
+      }
+
+      await logout();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      setCloseError(error.message);
+      setIsClosingShop(false);
+    }
+  };
+
+  const updatePasswordField = (field, value) => {
+    setPasswordForm((current) => ({ ...current, [field]: value }));
+    setPasswordMessage("");
+    setLoadError("");
+  };
+
+  const handlePasswordSave = async () => {
+    setPasswordMessage("");
+    setLoadError("");
+
+    if (passwordForm.next !== passwordForm.confirm) {
+      setLoadError("New password and confirmation do not match.");
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const response = await fetch("/api/change_password.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.next,
+          confirmPassword: passwordForm.confirm,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update password.");
+      }
+
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      setPasswordMessage(payload.message || "Password has been updated.");
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setIsSavingPassword(false);
     }
   };
 
@@ -277,19 +392,21 @@ export default function ShopSettings() {
           </button>
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="w-full md:w-auto bg-[#FF851B] text-white px-8 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2 shrink-0"
-        >
-          {isSaving ? (
-            "Saving..."
-          ) : (
-            <>
-              <Save size={16} /> Save Changes
-            </>
-          )}
-        </button>
+        {activeTab !== "security" && (
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="w-full md:w-auto bg-[#FF851B] text-white px-8 py-2.5 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2 shrink-0"
+          >
+            {isSaving ? (
+              "Saving..."
+            ) : (
+              <>
+                <Save size={16} /> Save Changes
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* --- TAB CONTENT: SHOP PROFILE (FR-47) --- */}
@@ -672,10 +789,33 @@ export default function ShopSettings() {
                     size={16}
                   />
                   <input
-                    type="password"
+                    type={showPassword.current ? "text" : "password"}
+                    value={passwordForm.current}
+                    onChange={(event) => updatePasswordField("current", event.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
+                    className="w-full pl-12 pr-12 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
+                  <button
+                    type="button"
+                    aria-label={
+                      showPassword.current
+                        ? "Hide current password"
+                        : "Show current password"
+                    }
+                    onClick={() =>
+                      setShowPassword((current) => ({
+                        ...current,
+                        current: !current.current,
+                      }))
+                    }
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                  >
+                    {showPassword.current ? (
+                      <EyeOff size={16} />
+                    ) : (
+                      <Eye size={16} />
+                    )}
+                  </button>
                 </div>
               </div>
               <div className="hidden md:block"></div>
@@ -689,10 +829,29 @@ export default function ShopSettings() {
                     size={16}
                   />
                   <input
-                    type="password"
-                    placeholder="Min. 8 characters"
-                    className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
+                    type={showPassword.next ? "text" : "password"}
+                    value={passwordForm.next}
+                    onChange={(event) => updatePasswordField("next", event.target.value)}
+                    placeholder="Min. 10 characters"
+                    className="w-full pl-12 pr-12 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
+                  <button
+                    type="button"
+                    aria-label={
+                      showPassword.next
+                        ? "Hide new password"
+                        : "Show new password"
+                    }
+                    onClick={() =>
+                      setShowPassword((current) => ({
+                        ...current,
+                        next: !current.next,
+                      }))
+                    }
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                  >
+                    {showPassword.next ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
               <div className="space-y-2">
@@ -705,12 +864,55 @@ export default function ShopSettings() {
                     size={16}
                   />
                   <input
-                    type="password"
+                    type={showPassword.confirm ? "text" : "password"}
+                    value={passwordForm.confirm}
+                    onChange={(event) => updatePasswordField("confirm", event.target.value)}
                     placeholder="Confirm password"
-                    className="w-full pl-12 pr-4 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
+                    className="w-full pl-12 pr-12 py-3 bg-gray-50 rounded-xl text-sm focus:bg-white border-none ring-1 ring-gray-100 focus:ring-2 focus:ring-[#FF851B] outline-none transition-all"
                   />
+                  <button
+                    type="button"
+                    aria-label={
+                      showPassword.confirm
+                        ? "Hide confirm password"
+                        : "Show confirm password"
+                    }
+                    onClick={() =>
+                      setShowPassword((current) => ({
+                        ...current,
+                        confirm: !current.confirm,
+                      }))
+                    }
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                  >
+                    {showPassword.confirm ? (
+                      <EyeOff size={16} />
+                    ) : (
+                      <Eye size={16} />
+                    )}
+                  </button>
                 </div>
               </div>
+            </div>
+            {passwordMessage && (
+              <p className="rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-xs font-bold text-green-600">
+                {passwordMessage}
+              </p>
+            )}
+            <div className="flex justify-end border-t border-gray-50 pt-5">
+              <button
+                type="button"
+                onClick={handlePasswordSave}
+                disabled={
+                  isSavingPassword ||
+                  !passwordForm.current ||
+                  !passwordForm.next ||
+                  !passwordForm.confirm
+                }
+                className="bg-[#FF851B] text-white px-8 py-3 rounded-xl font-bold text-xs shadow-md hover:bg-[#e67616] transition-all disabled:opacity-50"
+              >
+                {isSavingPassword ? "Updating..." : "Update password"}
+              </button>
             </div>
           </div>
 
@@ -756,20 +958,98 @@ export default function ShopSettings() {
                   Danger Zone
                 </h3>
               </div>
-              <p className="text-[10px] text-red-400 mb-4 leading-relaxed">
-                Closing your shop will remove all your products and services
-                from IskoMart permanently.
-              </p>
-              <button className="w-full py-2.5 bg-white border border-red-200 text-red-500 text-[10px] font-bold rounded-xl hover:bg-red-500 hover:text-white transition-all">
-                Close Shop Account
-              </button>
+	              <p className="text-[10px] text-red-400 mb-4 leading-relaxed">
+	                Closing your shop will make your merchant account inactive,
+	                hide your listings, and block new checkouts or bookings.
+	              </p>
+	              <button
+	                type="button"
+	                onClick={openCloseShopModal}
+	                className="w-full py-2.5 bg-white border border-red-200 text-red-500 text-[10px] font-bold rounded-xl hover:bg-red-500 hover:text-white transition-all"
+	              >
+	                Close Shop Account
+	              </button>
             </div>
           </div>
         </div>
-      )}
+	      )}
+	
+	      {isCloseModalOpen && (
+	        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+	          <button
+	            type="button"
+	            aria-label="Close shop closure confirmation"
+	            className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm animate-in fade-in"
+	            onClick={closeCloseShopModal}
+	          />
+	          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-in zoom-in duration-200">
+	            <div className="p-8">
+	              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5">
+	                <AlertCircle size={32} className="text-red-500" />
+	              </div>
+	              <h3 className="text-lg font-bold text-[#003366] text-center mb-2">
+	                Close shop account?
+	              </h3>
+	              <p className="text-xs text-gray-500 text-center leading-relaxed mb-6">
+	                Your merchant account will be set to inactive. Customers will
+	                no longer see your products or services, and new checkouts or
+	                bookings for your shop will be blocked. Existing orders,
+	                messages, reviews, and records will remain intact.
+	              </p>
 
-      {/* --- NOTIFICATION TOAST --- */}
-      {showToast && (
+	              <label className="block space-y-2 mb-4">
+	                <span className="text-[11px] font-bold text-gray-500">
+	                  Type your merchant email to confirm
+	                </span>
+	                <input
+	                  type="email"
+	                  value={closeEmail}
+	                  onChange={(event) => {
+	                    setCloseEmail(event.target.value);
+	                    setCloseError("");
+	                  }}
+	                  placeholder={accountInfo.email || "merchant@email.com"}
+	                  disabled={isClosingShop}
+	                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-300 focus:border-red-400 focus:bg-white outline-none transition-all disabled:opacity-70"
+	                />
+	              </label>
+
+	              {closeError && (
+	                <p className="text-xs font-bold text-red-500 mb-4">
+	                  {closeError}
+	                </p>
+	              )}
+
+	              <div className="flex flex-col gap-3">
+	                <button
+	                  type="button"
+	                  onClick={handleCloseShop}
+	                  disabled={
+	                    isClosingShop ||
+	                    closeEmail.trim().toLowerCase() !==
+	                      String(accountInfo.email || "").trim().toLowerCase()
+	                  }
+	                  className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold text-xs shadow-md transition-all disabled:opacity-50 disabled:hover:bg-red-500"
+	                >
+	                  {isClosingShop ? "Closing shop..." : "Close shop account"}
+	                </button>
+	                <button
+	                  type="button"
+	                  onClick={closeCloseShopModal}
+	                  disabled={isClosingShop}
+	                  className="w-full bg-white text-gray-500 py-3 rounded-xl font-bold text-xs border border-gray-100 hover:bg-gray-50 transition-all disabled:opacity-70"
+	                >
+	                  Cancel
+	                </button>
+	              </div>
+	            </div>
+	            <div className="h-1.5 w-full bg-red-500" />
+	          </div>
+	        </div>
+	      )}
+
+	      {/* --- NOTIFICATION TOAST --- */}
+	      {showToast && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-5">
           <div className="bg-[#003366] text-white px-8 py-4 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-4">
             <CheckCircle className="text-[#FF851B]" size={20} />

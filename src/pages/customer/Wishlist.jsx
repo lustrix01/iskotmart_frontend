@@ -103,6 +103,17 @@ export default function Wishlist() {
   };
 
   const handleAddToCart = (item) => {
+    const availableCount =
+      item.type === "service" ? Number(item.slots || 0) : Number(item.stock || 0);
+    if (availableCount <= 0) {
+      showNotice(
+        item.type === "service"
+          ? "This service has no available slots."
+          : "This product is out of stock.",
+      );
+      return;
+    }
+
     const image = item.img || item.images?.[0]?.url || FALLBACK_IMAGE;
     addToCart(
       item.type,
@@ -179,11 +190,19 @@ export default function Wishlist() {
             const isService = item.type === "service";
             const detailPath = isService ? `/service/${item.id}` : `/product/${item.id}`;
             const image = item.img || item.images?.[0]?.url || FALLBACK_IMAGE;
+            const availableCount = isService
+              ? Number(item.slots || 0)
+              : Number(item.stock || 0);
+            const isAvailable = availableCount > 0;
             const availability = isService
-              ? "Available for booking"
-              : Number(item.stock || 0) <= 5
-                ? `Low stock (${Number(item.stock || 0)} left)`
-                : `${Number(item.stock || 0)} in stock`;
+              ? isAvailable
+                ? `${availableCount} slots available`
+                : "No slots available"
+              : !isAvailable
+                ? "Out of stock"
+                : availableCount <= 5
+                  ? `Low stock (${availableCount} left)`
+                  : `${availableCount} in stock`;
 
             return (
               <div
@@ -257,7 +276,9 @@ export default function Wishlist() {
                       </div>
                       <p
                         className={`text-[11px] font-bold ${
-                          availability.includes("Low") ? "text-red-500" : "text-green-600"
+                          !isAvailable || availability.includes("Low")
+                            ? "text-red-500"
+                            : "text-green-600"
                         }`}
                       >
                         {availability}
@@ -287,10 +308,15 @@ export default function Wishlist() {
                     </button>
                     <button
                       onClick={() => handleAddToCart(item)}
-                      className="px-6 py-2 bg-[#FF851B] text-white text-xs font-bold rounded-md hover:bg-[#E67616] transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"
+                      disabled={!isAvailable}
+                      className="px-6 py-2 bg-[#FF851B] text-white text-xs font-bold rounded-md hover:bg-[#E67616] transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300"
                     >
                       {isService ? <Zap size={14} /> : <ShoppingCart size={14} />}
-                      {isService ? "Book now" : "Add to cart"}
+                      {!isAvailable
+                        ? "Unavailable"
+                        : isService
+                          ? "Book now"
+                          : "Add to cart"}
                     </button>
                   </div>
                 </div>

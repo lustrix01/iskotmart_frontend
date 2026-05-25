@@ -10,6 +10,8 @@ import {
   Smile,
 } from "lucide-react";
 
+const FALLBACK_AVATAR = "/placeholders/avatar.svg";
+
 export default function MerchantMessages() {
   const [threads, setThreads] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -19,6 +21,7 @@ export default function MerchantMessages() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [imageData, setImageData] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const messagesRef = useRef(null);
   const imageInputRef = useRef(null);
   const isAtBottomRef = useRef(true);
@@ -27,6 +30,18 @@ export default function MerchantMessages() {
     () => threads.find((thread) => thread.id === activeChatId) || threads[0] || null,
     [activeChatId, threads],
   );
+  const filteredThreads = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return threads;
+    }
+    return threads.filter((thread) =>
+      [thread.name, thread.lastMsg]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [searchQuery, threads]);
 
   const showNotice = (message) => {
     setNotice(message);
@@ -157,9 +172,10 @@ export default function MerchantMessages() {
             />
             <input
               type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search conversations..."
-              disabled
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-lg text-sm text-gray-400 focus:outline-none"
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-lg text-sm text-gray-600 focus:outline-none focus:border-[#0074D9]"
             />
           </div>
         </div>
@@ -171,8 +187,8 @@ export default function MerchantMessages() {
                 Loading conversations...
               </p>
             </div>
-          ) : threads.length > 0 ? (
-            threads.map((chat) => (
+          ) : filteredThreads.length > 0 ? (
+            filteredThreads.map((chat) => (
               <button
                 key={chat.id}
                 onClick={() => setActiveChatId(chat.id)}
@@ -185,9 +201,20 @@ export default function MerchantMessages() {
                 ) : null}
 
                 <div className="relative shrink-0">
-                  <div className="w-12 h-12 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold border-2 border-white shadow-sm">
-                    {chat.avatar || "CU"}
-                  </div>
+                  {chat.avatarUrl ? (
+                    <img
+                      src={chat.avatarUrl}
+                      alt={`${chat.name} profile`}
+                      className="w-12 h-12 rounded-full border-2 border-white bg-gray-50 object-cover shadow-sm"
+                      onError={(event) => {
+                        event.currentTarget.src = FALLBACK_AVATAR;
+                      }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold border-2 border-white shadow-sm">
+                      {chat.avatar || "CU"}
+                    </div>
+                  )}
                   <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white bg-green-500"></div>
                 </div>
 
@@ -211,7 +238,7 @@ export default function MerchantMessages() {
               <div>
                 <AlertCircle size={22} className="mx-auto mb-3 text-gray-300" />
                 <p className="text-[12px] text-gray-400 font-medium">
-                  {error || "No customer conversations yet."}
+                  {error || (threads.length > 0 ? "No conversations match your search." : "No customer conversations yet.")}
                 </p>
               </div>
             </div>
@@ -224,9 +251,20 @@ export default function MerchantMessages() {
           <>
             <div className="h-[70px] border-b border-gray-100 flex items-center justify-between px-6">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold">
-                  {activeChat.avatar || "CU"}
-                </div>
+                {activeChat.avatarUrl ? (
+                  <img
+                    src={activeChat.avatarUrl}
+                    alt={`${activeChat.name} profile`}
+                    className="w-10 h-10 rounded-full border border-gray-100 bg-gray-50 object-cover"
+                    onError={(event) => {
+                      event.currentTarget.src = FALLBACK_AVATAR;
+                    }}
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-[#D1E9F6] flex items-center justify-center text-[#003366] font-bold">
+                    {activeChat.avatar || "CU"}
+                  </div>
+                )}
                 <div>
                   <h2 className="text-[15px] font-bold text-[#001F3F]">
                     {activeChat.name}

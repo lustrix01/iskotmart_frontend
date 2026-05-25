@@ -8,25 +8,14 @@ const MERCHANT_AVATAR_UPLOAD_DIR = __DIR__ . '/uploads/merchant-avatars';
 const MERCHANT_AVATAR_UPLOAD_URL = '/api/uploads/merchant-avatars';
 
 function ensureMerchantBannerColumn(PDO $db): void {
-    $columns = $db->query("SHOW COLUMNS FROM MERCHANT")->fetchAll(PDO::FETCH_COLUMN);
-    if (!in_array('SHOP_BANNER_URL', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN SHOP_BANNER_URL tinytext DEFAULT NULL AFTER SHOP_DESC");
-    }
-    if (!in_array('ACCEPTS_COD', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_COD tinyint(1) NOT NULL DEFAULT 1 AFTER ID_IMAGE_URL");
-    }
-    if (!in_array('ACCEPTS_GCASH', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_GCASH tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_COD");
-    }
-    if (!in_array('ALLOW_MEETUP', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_MEETUP tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_GCASH");
-    }
-    if (!in_array('ALLOW_DELIVERY', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_DELIVERY tinyint(1) NOT NULL DEFAULT 1 AFTER ALLOW_MEETUP");
-    }
-    if (!in_array('DELIVERY_FEE', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN DELIVERY_FEE double NOT NULL DEFAULT 50 AFTER ALLOW_DELIVERY");
-    }
+    ensureTableColumns($db, 'MERCHANT', [
+        'SHOP_BANNER_URL' => 'tinytext DEFAULT NULL',
+        'ACCEPTS_COD' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ACCEPTS_GCASH' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_MEETUP' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_DELIVERY' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'DELIVERY_FEE' => 'double NOT NULL DEFAULT 50',
+    ]);
 }
 
 function requireMerchantForProfile(PDO $db): array {
@@ -205,33 +194,16 @@ function storeMerchantBannerImage(int $merchantId, string $dataUrl): string {
         return '';
     }
 
-    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
-        jsonResponse(['error' => 'Banner must be a JPG, PNG, or WebP image.'], 422);
-    }
-
-    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
-    if ($binary === false || strlen($binary) === 0) {
-        jsonResponse(['error' => 'Banner image could not be read.'], 422);
-    }
-
-    if (strlen($binary) > 5 * 1024 * 1024) {
-        jsonResponse(['error' => 'Banner image must be 5MB or smaller.'], 422);
-    }
+    $image = verifiedImageDataUrlPayload($dataUrl, ['image/jpeg', 'image/png', 'image/webp'], 'Banner', 5 * 1024 * 1024);
 
     if (!is_dir(MERCHANT_BANNER_UPLOAD_DIR) && !mkdir(MERCHANT_BANNER_UPLOAD_DIR, 0775, true)) {
         jsonResponse(['error' => 'Unable to prepare banner image storage.'], 500);
     }
 
-    $extension = match ($matches[1]) {
-        'image/jpeg', 'image/jpg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        default => 'img',
-    };
-    $fileName = sprintf('merchant-%d-banner-%s.%s', $merchantId, bin2hex(random_bytes(8)), $extension);
+    $fileName = sprintf('merchant-%d-banner-%s.%s', $merchantId, bin2hex(random_bytes(8)), $image['extension']);
     $targetPath = MERCHANT_BANNER_UPLOAD_DIR . '/' . $fileName;
 
-    if (file_put_contents($targetPath, $binary) === false) {
+    if (file_put_contents($targetPath, $image['binary']) === false) {
         jsonResponse(['error' => 'Unable to store banner image.'], 500);
     }
 
@@ -244,33 +216,16 @@ function storeMerchantAvatarImage(int $merchantId, string $dataUrl): string {
         return '';
     }
 
-    if (!preg_match('/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+\/=\r\n]+)$/', $dataUrl, $matches)) {
-        jsonResponse(['error' => 'Profile image must be a JPG, PNG, or WebP image.'], 422);
-    }
-
-    $binary = base64_decode(str_replace(["\r", "\n"], '', $matches[2]), true);
-    if ($binary === false || strlen($binary) === 0) {
-        jsonResponse(['error' => 'Profile image could not be read.'], 422);
-    }
-
-    if (strlen($binary) > 5 * 1024 * 1024) {
-        jsonResponse(['error' => 'Profile image must be 5MB or smaller.'], 422);
-    }
+    $image = verifiedImageDataUrlPayload($dataUrl, ['image/jpeg', 'image/png', 'image/webp'], 'Profile', 5 * 1024 * 1024);
 
     if (!is_dir(MERCHANT_AVATAR_UPLOAD_DIR) && !mkdir(MERCHANT_AVATAR_UPLOAD_DIR, 0775, true)) {
         jsonResponse(['error' => 'Unable to prepare profile image storage.'], 500);
     }
 
-    $extension = match ($matches[1]) {
-        'image/jpeg', 'image/jpg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        default => 'img',
-    };
-    $fileName = sprintf('merchant-%d-avatar-%s.%s', $merchantId, bin2hex(random_bytes(8)), $extension);
+    $fileName = sprintf('merchant-%d-avatar-%s.%s', $merchantId, bin2hex(random_bytes(8)), $image['extension']);
     $targetPath = MERCHANT_AVATAR_UPLOAD_DIR . '/' . $fileName;
 
-    if (file_put_contents($targetPath, $binary) === false) {
+    if (file_put_contents($targetPath, $image['binary']) === false) {
         jsonResponse(['error' => 'Unable to store profile image.'], 500);
     }
 
@@ -284,6 +239,36 @@ $merchantId = (int) $sessionUser['id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     jsonResponse(['profile' => loadMerchantProfile($db, $merchantId)]);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    $data = jsonInput();
+    $email = strtolower(trim((string) ($data['email'] ?? '')));
+    $sessionEmail = strtolower(trim((string) ($sessionUser['email'] ?? '')));
+
+    if ($email === '' || $email !== $sessionEmail) {
+        jsonResponse(['error' => 'Type your merchant email address to confirm shop closure.'], 422);
+    }
+
+    try {
+        $stmt = $db->prepare(
+            "UPDATE USERS
+             SET STATUS = 'INACTIVE'
+             WHERE USER_ID = :merchant_id
+               AND UPPER(ROLE) IN ('MRC', 'MERCHANT')
+               AND STATUS = 'ACTIVE'"
+        );
+        $stmt->execute([':merchant_id' => $merchantId]);
+
+        if ($stmt->rowCount() < 1) {
+            jsonResponse(['error' => 'Shop account is already inactive or could not be closed.'], 409);
+        }
+
+        jsonResponse(['ok' => true, 'status' => 'INACTIVE']);
+    } catch (Throwable $e) {
+        logApiError($e);
+        jsonResponse(['error' => 'Unable to close shop account.'], 500);
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'PATCH') {

@@ -2,6 +2,7 @@
 
 require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/payment_helpers.php');
+require_once(__DIR__ . '/order_activity_helpers.php');
 
 function requireCustomerForCheckout(PDO $db): array {
     $user = currentUser($db);
@@ -20,6 +21,18 @@ function moneyValue(mixed $value): float {
     return round((float) $value, 2);
 }
 
+function normalizedServiceRequirements(mixed $value): array {
+    $requirements = is_array($value) ? $value : [];
+
+    return [
+        'deadline' => trim((string) ($requirements['deadline'] ?? '')),
+        'package' => trim((string) ($requirements['package'] ?? '')),
+        'businessType' => trim((string) ($requirements['businessType'] ?? '')),
+        'brief' => trim((string) ($requirements['brief'] ?? '')),
+        'complexity' => trim((string) ($requirements['complexity'] ?? ($requirements['package'] ?? ''))),
+    ];
+}
+
 function assertClose(float $expected, float $actual, string $label): void {
     if (abs($expected - $actual) > 0.01) {
         jsonResponse(['error' => "{$label} does not match server calculation."], 422);
@@ -33,14 +46,7 @@ function ensureCheckoutDiscountStatusColumn(PDO $db): void {
     }
 
     $checked = true;
-    try {
-        $stmt = $db->query("SHOW COLUMNS FROM DISCOUNT LIKE 'STATUS'");
-        if (!$stmt || !$stmt->fetch(PDO::FETCH_ASSOC)) {
-            $db->exec("ALTER TABLE DISCOUNT ADD STATUS varchar(45) NOT NULL DEFAULT 'ACTIVE'");
-        }
-    } catch (Throwable $e) {
-        logApiError($e);
-    }
+    requireTableColumns($db, 'DISCOUNT', ['STATUS']);
 }
 
 function ensureMerchantFulfillmentColumns(PDO $db): void {
@@ -50,22 +56,13 @@ function ensureMerchantFulfillmentColumns(PDO $db): void {
     }
     $checked = true;
 
-    $columns = $db->query("SHOW COLUMNS FROM MERCHANT")->fetchAll(PDO::FETCH_COLUMN);
-    if (!in_array('ACCEPTS_COD', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_COD tinyint(1) NOT NULL DEFAULT 1 AFTER ID_IMAGE_URL");
-    }
-    if (!in_array('ACCEPTS_GCASH', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ACCEPTS_GCASH tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_COD");
-    }
-    if (!in_array('ALLOW_MEETUP', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_MEETUP tinyint(1) NOT NULL DEFAULT 1 AFTER ACCEPTS_GCASH");
-    }
-    if (!in_array('ALLOW_DELIVERY', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN ALLOW_DELIVERY tinyint(1) NOT NULL DEFAULT 1 AFTER ALLOW_MEETUP");
-    }
-    if (!in_array('DELIVERY_FEE', $columns, true)) {
-        $db->exec("ALTER TABLE MERCHANT ADD COLUMN DELIVERY_FEE double NOT NULL DEFAULT 50 AFTER ALLOW_DELIVERY");
-    }
+    ensureTableColumns($db, 'MERCHANT', [
+        'ACCEPTS_COD' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ACCEPTS_GCASH' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_MEETUP' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'ALLOW_DELIVERY' => 'tinyint(1) NOT NULL DEFAULT 1',
+        'DELIVERY_FEE' => 'double NOT NULL DEFAULT 50',
+    ]);
 }
 
 function checkoutMerchantFulfillmentSettings(PDO $db, int $merchantId): array {
@@ -110,7 +107,8 @@ function dbOffering(PDO $db, string $type, int $id): ?array {
             "SELECT p.PROD_ID AS id, p.PRICE AS price, p.STOCK_QTY AS capacity,
                     p.STATUS AS status, p.MERCHANT_ID AS merchant_id,
                     d.TYPE AS discount_type, d.VALUE AS discount_value
-             FROM PRODUCT p
+	             FROM PRODUCT p
+	             INNER JOIN USERS u ON u.USER_ID = p.MERCHANT_ID AND u.STATUS = 'ACTIVE'
              LEFT JOIN (
                  SELECT d1.*
                  FROM DISCOUNT d1
@@ -131,7 +129,8 @@ function dbOffering(PDO $db, string $type, int $id): ?array {
             "SELECT s.SERVICE_ID AS id, s.PRICE AS price, s.SLOTS AS capacity,
                     s.STATUS AS status, s.MERCHANT_ID AS merchant_id,
                     d.TYPE AS discount_type, d.VALUE AS discount_value
-             FROM SERVICE s
+	             FROM SERVICE s
+	             INNER JOIN USERS u ON u.USER_ID = s.MERCHANT_ID AND u.STATUS = 'ACTIVE'
              LEFT JOIN (
                  SELECT d1.*
                  FROM DISCOUNT d1
@@ -665,6 +664,7 @@ foreach ($items as $item) {
             'price' => moneyValue($dbItem['price']),
             'capacity' => (int) $dbItem['capacity'],
             'merchant_id' => (int) $dbItem['merchant_id'],
+            'service_requirements' => normalizedServiceRequirements($item['serviceRequirements'] ?? []),
         ];
         continue;
     }
@@ -724,6 +724,13 @@ assertClose($total, moneyValue($totals['total'] ?? -1), 'Total');
 
 $paymentStatus = $paymentMethod === 'gcash' ? PAYMENT_STATUS_PENDING_REVIEW : PAYMENT_STATUS_UNPAID;
 $validatedBy = 'database';
+
+try {
+    ensureOrderActivityLogTable($db);
+} catch (Throwable $e) {
+    logApiError($e);
+    jsonResponse(['error' => 'Unable to prepare order activity log.'], 500);
+}
 
 if ($type === 'product' && $validatedBy === 'database') {
     $recipientName = trim((string) ($customer['recipientName'] ?? ''));
@@ -810,6 +817,18 @@ if ($type === 'product' && $validatedBy === 'database') {
             }
         }
 
+        insertOrderActivityLog(
+            $db,
+            'order',
+            $orderId,
+            'created',
+            null,
+            'Pending',
+            actorPayload($sessionUser),
+            activityItemsForProductOrder($db, $orderId),
+            'Customer placed this order. Merchant received it for review.'
+        );
+
         $db->commit();
 
         jsonResponse([
@@ -835,10 +854,7 @@ if ($type === 'service' && $validatedBy === 'database') {
         jsonResponse(['error' => 'Recipient name and phone are required.'], 422);
     }
 
-    $deadlineRaw = trim((string) ($service['deadline'] ?? ''));
-    $deadlineTimestamp = $deadlineRaw !== '' ? strtotime($deadlineRaw) : false;
-    $scheduledDate = $deadlineTimestamp ? date('Y-m-d H:i:s', $deadlineTimestamp) : date('Y-m-d H:i:s');
-    $complexity = trim((string) ($service['complexity'] ?? ''));
+    $fallbackRequirements = normalizedServiceRequirements($service);
 
     try {
         $db->beginTransaction();
@@ -860,17 +876,35 @@ if ($type === 'service' && $validatedBy === 'database') {
         );
 
         $createdIds = [];
+        $createdRequests = [];
         $requestTotals = serviceLineTotals($validatedItems, $total);
         foreach ($validatedItems as $index => $item) {
             $qty = max(1, (int) $item['quantity']);
             $unitPrice = moneyValue($item['price']);
             $lineSubtotal = moneyValue($unitPrice * $qty);
             $lineTotal = $requestTotals[$index] ?? (int) round($lineSubtotal);
+            $requirements = array_merge($fallbackRequirements, array_filter(
+                $item['service_requirements'] ?? [],
+                fn ($value): bool => trim((string) $value) !== ''
+            ));
+            $deadlineRaw = trim((string) ($requirements['deadline'] ?? ''));
+            $deadlineTimestamp = $deadlineRaw !== '' ? strtotime($deadlineRaw) : false;
+            $scheduledDate = $deadlineTimestamp ? date('Y-m-d H:i:s', $deadlineTimestamp) : date('Y-m-d H:i:s');
+            $noteParts = [];
+            if (!empty($requirements['brief'])) {
+                $noteParts[] = 'Brief: ' . $requirements['brief'];
+            }
+            if ($qty > 1) {
+                $noteParts[] = 'Requested quantity: ' . $qty;
+            }
             $customerInfo = json_encode([
                 'paymentMethod' => $paymentMethod,
                 'paymentStatus' => $paymentStatus,
                 'referenceNumber' => $paymentMethod === 'gcash' ? $reference : '',
-                'complexity' => $complexity,
+                'complexity' => $requirements['complexity'] ?: $requirements['package'],
+                'package' => $requirements['package'],
+                'businessType' => $requirements['businessType'],
+                'brief' => $requirements['brief'],
                 'quantity' => $qty,
                 'lineSubtotal' => $lineSubtotal,
                 'serviceFee' => $serviceFee,
@@ -882,7 +916,7 @@ if ($type === 'service' && $validatedBy === 'database') {
                 ':req_status' => 'PENDING',
                 ':total_price' => $lineTotal,
                 ':customer_info' => $customerInfo !== false ? $customerInfo : '{}',
-                ':note' => $qty > 1 ? ('Requested quantity: ' . $qty) : null,
+                ':note' => $noteParts ? implode("\n", $noteParts) : null,
                 ':receipt_name' => $recipientName,
                 ':address' => $address !== '' ? $address : null,
                 ':phone_num' => $phone,
@@ -896,6 +930,10 @@ if ($type === 'service' && $validatedBy === 'database') {
                 throw new RuntimeException('Unable to create service request.');
             }
             $createdIds[] = $requestId;
+            $createdRequests[] = [
+                'id' => $requestId,
+                'merchant_id' => (int) $item['merchant_id'],
+            ];
 
             $slotsStmt->execute([
                 ':decrement_quantity' => $qty,
@@ -912,11 +950,38 @@ if ($type === 'service' && $validatedBy === 'database') {
                     ensurePaymentRecord($db, null, $requestId, $allowedPaymentId, $lineTotal, $reference, $paymentProofUrl);
                 }
             }
+
+            insertOrderActivityLog(
+                $db,
+                'service_request',
+                $requestId,
+                'created',
+                null,
+                'Pending',
+                actorPayload($sessionUser),
+                activityItemsForServiceRequest($db, $requestId),
+                'Customer placed this service request. Merchant received it for review.'
+            );
         }
 
-        if ($createdIds) {
+        if ($createdRequests) {
             foreach ($vouchers as $voucher) {
-                recordVoucherUsage($db, $voucher, moneyValue($voucher['discountAmount'] ?? 0), null, (int) $createdIds[0]);
+                $voucherMerchantId = (int) ($voucher['merchantId'] ?? 0);
+                $matchingRequest = null;
+                foreach ($createdRequests as $createdRequest) {
+                    if ((int) $createdRequest['merchant_id'] === $voucherMerchantId) {
+                        $matchingRequest = $createdRequest;
+                        break;
+                    }
+                }
+
+                recordVoucherUsage(
+                    $db,
+                    $voucher,
+                    moneyValue($voucher['discountAmount'] ?? 0),
+                    null,
+                    (int) (($matchingRequest ?? $createdRequests[0])['id'])
+                );
             }
         }
 

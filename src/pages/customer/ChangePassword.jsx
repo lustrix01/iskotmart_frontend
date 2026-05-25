@@ -4,11 +4,17 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
-  Bell,
   ShieldCheck,
 } from "lucide-react";
 
 export default function ChangePassword() {
+  const [form, setForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPass, setShowPass] = useState({
     current: false,
     new: false,
@@ -20,17 +26,59 @@ export default function ChangePassword() {
     isOpen: false,
     title: "",
     message: "",
-    action: "",
   });
 
-  const handleAction = (title, message, action) => {
-    setModal({ isOpen: true, title, message, action });
+  const handleAction = (title, message) => {
+    setModal({ isOpen: true, title, message });
   };
 
   const closeModal = () => setModal({ ...modal, isOpen: false });
 
   const toggleVisibility = (field) => {
     setShowPass((prev) => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const updateField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setError("");
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    if (form.next !== form.confirm) {
+      setError("New password and confirmation do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/change_password.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword: form.current,
+          newPassword: form.next,
+          confirmPassword: form.confirm,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to update password.");
+      }
+
+      setForm({ current: "", next: "", confirm: "" });
+      handleAction(
+        "Success",
+        "Your password has been updated.",
+      );
+    } catch (submitError) {
+      setError(submitError.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -47,7 +95,7 @@ export default function ChangePassword() {
         {/* Left: Password Form */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10">
-            <form className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
               {/* Current Password */}
               <div className="space-y-2">
                 <label className="text-[11px] font-bold text-gray-500 tracking-wide ml-1">
@@ -56,7 +104,10 @@ export default function ChangePassword() {
                 <div className="relative">
                   <input
                     type={showPass.current ? "text" : "password"}
+                    value={form.current}
+                    onChange={(event) => updateField("current", event.target.value)}
                     placeholder="Enter current password"
+                    required
                     className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:border-[#003366] transition-all"
                   />
                   <button
@@ -81,7 +132,10 @@ export default function ChangePassword() {
                 <div className="relative">
                   <input
                     type={showPass.new ? "text" : "password"}
+                    value={form.next}
+                    onChange={(event) => updateField("next", event.target.value)}
                     placeholder="Enter new password"
+                    required
                     className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:border-[#003366] transition-all"
                   />
                   <button
@@ -102,7 +156,10 @@ export default function ChangePassword() {
                 <div className="relative">
                   <input
                     type={showPass.confirm ? "text" : "password"}
+                    value={form.confirm}
+                    onChange={(event) => updateField("confirm", event.target.value)}
                     placeholder="Repeat new password"
+                    required
                     className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:border-[#003366] transition-all"
                   />
                   <button
@@ -119,6 +176,12 @@ export default function ChangePassword() {
                 </div>
               </div>
 
+              {error && (
+                <p className="rounded-md border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold text-red-600">
+                  {error}
+                </p>
+              )}
+
               <div className="pt-6 border-t border-gray-50 flex justify-between items-center">
                 <button
                   type="button"
@@ -127,17 +190,11 @@ export default function ChangePassword() {
                   Forgot password?
                 </button>
                 <button
-                  type="button"
-                  onClick={() =>
-                    handleAction(
-                      "Success",
-                      "Your password has been updated.",
-                      "Encryption Check -> Update Auth Database -> Trigger Session Refresh",
-                    )
-                  }
-                  className="bg-[#FF851B] text-white px-10 py-3 rounded-lg font-bold text-sm hover:bg-[#E67616] shadow-lg shadow-orange-100 transition-all active:scale-95"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="bg-[#FF851B] text-white px-10 py-3 rounded-lg font-bold text-sm hover:bg-[#E67616] shadow-lg shadow-orange-100 transition-all active:scale-95 disabled:opacity-60"
                 >
-                  Update password
+                  {isSubmitting ? "Updating..." : "Update password"}
                 </button>
               </div>
             </form>
@@ -155,7 +212,7 @@ export default function ChangePassword() {
             </div>
             <ul className="space-y-4">
               {[
-                "Use at least 8 characters",
+                "Use at least 10 characters",
                 "Include a mix of letters and numbers",
                 "Add a special character (e.g., ! @ #)",
                 "Avoid using your name or birthdate",
@@ -200,17 +257,6 @@ export default function ChangePassword() {
                 <p className="text-gray-500 text-xs mb-8 leading-relaxed">
                   {modal.message}
                 </p>
-                <div className="bg-[#F8FAFC] rounded-xl p-4 mb-8 border border-gray-100 text-left">
-                  <div className="flex items-center gap-2 mb-1.5 opacity-40">
-                    <Bell size={10} className="text-[#003366]" />
-                    <span className="text-[9px] font-bold text-[#003366] tracking-widest uppercase">
-                      Action taken
-                    </span>
-                  </div>
-                  <p className="text-[11px] font-medium text-[#003366] leading-relaxed">
-                    {modal.action}
-                  </p>
-                </div>
                 <button
                   onClick={closeModal}
                   className="w-full bg-[#003366] text-white py-3.5 rounded-xl font-bold text-xs hover:bg-[#002244] transition-all shadow-md active:scale-95"

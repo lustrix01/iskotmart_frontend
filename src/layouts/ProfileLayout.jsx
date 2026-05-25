@@ -11,6 +11,8 @@ import {
   LogOut as LogOutIcon,
   AlertCircle,
   ArrowLeft, // Added the Arrow icon for the back button
+  Menu,
+  X,
 } from "lucide-react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/useAuth";
@@ -22,6 +24,7 @@ export default function ProfileLayout() {
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   const menuItems = [
     { name: "Profile information", path: "/profile", icon: User },
@@ -49,12 +52,39 @@ export default function ProfileLayout() {
       <Navbar />
 
       <div className="flex">
+        {isMobileNavOpen && (
+          <button
+            type="button"
+            aria-label="Close account menu overlay"
+            className="fixed inset-0 top-16 z-30 bg-[#003366]/40 backdrop-blur-sm lg:hidden"
+            onClick={() => setIsMobileNavOpen(false)}
+          />
+        )}
+
         {/* SIDEBAR */}
-        <aside className="w-64 bg-[#003366] text-white fixed h-[calc(100vh-64px)] top-16 left-0 z-40 flex flex-col justify-between border-r border-white/5 shadow-lg">
+        <aside
+          className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-64px)] w-64 transform flex-col justify-between border-r border-white/5 bg-[#003366] text-white shadow-lg transition-transform duration-200 lg:translate-x-0 ${
+            isMobileNavOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
           <div className="p-4">
+            <div className="mb-4 flex items-center justify-between lg:hidden">
+              <span className="text-xs font-bold uppercase tracking-widest text-white/60">
+                Account
+              </span>
+              <button
+                type="button"
+                aria-label="Close account menu"
+                onClick={() => setIsMobileNavOpen(false)}
+                className="rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
             {/* NEW: Back to Store Button */}
             <Link
               to="/"
+              onClick={() => setIsMobileNavOpen(false)}
               className="flex items-center gap-3 px-4 py-2.5 mb-6 rounded-md text-sm font-bold text-[#FF851B] bg-[#FF851B]/10 hover:bg-[#FF851B]/20 transition-all border border-[#FF851B]/20"
             >
               <ArrowLeft size={16} />
@@ -71,6 +101,7 @@ export default function ProfileLayout() {
                   <Link
                     key={item.path}
                     to={item.path}
+                    onClick={() => setIsMobileNavOpen(false)}
                     className={`flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-all group ${
                       isActive
                         ? "bg-white/10 text-white border-l-4 border-[#FF851B]"
@@ -103,7 +134,16 @@ export default function ProfileLayout() {
         </aside>
 
         {/* CONTENT AREA */}
-        <main className="flex-grow ml-64 pt-4 px-8 pb-10 mt-16">
+        <main className="mt-16 flex-grow px-4 pb-10 pt-4 sm:px-6 lg:ml-64 lg:px-8">
+          <button
+            type="button"
+            aria-label="Open account menu"
+            onClick={() => setIsMobileNavOpen(true)}
+            className="mb-4 inline-flex items-center gap-2 rounded-md border border-gray-100 bg-white px-3 py-2 text-xs font-bold text-[#003366] shadow-sm lg:hidden"
+          >
+            <Menu size={18} />
+            Account menu
+          </button>
           <Outlet />
         </main>
       </div>
@@ -136,17 +176,6 @@ export default function ProfileLayout() {
                   ? "Ending your session securely."
                   : "Are you sure you want to log out of IskoMart?"}
               </p>
-
-              {isLoggingOut && (
-                <div className="bg-[#F8FAFC] rounded-xl p-4 mb-8 border border-gray-100 text-left">
-                  <p className="text-[9px] font-bold tracking-widest uppercase opacity-40 mb-1">
-                    Action taken
-                  </p>
-                  <p className="text-[10px] font-medium text-[#003366]">
-                    Clearing Session - Invalidating Token - Redirecting to Login
-                  </p>
-                </div>
-              )}
 
               {!isLoggingOut && (
                 <div className="flex flex-col gap-3">

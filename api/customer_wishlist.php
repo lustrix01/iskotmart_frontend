@@ -16,23 +16,12 @@ function requireCustomerForWishlist(PDO $db): array {
 }
 
 function ensureWishlistTable(PDO $db): void {
-    $db->exec(
-        "CREATE TABLE IF NOT EXISTS CUSTOMER_WISHLIST (
-            WISHLIST_ID int(11) NOT NULL AUTO_INCREMENT,
-            CUSTOMER_ID int(11) NOT NULL,
-            OFFERING_ID int(11) NOT NULL,
-            ADDED_ON datetime(1) NOT NULL DEFAULT current_timestamp(1),
-            PRIMARY KEY (WISHLIST_ID),
-            UNIQUE KEY CUSTOMER_OFFERING_UNIQUE (CUSTOMER_ID, OFFERING_ID),
-            KEY CUSTOMER_WISHLIST_OFFERING_idx (OFFERING_ID),
-            CONSTRAINT FK_CUSTOMER_WISHLIST_CUSTOMER
-                FOREIGN KEY (CUSTOMER_ID) REFERENCES CUSTOMER (CUSTOMER_ID)
-                ON DELETE CASCADE ON UPDATE NO ACTION,
-            CONSTRAINT FK_CUSTOMER_WISHLIST_OFFERING
-                FOREIGN KEY (OFFERING_ID) REFERENCES OFFERING (OFFERING_ID)
-                ON DELETE CASCADE ON UPDATE NO ACTION
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci"
-    );
+    requireTableColumns($db, 'CUSTOMER_WISHLIST', [
+        'WISHLIST_ID',
+        'CUSTOMER_ID',
+        'OFFERING_ID',
+        'ADDED_ON',
+    ]);
 }
 
 function wishlistItems(PDO $db, int $customerId): array {
@@ -43,6 +32,7 @@ function wishlistItems(PDO $db, int $customerId): array {
                 COALESCE(pc.CAT_NAME, sc.CAT_NAME) AS category,
                 COALESCE(p.PRICE, s.PRICE) AS price,
                 p.STOCK_QTY AS stock,
+                s.SLOTS AS slots,
                 s.DELIVERY_METHOD AS rate,
                 o.MERCHANT_ID AS merchant_id,
                 COALESCE(m.SHOP_NAME, u.USERNAME, 'Merchant') AS merchant_name,
@@ -73,7 +63,7 @@ function wishlistItems(PDO $db, int $customerId): array {
          GROUP BY cw.WISHLIST_ID, cw.ADDED_ON, o.OFFERING_ID, o.OFFERING_TYPE,
                   o.OFFERING_NAME, o.OFFERING_DESC, p.PROD_DESC, s.SER_DESC,
                   pc.CAT_NAME, sc.CAT_NAME, p.PRICE, s.PRICE, p.STOCK_QTY,
-                  s.DELIVERY_METHOD, o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME
+                  s.SLOTS, s.DELIVERY_METHOD, o.MERCHANT_ID, m.SHOP_NAME, u.USERNAME
          ORDER BY cw.ADDED_ON DESC, cw.WISHLIST_ID DESC"
     );
     $stmt->execute([':customer_id' => $customerId]);
@@ -96,6 +86,7 @@ function wishlistItems(PDO $db, int $customerId): array {
             'category' => $row['category'] ?: 'Uncategorized',
             'price' => (float) $row['price'],
             'stock' => $row['stock'] !== null ? (int) $row['stock'] : null,
+            'slots' => $row['slots'] !== null ? (int) $row['slots'] : null,
             'rateType' => $row['rate'] ?: 'per project',
             'img' => $images[0]['url'] ?? '',
             'images' => $images,

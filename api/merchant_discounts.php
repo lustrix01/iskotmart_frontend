@@ -83,14 +83,7 @@ function ensureDiscountStatusColumn(PDO $db): void {
     }
 
     $checked = true;
-    try {
-        $stmt = $db->query("SHOW COLUMNS FROM DISCOUNT LIKE 'STATUS'");
-        if (!$stmt || !$stmt->fetch(PDO::FETCH_ASSOC)) {
-            $db->exec("ALTER TABLE DISCOUNT ADD STATUS varchar(45) NOT NULL DEFAULT 'ACTIVE'");
-        }
-    } catch (Throwable $e) {
-        logApiError($e);
-    }
+    requireTableColumns($db, 'DISCOUNT', ['STATUS']);
 }
 
 function syncVoucherStatuses(PDO $db, int $merchantId): void {

@@ -9,7 +9,10 @@
     "api": "C:\\xampp\\php\\php.exe -S 127.0.0.1:8000 -t .",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "powershell -ExecutionPolicy Bypass -File scripts/test-e2e.ps1",
+    "test:e2e:headed": "powershell -ExecutionPolicy Bypass -File scripts/test-e2e.ps1 --headed",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "axios": "^1.13.6",

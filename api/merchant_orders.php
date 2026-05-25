@@ -3,6 +3,7 @@
 require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/payment_helpers.php');
 require_once(__DIR__ . '/order_inventory_helpers.php');
+require_once(__DIR__ . '/order_activity_helpers.php');
 
 function requireMerchantForOrders(PDO $db): array {
     $user = currentUser($db);
@@ -28,6 +29,16 @@ function formatOrderDate(?string $value): string {
 
     $timestamp = strtotime($value);
     return $timestamp ? date('M j, Y', $timestamp) : $value;
+}
+
+function serviceRequirementsPayload(array $info, ?string $scheduledDate, ?string $note): array {
+    return [
+        'deadline' => formatOrderDate($scheduledDate),
+        'package' => trim((string) ($info['package'] ?? $info['complexity'] ?? '')),
+        'businessType' => trim((string) ($info['businessType'] ?? '')),
+        'brief' => trim((string) ($info['brief'] ?? '')),
+        'note' => trim((string) ($note ?? '')),
+    ];
 }
 
 function mapDbStatusToUi(string $status): string {
@@ -73,11 +84,16 @@ function productOrderRows(PDO $db, int $merchantId): array {
                  WHERE pay.ORDER_ID = ord.ORDER_ID
                  ORDER BY pay.PAYMENT_ID DESC
                  LIMIT 1) AS payment_method,
-                (SELECT pay.REF_NUM
-                 FROM PAYMENT pay
-                 WHERE pay.ORDER_ID = ord.ORDER_ID
-                 ORDER BY pay.PAYMENT_ID DESC
-                 LIMIT 1) AS payment_reference,
+	                (SELECT pay.REF_NUM
+	                 FROM PAYMENT pay
+	                 WHERE pay.ORDER_ID = ord.ORDER_ID
+	                 ORDER BY pay.PAYMENT_ID DESC
+	                 LIMIT 1) AS payment_reference,
+	                (SELECT pay.PROOF_URL
+	                 FROM PAYMENT pay
+	                 WHERE pay.ORDER_ID = ord.ORDER_ID
+	                 ORDER BY pay.PAYMENT_ID DESC
+	                 LIMIT 1) AS payment_proof_url,
                 u.FNAME, u.LNAME, u.EMAIL,
                 GROUP_CONCAT(
                     CONCAT(o.OFFERING_NAME, '||', oi.QUANTITY, '||', oi.PRICE)
@@ -103,8 +119,13 @@ function productOrderRows(PDO $db, int $merchantId): array {
 
 function serviceRequestRows(PDO $db, int $merchantId): array {
     $stmt = $db->prepare(
-        "SELECT sr.REQUEST_ID, sr.REQUEST_DATE, sr.REQ_STATUS, sr.TOTAL_PRICE, sr.PHONE_NUM, sr.ADDRESS,
-                sr.RECEIPT_NAME, sr.RECIPIENT_NAME, sr.CUSTOMER_INFO, u.EMAIL,
+        "SELECT sr.REQUEST_ID, sr.REQUEST_DATE, sr.SCHEDULED_DATE, sr.REQ_STATUS, sr.TOTAL_PRICE, sr.PHONE_NUM, sr.ADDRESS,
+		                sr.RECEIPT_NAME, sr.RECIPIENT_NAME, sr.CUSTOMER_INFO, sr.NOTE, u.EMAIL,
+	                (SELECT pay.PROOF_URL
+	                 FROM PAYMENT pay
+	                 WHERE pay.REQUEST_ID = sr.REQUEST_ID
+	                 ORDER BY pay.PAYMENT_ID DESC
+	                 LIMIT 1) AS payment_proof_url,
                 COALESCE(o.OFFERING_NAME, 'Service Request') AS service_name
          FROM SERVICE_REQUEST sr
          INNER JOIN SERVICE s ON s.SERVICE_ID = sr.SERVICE_ID
@@ -123,7 +144,7 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
         $customer = trim(($row['FNAME'] ?? '') . ' ' . ($row['LNAME'] ?? ''));
         $items = array_map(function (string $item): array {
             [$name, $qty, $price] = array_pad(explode('||', $item), 3, '');
-            return [
+	        return [
                 'name' => trim($name) !== '' ? trim($name) : 'Order item',
                 'qty' => max(1, (int) $qty),
                 'price' => moneyValue($price),
@@ -143,8 +164,9 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             'method' => $row['method'] ?: 'Meet-up',
             'paymentStatus' => paymentStatusLabel($paymentStatus),
             'paymentStatusCode' => $paymentStatus,
-            'paymentMethod' => $row['payment_method'] ?: ($paymentStatus === PAYMENT_STATUS_PENDING_REVIEW ? 'GCash' : 'COD / Cash'),
-            'paymentReference' => $row['payment_reference'] ?: '',
+	            'paymentMethod' => $row['payment_method'] ?: ($paymentStatus === PAYMENT_STATUS_PENDING_REVIEW ? 'GCash' : 'COD / Cash'),
+	            'paymentReference' => $row['payment_reference'] ?: '',
+	            'paymentProofUrl' => $row['payment_proof_url'] ?: '',
             'status' => mapDbStatusToUi((string) ($row['ORDER_STATUS'] ?? '')),
             'date' => formatOrderDate($row['ORDERED_ON'] ?? null),
             'phone' => $row['PHONE_NUM'] ?: '',
@@ -168,17 +190,23 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
             'sortDate' => (string) ($row['REQUEST_DATE'] ?? ''),
             'customer' => $customerName !== '' ? $customerName : 'Customer',
             'email' => $row['EMAIL'] ?: '',
-            'items' => [[
-                'name' => $row['service_name'] ?: 'Service Request',
-                'qty' => $quantity,
-                'price' => moneyValue($unitPrice),
-            ]],
-            'total' => $total,
+	            'items' => [[
+	                'name' => $row['service_name'] ?: 'Service Request',
+	                'qty' => $quantity,
+	                'price' => moneyValue($unitPrice),
+	            ]],
+	            'serviceRequirements' => serviceRequirementsPayload(
+	                $info,
+	                $row['SCHEDULED_DATE'] ?? null,
+	                $row['NOTE'] ?? null
+	            ),
+	            'total' => $total,
             'method' => 'Service booking',
             'paymentStatus' => paymentStatusLabel($paymentStatus),
             'paymentStatusCode' => $paymentStatus,
-            'paymentMethod' => $paymentMethod === 'gcash' ? 'GCash' : 'COD / Cash',
-            'paymentReference' => (string) ($info['referenceNumber'] ?? ''),
+	            'paymentMethod' => $paymentMethod === 'gcash' ? 'GCash' : 'COD / Cash',
+	            'paymentReference' => (string) ($info['referenceNumber'] ?? ''),
+	            'paymentProofUrl' => $row['payment_proof_url'] ?: '',
             'status' => mapDbStatusToUi((string) ($row['REQ_STATUS'] ?? '')),
             'date' => formatOrderDate($row['REQUEST_DATE'] ?? null),
             'phone' => $row['PHONE_NUM'] ?: '',
@@ -193,8 +221,9 @@ function merchantOrderPayloads(PDO $db, int $merchantId): array {
         return $bTime <=> $aTime;
     });
 
-    return array_map(function (array $order): array {
+    return array_map(function (array $order) use ($db): array {
         unset($order['sortDate']);
+        $order['activityLog'] = activityRowsForSource($db, (string) $order['source'], (int) $order['rawId']);
         return $order;
     }, $orders);
 }
@@ -282,12 +311,187 @@ function productOrderCurrentStatus(PDO $db, int $merchantId, int $orderId): ?str
     return $status !== false ? strtoupper((string) $status) : null;
 }
 
+function reserveProductOrderInventory(PDO $db, int $orderId): void {
+    $stmt = $db->prepare(
+        "SELECT PRODUCT_ID, QUANTITY
+         FROM ORDER_ITEM
+         WHERE ORDER_ID = :order_id"
+    );
+    $stmt->execute([':order_id' => $orderId]);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $stockStmt = $db->prepare(
+        "UPDATE PRODUCT
+         SET STOCK_QTY = STOCK_QTY - :quantity
+         WHERE PROD_ID = :product_id AND STOCK_QTY >= :quantity"
+    );
+    foreach ($items as $item) {
+        $stockStmt->execute([
+            ':quantity' => max(1, (int) ($item['QUANTITY'] ?? 1)),
+            ':product_id' => (int) ($item['PRODUCT_ID'] ?? 0),
+        ]);
+        if ($stockStmt->rowCount() === 0) {
+            throw new RuntimeException('Insufficient stock to undo cancellation.');
+        }
+    }
+}
+
+function reserveServiceRequestSlots(PDO $db, int $requestId, int $quantity): void {
+    $stmt = $db->prepare(
+        "UPDATE SERVICE s
+         INNER JOIN SERVICE_REQUEST sr ON sr.SERVICE_ID = s.SERVICE_ID
+         SET s.SLOTS = s.SLOTS - :quantity
+         WHERE sr.REQUEST_ID = :request_id AND s.SLOTS >= :quantity"
+    );
+    $stmt->execute([
+        ':quantity' => max(1, $quantity),
+        ':request_id' => $requestId,
+    ]);
+    if ($stmt->rowCount() === 0) {
+        throw new RuntimeException('Insufficient service slots to undo cancellation.');
+    }
+}
+
+function applyProductOrderStatus(PDO $db, int $orderId, string $dbStatus): void {
+    $stmt = $db->prepare(
+        "UPDATE ORDERS
+         SET ORDER_STATUS = :status,
+             DELIVERY_STATUS = :delivery_status,
+             RECEIVED_ON = CASE WHEN :completed = 1 THEN NOW(1) ELSE RECEIVED_ON END
+         WHERE ORDER_ID = :order_id"
+    );
+    $stmt->execute([
+        ':status' => $dbStatus,
+        ':delivery_status' => $dbStatus === 'SHIPPED' ? 'IN_TRANSIT' : $dbStatus,
+        ':completed' => $dbStatus === 'COMPLETED' ? 1 : 0,
+        ':order_id' => $orderId,
+    ]);
+}
+
+function applyServiceRequestStatus(PDO $db, int $requestId, string $dbStatus): void {
+    $stmt = $db->prepare(
+        "UPDATE SERVICE_REQUEST
+         SET REQ_STATUS = :status
+         WHERE REQUEST_ID = :request_id"
+    );
+    $stmt->execute([
+        ':status' => $dbStatus,
+        ':request_id' => $requestId,
+    ]);
+}
+
+function undoMerchantOrderAction(PDO $db, int $merchantId, array $sessionUser, string $source, int $rawId, int $logId): void {
+    if ($logId <= 0) {
+        jsonResponse(['error' => 'Invalid undo request.'], 422);
+    }
+
+    $source = normalizeActivitySource($source);
+    if ($source === 'service_request') {
+        if (!merchantOwnsServiceRequest($db, $merchantId, $rawId)) {
+            jsonResponse(['error' => 'Service request not found for this merchant.'], 404);
+        }
+    } elseif (!merchantOwnsProductOrder($db, $merchantId, $rawId)) {
+        jsonResponse(['error' => 'Order not found for this merchant.'], 404);
+    }
+
+    $latest = latestActivityRow($db, $source, $rawId);
+    if (!$latest || (int) $latest['id'] !== $logId) {
+        jsonResponse(['error' => 'Only the latest order activity can be undone.'], 409);
+    }
+    if (($latest['actorRole'] ?? '') !== 'merchant' || !in_array((string) $latest['eventType'], ['status_changed', 'payment_confirmed'], true)) {
+        jsonResponse(['error' => 'This order activity cannot be undone.'], 409);
+    }
+
+    $db->beginTransaction();
+    try {
+        $items = activityItemsForSource($db, $source, $rawId);
+        if ($latest['eventType'] === 'status_changed') {
+            $targetStatus = mapUiStatusToDb((string) $latest['oldValue']);
+            if ($targetStatus === '') {
+                throw new RuntimeException('Invalid undo status target.');
+            }
+
+            if ($source === 'service_request') {
+                $request = serviceRequestPaymentStatus($db, $merchantId, $rawId);
+                $currentStatus = strtoupper((string) ($request['REQ_STATUS'] ?? ''));
+                if ($targetStatus === 'COMPLETED' && (!$request || servicePaymentStatus((string) ($request['CUSTOMER_INFO'] ?? '')) !== PAYMENT_STATUS_PAID)) {
+                    jsonResponse(['error' => 'Payment must be marked paid before completion.'], 409);
+                }
+                if ($currentStatus === 'CANCELLED' && $targetStatus !== 'CANCELLED') {
+                    reserveServiceRequestSlots($db, $rawId, serviceQuantityFromInfo((string) ($request['CUSTOMER_INFO'] ?? '')));
+                }
+                if ($currentStatus !== 'CANCELLED' && $targetStatus === 'CANCELLED') {
+                    restoreServiceRequestSlots($db, $rawId, serviceQuantityFromInfo((string) ($request['CUSTOMER_INFO'] ?? '')));
+                }
+                applyServiceRequestStatus($db, $rawId, $targetStatus);
+            } else {
+                $order = productOrderPaymentStatus($db, $merchantId, $rawId);
+                $currentStatus = productOrderCurrentStatus($db, $merchantId, $rawId);
+                if ($targetStatus === 'COMPLETED' && (!$order || canonicalPaymentStatus($order['PAYMENT_STATUS'] ?? null) !== PAYMENT_STATUS_PAID)) {
+                    jsonResponse(['error' => 'Payment must be marked paid before completion.'], 409);
+                }
+                if ($currentStatus === 'CANCELLED' && $targetStatus !== 'CANCELLED') {
+                    reserveProductOrderInventory($db, $rawId);
+                }
+                if ($currentStatus !== 'CANCELLED' && $targetStatus === 'CANCELLED') {
+                    restoreProductOrderInventory($db, $rawId);
+                }
+                applyProductOrderStatus($db, $rawId, $targetStatus);
+            }
+        } else {
+            $targetPayment = trim((string) $latest['oldValue']);
+            if ($targetPayment === '') {
+                throw new RuntimeException('Invalid undo payment target.');
+            }
+
+            if ($source === 'service_request') {
+                $request = serviceRequestPaymentStatus($db, $merchantId, $rawId);
+                if (!$request) {
+                    jsonResponse(['error' => 'Service request not found for this merchant.'], 404);
+                }
+                updateServicePaymentInfo($db, $rawId, $targetPayment, servicePaymentMethod((string) ($request['CUSTOMER_INFO'] ?? '')) ?: 'cod');
+            } else {
+                $stmt = $db->prepare(
+                    "UPDATE ORDERS
+                     SET PAYMENT_STATUS = :payment_status
+                     WHERE ORDER_ID = :order_id"
+                );
+                $stmt->execute([
+                    ':payment_status' => $targetPayment,
+                    ':order_id' => $rawId,
+                ]);
+            }
+        }
+
+        insertOrderActivityLog(
+            $db,
+            $source,
+            $rawId,
+            'undo',
+            (string) $latest['newValue'],
+            (string) $latest['oldValue'],
+            actorPayload($sessionUser),
+            $items,
+            'Merchant undid: ' . (string) $latest['summary'],
+            $logId
+        );
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $e;
+    }
+}
+
 $sessionUser = requireMerchantForOrders($db);
 $merchantId = (int) $sessionUser['id'];
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
 if ($method === 'GET') {
     try {
+        ensurePaymentProofColumn($db);
+        ensureOrderActivityLogTable($db);
         jsonResponse(['orders' => merchantOrderPayloads($db, $merchantId)]);
     } catch (Throwable $e) {
         logApiError($e);
@@ -310,16 +514,40 @@ if ($rawId <= 0) {
     jsonResponse(['error' => 'Invalid order status update.'], 422);
 }
 
+try {
+    ensureOrderActivityLogTable($db);
+} catch (Throwable $e) {
+    logApiError($e);
+    jsonResponse(['error' => 'Unable to prepare order activity log.'], 500);
+}
+
+if ($action === 'undo') {
+    try {
+        undoMerchantOrderAction($db, $merchantId, $sessionUser, $source, $rawId, (int) ($data['logId'] ?? 0));
+        jsonResponse([
+            'ok' => true,
+            'orders' => merchantOrderPayloads($db, $merchantId),
+        ]);
+    } catch (Throwable $e) {
+        logApiError($e);
+        jsonResponse(['error' => 'Unable to undo this order action.'], 500);
+    }
+}
+
 if ($action === 'mark_paid') {
     try {
+        $items = activityItemsForSource($db, $source, $rawId);
+        $oldPaymentStatus = '';
         if ($source === 'service_request') {
             $request = serviceRequestPaymentStatus($db, $merchantId, $rawId);
             if (!$request) {
                 jsonResponse(['error' => 'Service request not found for this merchant.'], 404);
             }
 
+            $oldPaymentStatus = servicePaymentStatus((string) ($request['CUSTOMER_INFO'] ?? ''));
             $method = servicePaymentMethod((string) ($request['CUSTOMER_INFO'] ?? '')) ?: 'cod';
             $allowedPaymentId = resolveAllowedPaymentId($db, $merchantId, (int) $request['SERVICE_ID'], $method);
+            $db->beginTransaction();
             updateServicePaymentInfo($db, $rawId, PAYMENT_STATUS_PAID, $method);
             if ($allowedPaymentId !== null) {
                 ensurePaymentRecord(
@@ -337,7 +565,9 @@ if ($action === 'mark_paid') {
                 jsonResponse(['error' => 'Order not found for this merchant.'], 404);
             }
 
+            $oldPaymentStatus = canonicalPaymentStatus($order['PAYMENT_STATUS'] ?? null);
             $primaryOfferingId = orderPrimaryOffering($db, $rawId, $merchantId);
+            $db->beginTransaction();
             if ($primaryOfferingId !== null) {
                 $allowedPaymentId = resolveAllowedPaymentId($db, $merchantId, $primaryOfferingId, 'cod');
                 if ($allowedPaymentId !== null) {
@@ -355,12 +585,27 @@ if ($action === 'mark_paid') {
                 ':order_id' => $rawId,
             ]);
         }
+        insertOrderActivityLog(
+            $db,
+            $source,
+            $rawId,
+            'payment_confirmed',
+            $oldPaymentStatus,
+            PAYMENT_STATUS_PAID,
+            actorPayload($sessionUser),
+            $items,
+            'Merchant confirmed payment.'
+        );
+        $db->commit();
 
         jsonResponse([
             'ok' => true,
             'orders' => merchantOrderPayloads($db, $merchantId),
         ]);
     } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
         logApiError($e);
         jsonResponse(['error' => 'Unable to mark payment as paid.'], 500);
     }
@@ -376,6 +621,7 @@ if ($dbStatus === '') {
 }
 
 try {
+    $items = activityItemsForSource($db, $source, $rawId);
     if ($source === 'service_request') {
         if (!merchantOwnsServiceRequest($db, $merchantId, $rawId)) {
             jsonResponse(['error' => 'Service request not found for this merchant.'], 404);
@@ -390,18 +636,21 @@ try {
         }
 
         $db->beginTransaction();
-        $stmt = $db->prepare(
-            "UPDATE SERVICE_REQUEST
-             SET REQ_STATUS = :status
-             WHERE REQUEST_ID = :request_id"
-        );
-        $stmt->execute([
-            ':status' => $dbStatus,
-            ':request_id' => $rawId,
-        ]);
+        applyServiceRequestStatus($db, $rawId, $dbStatus);
         if ($dbStatus === 'CANCELLED') {
             restoreServiceRequestSlots($db, $rawId, serviceQuantityFromInfo((string) ($request['CUSTOMER_INFO'] ?? '')));
         }
+        insertOrderActivityLog(
+            $db,
+            $source,
+            $rawId,
+            'status_changed',
+            mapDbStatusToUi($currentStatus),
+            $status,
+            actorPayload($sessionUser),
+            $items,
+            'Merchant changed order status from ' . mapDbStatusToUi($currentStatus) . ' to ' . $status . '.'
+        );
         $db->commit();
     } else {
         if (!merchantOwnsProductOrder($db, $merchantId, $rawId)) {
@@ -417,22 +666,21 @@ try {
         }
 
         $db->beginTransaction();
-        $stmt = $db->prepare(
-            "UPDATE ORDERS
-             SET ORDER_STATUS = :status,
-                 DELIVERY_STATUS = :delivery_status,
-                 RECEIVED_ON = CASE WHEN :completed = 1 THEN NOW(1) ELSE RECEIVED_ON END
-             WHERE ORDER_ID = :order_id"
-        );
-        $stmt->execute([
-            ':status' => $dbStatus,
-            ':delivery_status' => $dbStatus === 'SHIPPED' ? 'IN_TRANSIT' : $dbStatus,
-            ':completed' => $dbStatus === 'COMPLETED' ? 1 : 0,
-            ':order_id' => $rawId,
-        ]);
+        applyProductOrderStatus($db, $rawId, $dbStatus);
         if ($dbStatus === 'CANCELLED') {
             restoreProductOrderInventory($db, $rawId);
         }
+        insertOrderActivityLog(
+            $db,
+            $source,
+            $rawId,
+            'status_changed',
+            mapDbStatusToUi((string) $currentStatus),
+            $status,
+            actorPayload($sessionUser),
+            $items,
+            'Merchant changed order status from ' . mapDbStatusToUi((string) $currentStatus) . ' to ' . $status . '.'
+        );
         $db->commit();
     }
 

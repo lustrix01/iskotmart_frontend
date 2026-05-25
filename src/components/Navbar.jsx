@@ -4,6 +4,8 @@ import { Search, Heart, ShoppingCart, User, Mail } from "lucide-react";
 import { useAuth } from "../context/useAuth";
 import { useCart } from "../context/useCart";
 
+const FALLBACK_AVATAR = "/placeholders/avatar.svg";
+
 const formatBadgeCount = (count) => {
   const value = Number(count || 0);
   return value > 99 ? "99+" : String(value);
@@ -25,6 +27,11 @@ export default function Navbar() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [profileSummary, setProfileSummary] = useState({
+    userId: null,
+    name: "",
+    avatarUrl: "",
+  });
   const role = user?.role || "guest";
 
   const navByRole = {
@@ -65,6 +72,11 @@ export default function Navbar() {
   );
   const visibleUnreadMessages =
     user && ["customer", "merchant"].includes(role) ? unreadMessages : 0;
+  const activeProfileSummary = profileSummary.userId === user?.id ? profileSummary : null;
+  const profileLabel = user
+    ? activeProfileSummary?.name || user.name || "My Profile"
+    : "Sign in";
+  const profileAvatarUrl = activeProfileSummary?.avatarUrl || user?.avatarUrl || "";
 
   const guestLink = (path) =>
     user ? { to: path } : { to: "/login", state: { from: { pathname: path } } };
@@ -94,6 +106,49 @@ export default function Navbar() {
     loadCounts();
     return () => {
       isMounted = false;
+    };
+  }, [role, user]);
+
+  useEffect(() => {
+    if (!user || role !== "customer") {
+      return undefined;
+    }
+
+    let isMounted = true;
+    const loadProfileSummary = async () => {
+      try {
+        const response = await fetch("/api/profile.php", {
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !isMounted || !payload.profile) {
+          return;
+        }
+        setProfileSummary({
+          userId: user.id,
+          name: payload.profile.displayName || payload.profile.name || user.name || "My Profile",
+          avatarUrl: payload.profile.avatarUrl || "",
+        });
+      } catch {
+        // Keep the session payload if the profile endpoint is unavailable.
+      }
+    };
+
+    const handleProfileUpdate = (event) => {
+      const profile = event.detail || {};
+      setProfileSummary((current) => ({
+        userId: user.id,
+        name: profile.displayName || profile.name || current.name,
+        avatarUrl: profile.avatarUrl || current.avatarUrl,
+      }));
+    };
+
+    loadProfileSummary();
+    window.addEventListener("iskomart:customer-profile-updated", handleProfileUpdate);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("iskomart:customer-profile-updated", handleProfileUpdate);
     };
   }, [role, user]);
 
@@ -180,11 +235,22 @@ export default function Navbar() {
             state={user ? undefined : { from: location }}
             className="flex items-center gap-2 hover:text-[#FF851B] transition-colors ml-2 border-l border-white/20 pl-4"
           >
-            <div className="border border-white/40 rounded-full p-1.5">
-              <User size={16} />
-            </div>
+            {user && profileAvatarUrl ? (
+              <img
+                src={profileAvatarUrl}
+                alt={`${profileLabel} profile`}
+                className="h-8 w-8 rounded-full border border-white/40 bg-white/10 object-cover"
+                onError={(event) => {
+                  event.currentTarget.src = FALLBACK_AVATAR;
+                }}
+              />
+            ) : (
+              <div className="border border-white/40 rounded-full p-1.5">
+                <User size={16} />
+              </div>
+            )}
             <span className="text-sm font-semibold tracking-normal">
-              {user ? "My Profile" : "Sign in"}
+              {user ? "My Profile" : profileLabel}
             </span>
           </Link>
         </div>
