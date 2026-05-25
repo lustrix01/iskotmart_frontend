@@ -295,7 +295,20 @@ function verifiedImageDataUrlPayload(string $dataUrl, array $allowedMimeTypes, s
 
 function requireFields(array $data, array $fields): void {
     foreach ($fields as $field) {
-        if (!isset($data[$field]) || trim((string) $data[$field]) === '') {
+        if (!array_key_exists($field, $data)) {
+            jsonResponse(['error' => "Missing required field: {$field}"], 422);
+        }
+
+        $value = $data[$field];
+        if ($value === null) {
+            jsonResponse(['error' => "Missing required field: {$field}"], 422);
+        }
+
+        if (is_string($value) && trim($value) === '') {
+            jsonResponse(['error' => "Missing required field: {$field}"], 422);
+        }
+
+        if (is_array($value) && count($value) === 0) {
             jsonResponse(['error' => "Missing required field: {$field}"], 422);
         }
     }
