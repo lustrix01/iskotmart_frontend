@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   CheckCircle2,
@@ -35,6 +35,7 @@ export default function ProductDetails() {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
+  const notificationTimer = useRef(null);
   const [reviewSummary, setReviewSummary] = useState({
     average: null,
     count: 0,
@@ -89,6 +90,14 @@ export default function ProductDetails() {
   useEffect(() => {
     setQuantity((current) => Math.min(Math.max(1, current), maxQty));
   }, [maxQty]);
+
+  useEffect(() => {
+    return () => {
+      if (notificationTimer.current) {
+        window.clearTimeout(notificationTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -157,8 +166,11 @@ export default function ProductDetails() {
   }, [item, user]);
 
   const showToast = (message) => {
+    if (notificationTimer.current) {
+      window.clearTimeout(notificationTimer.current);
+    }
     setNotification(message);
-    window.setTimeout(() => setNotification(""), 2500);
+    notificationTimer.current = window.setTimeout(() => setNotification(""), 2500);
   };
 
   const goToLogin = () => {
@@ -197,7 +209,7 @@ export default function ProductDetails() {
       },
       quantity,
     );
-    showToast(`${quantity} ${isServiceRoute ? "booking" : "item"}${quantity > 1 ? "s" : ""} added.`);
+    showToast(isServiceRoute ? "Listing added to bookings." : "Listing added to cart.");
   };
 
   const handleBuyNow = () => {
@@ -352,7 +364,11 @@ export default function ProductDetails() {
   return (
     <div className="max-w-[1100px] mx-auto p-6 space-y-5">
       {notification ? (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-[#003366] text-white px-5 py-2 rounded-md text-xs font-bold">
+        <div
+          role="status"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-[#003366] text-white px-5 py-2 rounded-md text-xs font-bold shadow-lg"
+        >
+          <CheckCircle2 size={15} className="text-[#FF851B]" />
           {notification}
         </div>
       ) : null}

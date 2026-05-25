@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  CheckCircle2,
   ChevronRight,
   Clock,
   Heart,
@@ -40,11 +41,23 @@ export default function Wishlist() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const noticeTimer = useRef(null);
 
   const showNotice = (message) => {
+    if (noticeTimer.current) {
+      window.clearTimeout(noticeTimer.current);
+    }
     setNotice(message);
-    window.setTimeout(() => setNotice(""), 2500);
+    noticeTimer.current = window.setTimeout(() => setNotice(""), 2500);
   };
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimer.current) {
+        window.clearTimeout(noticeTimer.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -129,13 +142,17 @@ export default function Wishlist() {
       },
       1,
     );
-    showNotice(item.type === "service" ? "Added to bookings." : "Added to cart.");
+    showNotice(item.type === "service" ? "Listing added to bookings." : "Listing added to cart.");
   };
 
   return (
     <div className="max-w-5xl mx-auto animate-in fade-in duration-500">
       {notice ? (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-[#003366] text-white px-5 py-2 rounded-md text-xs font-bold">
+        <div
+          role="status"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-[#003366] text-white px-5 py-2 rounded-md text-xs font-bold shadow-lg"
+        >
+          <CheckCircle2 size={15} className="text-[#FF851B]" />
           {notice}
         </div>
       ) : null}
