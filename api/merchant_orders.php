@@ -311,29 +311,29 @@ function productOrderCurrentStatus(PDO $db, int $merchantId, int $orderId): ?str
     return $status !== false ? strtoupper((string) $status) : null;
 }
 
-function productOrderRequiresShippingDetails(PDO $db, int $merchantId, int $orderId): bool {
-    $stmt = $db->prepare(
-        "SELECT ord.DELIVERY_STATUS, COALESCE(dm.DM_NAME, 'Meet-up') AS method
-         FROM ORDERS ord
-         INNER JOIN ORDER_ITEM oi ON oi.ORDER_ID = ord.ORDER_ID
-         INNER JOIN PRODUCT p ON p.PROD_ID = oi.PRODUCT_ID
-         LEFT JOIN DELIVERY_METHOD dm ON dm.DM_ID = ord.DM_ID
-         WHERE ord.ORDER_ID = :order_id AND p.MERCHANT_ID = :merchant_id
-         LIMIT 1"
-    );
-    $stmt->execute([
-        ':order_id' => $orderId,
-        ':merchant_id' => $merchantId,
-    ]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$row) {
-        return false;
-    }
+// function productOrderRequiresShippingDetails(PDO $db, int $merchantId, int $orderId): bool {
+//     $stmt = $db->prepare(
+//         "SELECT ord.DELIVERY_STATUS, COALESCE(dm.DM_NAME, 'Meet-up') AS method
+//          FROM ORDERS ord
+//          INNER JOIN ORDER_ITEM oi ON oi.ORDER_ID = ord.ORDER_ID
+//          INNER JOIN PRODUCT p ON p.PROD_ID = oi.PRODUCT_ID
+//          LEFT JOIN DELIVERY_METHOD dm ON dm.DM_ID = ord.DM_ID
+//          WHERE ord.ORDER_ID = :order_id AND p.MERCHANT_ID = :merchant_id
+//          LIMIT 1"
+//     );
+//     $stmt->execute([
+//         ':order_id' => $orderId,
+//         ':merchant_id' => $merchantId,
+//     ]);
+//     $row = $stmt->fetch(PDO::FETCH_ASSOC);
+//     if (!$row) {
+//         return false;
+//     }
 
-    $deliveryStatus = strtoupper(trim((string) ($row['DELIVERY_STATUS'] ?? '')));
-    $method = strtolower(trim((string) ($row['method'] ?? '')));
-    return $deliveryStatus === 'TO_SHIP' || ($method !== '' && $method !== 'meet-up');
-}
+//     $deliveryStatus = strtoupper(trim((string) ($row['DELIVERY_STATUS'] ?? '')));
+//     $method = strtolower(trim((string) ($row['method'] ?? '')));
+//     return $deliveryStatus === 'TO_SHIP' || ($method !== '' && $method !== 'meet-up');
+// }
 
 function reserveProductOrderInventory(PDO $db, int $orderId): void {
     $stmt = $db->prepare(
@@ -691,11 +691,12 @@ try {
             jsonResponse(['error' => 'Order can no longer be cancelled.'], 409);
         }
 
-        if ($dbStatus === 'SHIPPED' && productOrderRequiresShippingDetails($db, $merchantId, $rawId)) {
-            if ($shippingService === '' || $shippingReference === '') {
-                jsonResponse(['error' => 'Shipping service and reference code are required before marking this order as shipped.'], 422);
-            }
-        }
+        
+        // if ($dbStatus === 'SHIPPED' && productOrderRequiresShippingDetails($db, $merchantId, $rawId)) {
+        //     if ($shippingService === '' || $shippingReference === '') {
+        //         jsonResponse(['error' => 'Shipping service and reference code are required before marking this order as shipped.'], 422);
+        //     }
+        // }
 
         $db->beginTransaction();
         applyProductOrderStatus($db, $rawId, $dbStatus);
