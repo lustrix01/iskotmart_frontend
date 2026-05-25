@@ -58,8 +58,13 @@ export default function LoginPage() {
 
       // server may require 2FA
       if (payload.requires2fa) {
-        // keep creds temporarily for resend
-        setPending2fa({ email, password, rememberMe });
+        // keep creds temporarily for resend and preserve the requested redirect path
+        setPending2fa({
+          email,
+          password,
+          rememberMe,
+          redirectTo: requestedPath || "/",
+        });
         setIsSubmitting(false);
         return;
       }
@@ -234,6 +239,7 @@ export default function LoginPage() {
           email={pending2fa.email}
           password={pending2fa.password}
           rememberMe={pending2fa.rememberMe}
+          redirectTo={pending2fa.redirectTo}
           onClose={() => setPending2fa(null)}
         />
       )}

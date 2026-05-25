@@ -28,6 +28,7 @@ function sendEmail($toEmail, $toName, $subject, $htmlBody, $altBody = '') {
         $mail->Password = $password;
         $mail->SMTPSecure = $smtpSecure;
         $mail->Port = (int)$smtpPort;
+        $mail->CharSet = 'UTF-8';
 
         $mail->setFrom($username, getenv('MAILER_FROM_NAME') ?: 'Iskomart');
         $mail->addAddress($toEmail, $toName);

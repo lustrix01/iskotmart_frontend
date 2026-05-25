@@ -26,6 +26,8 @@ export default function MerchantOrders() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [confirmAction, setConfirmAction] = useState(null);
+  const [shippingService, setShippingService] = useState("");
+  const [shippingReference, setShippingReference] = useState("");
   const [actionNotice, setActionNotice] = useState(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
@@ -133,7 +135,7 @@ export default function MerchantOrders() {
     return null;
   };
 
-  const updateStatus = async (id, newStatus) => {
+  const updateStatus = async (id, newStatus, shipping = {}) => {
     const order = orders.find((item) => item.id === id);
     if (!order) {
       return;
@@ -148,6 +150,8 @@ export default function MerchantOrders() {
           source: order.source,
           rawId: order.rawId,
           status: newStatus,
+          shippingService: shipping.service,
+          shippingReference: shipping.reference,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -242,6 +246,8 @@ export default function MerchantOrders() {
   };
 
   const openStatusConfirmation = (order, newStatus) => {
+    setShippingService("");
+    setShippingReference("");
     setConfirmAction({
       type: "status",
       orderId: order.id,

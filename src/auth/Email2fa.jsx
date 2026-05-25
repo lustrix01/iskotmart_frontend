@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/useAuth";
 import { rememberClientSession, clearRememberedClientSession } from "../api/clientSession";
 
-export default function Email2fa({ email, password, rememberMe, onClose }) {
+export default function Email2fa({ email, password, rememberMe, redirectTo = "/", onClose }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,7 +37,8 @@ export default function Email2fa({ email, password, rememberMe, onClose }) {
       setSuccessMessage("Code verified — signing you in...");
       login(json.user);
       if (rememberMe) rememberClientSession(); else clearRememberedClientSession();
-      setTimeout(() => navigate("/", { replace: true }), 700);
+      onClose?.();
+      setTimeout(() => navigate(redirectTo, { replace: true }), 700);
     } catch (e) {
       setError(e.message);
     } finally {
