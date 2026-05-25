@@ -218,6 +218,36 @@ function ensurePasswordResetTable(PDO $db): void {
     ]);
 }
 
+function ensureEmail2faTable(PDO $db): void {
+    $db->exec(
+        "CREATE TABLE IF NOT EXISTS `EMAIL_2FA` (
+            `ID` int(11) NOT NULL AUTO_INCREMENT,
+            `USER_ID` int(11) NOT NULL,
+            `CODE_HASH` varchar(255) NOT NULL,
+            `EXPIRES_AT` datetime NOT NULL,
+            `ATTEMPTS` int(11) NOT NULL DEFAULT 0,
+            `USED` tinyint(1) NOT NULL DEFAULT 0,
+            `CREATED_AT` datetime NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (`ID`),
+            KEY `EMAIL_2FA_USER_IDX` (`USER_ID`),
+            KEY `EMAIL_2FA_EXPIRES_IDX` (`EXPIRES_AT`),
+            CONSTRAINT `FK_EMAIL_2FA_USER`
+                FOREIGN KEY (`USER_ID`) REFERENCES `USERS` (`USER_ID`)
+                ON DELETE CASCADE ON UPDATE NO ACTION
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci"
+    );
+
+    requireTableColumns($db, 'EMAIL_2FA', [
+        'ID',
+        'USER_ID',
+        'CODE_HASH',
+        'EXPIRES_AT',
+        'ATTEMPTS',
+        'USED',
+        'CREATED_AT',
+    ]);
+}
+
 function normalizeImageMimeType(string $mime): string {
     $normalized = strtolower(trim($mime));
     return $normalized === 'image/jpg' ? 'image/jpeg' : $normalized;
