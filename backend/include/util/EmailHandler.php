@@ -10,7 +10,6 @@ function sendEmail($toEmail, $toName, $subject, $htmlBody, $altBody = '') {
     $mail = new PHPMailer(true);
 
     try {
-        // Read credentials from environment variables. Prefer MAILER_EMAIL_EMAIL and MAILER_EMAIL_PASS.
         $smtpHost = getenv('MAILER_SMTP_HOST') ?: 'smtp.gmail.com';
         $smtpPort = getenv('MAILER_SMTP_PORT') ?: 587;
         $smtpSecure = getenv('MAILER_SMTP_SECURE') ?: 'tls';

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import PasswordConfirmModal from "../../components/PasswordConfirmModal";
 import {
   Shield,
   Save,
@@ -36,9 +37,34 @@ export default function Preferences() {
     }
   });
 
+  const [email2faEnabled, setEmail2faEnabled] = useState(false);
+  const [loading2fa, setLoading2fa] = useState(true);
+  const [showPwdModal, setShowPwdModal] = useState(false);
+  const [pendingEnable, setPendingEnable] = useState(false);
+
   useEffect(() => {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
   }, [prefs]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchSettings() {
+      try {
+        const res = await fetch('/api/get_user_settings.php');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (mounted && json.settings) {
+          setEmail2faEnabled(Boolean(json.settings.email2fa));
+        }
+      } catch (e) {
+        // ignore
+      } finally {
+        if (mounted) setLoading2fa(false);
+      }
+    }
+    fetchSettings();
+    return () => (mounted = false);
+  }, []);
 
   const togglePref = (key) => {
     setPrefs({ ...prefs, [key]: !prefs[key] });
@@ -71,6 +97,42 @@ export default function Preferences() {
               active={prefs.publicProfile}
               onToggle={() => togglePref("publicProfile")}
             />
+            <div className="pt-3">
+              <PreferenceItem
+                title="Two-step verification (email)"
+                desc="Require a one-time code sent to your email when signing in"
+                active={email2faEnabled}
+                onToggle={async () => {
+                  const target = !email2faEnabled;
+                  if (target) {
+                    setPendingEnable(true);
+                    setShowPwdModal(true);
+                    return;
+                  }
+
+                  // disabling immediately
+                  setLoading2fa(true);
+                  try {
+                    const res = await fetch('/api/update_2fa.php', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ enable: false }),
+                    });
+                    const json = await res.json();
+                    if (res.ok && json.settings) {
+                      setEmail2faEnabled(Boolean(json.settings.email2fa));
+                    } else {
+                      alert(json.error || 'Unable to update setting');
+                    }
+                  } catch (e) {
+                    alert('Unable to update setting');
+                  } finally {
+                    setLoading2fa(false);
+                  }
+                }}
+              />
+              {loading2fa && <p className="text-xs text-gray-400 mt-2">Loading...</p>}
+            </div>
             <div className="flex flex-col gap-2">
               <label className="text-[11px] font-bold text-gray-500 tracking-wide ml-1">
                 Preferred campus branch
@@ -138,6 +200,32 @@ export default function Preferences() {
           </div>
         </div>
       )}
+      <PasswordConfirmModal
+        isOpen={showPwdModal}
+        onCancel={() => { setShowPwdModal(false); setPendingEnable(false); }}
+        onConfirm={async (pwd) => {
+          setShowPwdModal(false);
+          setLoading2fa(true);
+          try {
+            const res = await fetch('/api/update_2fa.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enable: true, password: pwd }),
+            });
+            const json = await res.json();
+            if (res.ok && json.settings) {
+              setEmail2faEnabled(Boolean(json.settings.email2fa));
+            } else {
+              alert(json.error || 'Unable to update setting');
+            }
+          } catch (e) {
+            alert('Unable to update setting');
+          } finally {
+            setLoading2fa(false);
+            setPendingEnable(false);
+          }
+        }}
+      />
     </div>
   );
 }

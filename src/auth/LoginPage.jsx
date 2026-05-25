@@ -5,6 +5,7 @@ import {
   clearRememberedClientSession,
   rememberClientSession,
 } from "../api/clientSession";
+import Email2fa from "./Email2fa";
 import logo from "../assets/logo.png";
 import { Eye, EyeOff } from "lucide-react";
 
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
+  const [pending2fa, setPending2fa] = useState(null);
 
   const from = location.state?.from;
   const requestedPath =
@@ -52,6 +54,14 @@ export default function LoginPage() {
       }
       if (!response.ok) {
         throw new Error(payload.error || "Unable to sign in.");
+      }
+
+      // server may require 2FA
+      if (payload.requires2fa) {
+        // keep creds temporarily for resend
+        setPending2fa({ email, password, rememberMe });
+        setIsSubmitting(false);
+        return;
       }
 
       login(payload.user);
@@ -219,6 +229,14 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+      {pending2fa && (
+        <Email2fa
+          email={pending2fa.email}
+          password={pending2fa.password}
+          rememberMe={pending2fa.rememberMe}
+          onClose={() => setPending2fa(null)}
+        />
+      )}
     </div>
   );
 }

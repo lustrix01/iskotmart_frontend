@@ -63,9 +63,46 @@ if ($requires2fa) {
         // load mailer helper (initialize.php sets INC_PATH)
         require_once(INC_PATH . 'util/EmailHandler.php');
         $name = trim($user['FNAME'] . ' ' . $user['LNAME']);
-        $html = "<p>Your login code is <strong>{$otp}</strong>. It expires in " . ((int)(getenv('EMAIL_2FA_EXPIRE_SECONDS') ?: 300) / 60) . " minutes.</p>";
-        sendEmail($user['EMAIL'], $name, 'Your login code', $html, "Your login code is: {$otp}");
+        $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE);
+        $expireMinutes = (int) ( (int) (getenv('EMAIL_2FA_EXPIRE_SECONDS') ?: 300) / 60 );
+        $baseUrl = rtrim((string) (getenv('APP_URL') ?: requestOriginFromServer()), '/');
+        $logoUrl = trim((string) (getenv('MAILER_LOGO_URL') ?: ''), ' "');
+
+        $html = '';
+        $html .= '<span style="display:none;max-height:0px;overflow:hidden;">Your IskoMart two-step verification code</span>';
+        $html .= '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="font-family:Segoe UI,Roboto,Arial,sans-serif;background:#f4f6f8;padding:24px;">';
+        $html .= '<tr><td align="center">';
+        $html .= '<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff;border-radius:12px;overflow:hidden;">';
+        $html .= '<tr><td style="padding:24px;text-align:center;background:linear-gradient(90deg,#003366,#0074D9);color:#fff">';
+        if ($logoUrl !== '') {
+            $html .= '<img src="' . htmlspecialchars($logoUrl, ENT_QUOTES | ENT_SUBSTITUTE) . '" alt="IskoMart" width="120" style="display:block;margin:0 auto 8px;">';
+        }
+        $html .= '<h1 style="margin:0;font-size:20px;font-weight:700;">Two-step verification</h1>';
+        $html .= '</td></tr>';
+
+        $html .= '<tr><td style="padding:28px;">';
+        $html .= '<p style="margin:0 0 12px;color:#333;font-size:14px;">Hello, <strong>' . $safeName . '!</strong> use the code below to sign in to IskoMart. This code expires in <strong>' . $expireMinutes . ' minutes</strong>.</p>';
+
+        $html .= '<div style="margin:18px 0;padding:18px;background:#f7fafc;border:1px dashed #e6eef9;border-radius:8px;text-align:center;">';
+        $html .= '<div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:28px;letter-spacing:4px;color:#003366;font-weight:700;">' . $otp . '</div>';
+        $html .= '</div>';
+
+        $html .= '<p style="margin:0 0 8px;color:#666;font-size:13px;">If you didn\'t request this, ignore this email or <a href="mailto:' . htmlspecialchars((string)(getenv('SUPPORT_EMAIL') ?: 'support@localhost'), ENT_QUOTES | ENT_SUBSTITUTE) . '">contact support</a>.</p>';
+
+        $loginUrl = $baseUrl ?: '';
+        if ($loginUrl !== '') {
+            $html .= '<p style="margin:20px 0 0;text-align:center;"><a href="' . htmlspecialchars($loginUrl, ENT_QUOTES | ENT_SUBSTITUTE) . '" style="display:inline-block;padding:10px 20px;background:#FF851B;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Return to IskoMart</a></p>';
+        }
+
+        $html .= '</td></tr>';
+        $html .= '<tr><td style="padding:14px 18px;background:#fafafa;color:#9aa8bc;font-size:12px;text-align:center;">IskoMart · support@localhost</td></tr>';
+        $html .= '</table></td></tr></table>';
+
+        $alt = "Your IskoMart code: {$otp} -- expires in {$expireMinutes} minutes. If you didn't request this, ignore this email.";
+
+        $sent = sendEmail($user['EMAIL'], $name, 'Your IskoMart two-step verification code', $html, $alt);
     } catch (Throwable $e) {
+        $sent = false;
         error_log('[2FA] failed to send email: ' . $e->getMessage());
     }
 
@@ -77,7 +114,11 @@ if ($requires2fa) {
         'issued_at' => time(),
     ];
 
-    jsonResponse(['requires2fa' => true]);
+    $resp = ['requires2fa' => true];
+    if (strtolower((string) getenv('APP_ENV')) === 'local') {
+        $resp['emailSent'] = !empty($sent);
+    }
+    jsonResponse($resp);
 }
 
 $authUser = userPayloadFromRow($user);
