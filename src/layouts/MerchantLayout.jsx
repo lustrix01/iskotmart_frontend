@@ -113,7 +113,7 @@ export default function MerchantLayout() {
         }`}
       >
         <div>
-          <div className="h-16 flex items-center justify-between border-b border-white/10 bg-[#002244] px-5">
+          <div className="h-16 flex items-center justify-center border-b border-white/10 bg-[#002244] px-5 relative">
             <Link to="/merchant" className="text-2xl font-bold tracking-tight">
               <span className="text-[#0074D9]">Isko</span>
               <span className="text-[#FF851B]">Mart</span>
@@ -122,7 +122,7 @@ export default function MerchantLayout() {
               type="button"
               aria-label="Close merchant menu"
               onClick={() => setIsMobileNavOpen(false)}
-              className="rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
+              className="absolute right-5 rounded-md p-2 text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
             >
               <X size={18} />
             </button>

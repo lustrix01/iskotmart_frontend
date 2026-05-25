@@ -202,21 +202,21 @@ export default function CustomerSignup() {
                     <input
                       type="radio"
                       name="gender"
-                      value="Other"
-                      onChange={(e) => setGender(e.target.value)}
-                      className="text-[#FF851B] focus:ring-[#FF851B]"
-                    />{" "}
-                    Other
-                  </label>
-                  <label className="flex items-center gap-1 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="gender"
                       value="Female"
                       onChange={(e) => setGender(e.target.value)}
                       className="text-[#FF851B] focus:ring-[#FF851B]"
                     />{" "}
                     Female
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="gender"
+                      value="Other"
+                      onChange={(e) => setGender(e.target.value)}
+                      className="text-[#FF851B] focus:ring-[#FF851B]"
+                    />{" "}
+                    Other
                   </label>
                   <label className="flex items-center gap-1 cursor-pointer">
                     <input
