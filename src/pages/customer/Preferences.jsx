@@ -1,41 +1,44 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Bell,
   Shield,
-  Globe,
-  Monitor,
   Save,
   AlertCircle,
-  Eye,
-  EyeOff,
-  Smartphone,
-  Mail,
-  Moon,
-  Sun,
 } from "lucide-react";
+
+const PREFERENCES_KEY = "iskotmart_customer_preferences";
 
 export default function Preferences() {
   const [modal, setModal] = useState({
     isOpen: false,
     title: "",
     message: "",
-    action: "",
   });
 
-  const handleAction = (title, message, action) => {
-    setModal({ isOpen: true, title, message, action });
+  const handleAction = (title, message) => {
+    setModal({ isOpen: true, title, message });
   };
 
   const closeModal = () => setModal({ ...modal, isOpen: false });
 
-  // Mock State for Toggles
-  const [prefs, setPrefs] = useState({
-    emailNotif: true,
-    smsNotif: false,
-    pushNotif: true,
-    publicProfile: true,
-    darkMode: false,
+  // Local state mirrors currently supported preferences only.
+  const [prefs, setPrefs] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}");
+      return {
+        publicProfile: saved.publicProfile ?? true,
+        campusBranch: saved.campusBranch || "BU Main Campus",
+      };
+    } catch {
+      return {
+        publicProfile: true,
+        campusBranch: "BU Main Campus",
+      };
+    }
   });
+
+  useEffect(() => {
+    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
+  }, [prefs]);
 
   const togglePref = (key) => {
     setPrefs({ ...prefs, [key]: !prefs[key] });
@@ -48,42 +51,12 @@ export default function Preferences() {
           Account preferences
         </h1>
         <p className="text-xs text-gray-400 mt-1">
-          Customize your IskoMart experience and privacy settings
+          Manage privacy settings available in the current release
         </p>
       </div>
 
       <div className="space-y-4">
-        {/* Section 1: Notifications */}
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3 bg-gray-50/20">
-            <Bell size={18} className="text-[#003366]" />
-            <h2 className="text-sm font-bold text-[#003366]">
-              Notification settings
-            </h2>
-          </div>
-          <div className="p-6 space-y-6">
-            <PreferenceItem
-              title="Email notifications"
-              desc="Receive order updates and receipts via your registered email"
-              active={prefs.emailNotif}
-              onToggle={() => togglePref("emailNotif")}
-            />
-            <PreferenceItem
-              title="Sms alerts"
-              desc="Get important account security alerts via text message"
-              active={prefs.smsNotif}
-              onToggle={() => togglePref("smsNotif")}
-            />
-            <PreferenceItem
-              title="Push notifications"
-              desc="Stay updated on price drops and chat messages on your browser"
-              active={prefs.pushNotif}
-              onToggle={() => togglePref("pushNotif")}
-            />
-          </div>
-        </div>
-
-        {/* Section 2: Privacy & Security */}
+        {/* Section: Privacy & Security */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3 bg-gray-50/20">
             <Shield size={18} className="text-[#003366]" />
@@ -102,7 +75,13 @@ export default function Preferences() {
               <label className="text-[11px] font-bold text-gray-500 tracking-wide ml-1">
                 Preferred campus branch
               </label>
-              <select className="w-full max-w-xs px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#003366] transition-all">
+              <select
+                value={prefs.campusBranch}
+                onChange={(event) =>
+                  setPrefs({ ...prefs, campusBranch: event.target.value })
+                }
+                className="w-full max-w-xs px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:outline-none focus:border-[#003366] transition-all"
+              >
                 <option>BU Main Campus</option>
                 <option>BU East Campus</option>
                 <option>BU Daraga Campus</option>
@@ -112,32 +91,13 @@ export default function Preferences() {
           </div>
         </div>
 
-        {/* Section 3: Display Settings */}
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center gap-3 bg-gray-50/20">
-            <Monitor size={18} className="text-[#003366]" />
-            <h2 className="text-sm font-bold text-[#003366]">
-              Display preferences
-            </h2>
-          </div>
-          <div className="p-6">
-            <PreferenceItem
-              title="Dark mode"
-              desc="Switch to a darker theme to reduce eye strain (Beta)"
-              active={prefs.darkMode}
-              onToggle={() => togglePref("darkMode")}
-            />
-          </div>
-        </div>
-
         {/* Save Button Area */}
         <div className="pt-4 flex justify-end">
           <button
             onClick={() =>
               handleAction(
                 "Preferences Saved",
-                "Your settings have been updated.",
-                "Updating user_preferences table -> Syncing metadata with session_cache",
+                "Your settings have been saved on this device.",
               )
             }
             className="flex items-center gap-2 bg-[#FF851B] text-white px-8 py-3 rounded-xl font-bold text-xs shadow-lg hover:bg-[#E67616] transition-all active:scale-95"
@@ -166,17 +126,6 @@ export default function Preferences() {
               <p className="text-gray-400 text-[11px] mb-6 leading-relaxed">
                 {modal.message}
               </p>
-
-              <div className="bg-[#F8FAFC] rounded-xl p-4 mb-6 border border-gray-100 text-left">
-                <div className="flex items-center gap-2 mb-1.5 opacity-40 text-[#003366]">
-                  <span className="text-[9px] font-bold tracking-widest uppercase">
-                    Action taken
-                  </span>
-                </div>
-                <p className="text-[10px] font-medium text-[#003366] leading-relaxed">
-                  {modal.action}
-                </p>
-              </div>
 
               <button
                 onClick={closeModal}

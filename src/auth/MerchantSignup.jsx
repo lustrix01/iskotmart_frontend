@@ -1,8 +1,140 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
+import { clearRememberedClientSession } from "../api/clientSession";
 import logo from "../assets/logo.png";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
+
+const BICOL_LOCATIONS = {
+  Albay: [
+    "Bacacay",
+    "Camalig",
+    "Daraga",
+    "Guinobatan",
+    "Jovellar",
+    "Legazpi City",
+    "Libon",
+    "Ligao City",
+    "Malilipot",
+    "Malinao",
+    "Manito",
+    "Oas",
+    "Pio Duran",
+    "Polangui",
+    "Rapu-Rapu",
+    "Santo Domingo",
+    "Tabaco City",
+    "Tiwi",
+  ],
+  "Camarines Norte": [
+    "Basud",
+    "Capalonga",
+    "Daet",
+    "Jose Panganiban",
+    "Labo",
+    "Mercedes",
+    "Paracale",
+    "San Lorenzo Ruiz",
+    "San Vicente",
+    "Santa Elena",
+    "Talisay",
+    "Vinzons",
+  ],
+  "Camarines Sur": [
+    "Baao",
+    "Balatan",
+    "Bato",
+    "Bombon",
+    "Buhi",
+    "Bula",
+    "Cabusao",
+    "Calabanga",
+    "Camaligan",
+    "Canaman",
+    "Caramoan",
+    "Del Gallego",
+    "Gainza",
+    "Garchitorena",
+    "Goa",
+    "Iriga City",
+    "Lagonoy",
+    "Libmanan",
+    "Lupi",
+    "Magarao",
+    "Milaor",
+    "Minalabac",
+    "Nabua",
+    "Naga City",
+    "Ocampo",
+    "Pamplona",
+    "Pasacao",
+    "Pili",
+    "Presentacion",
+    "Ragay",
+    "Sagnay",
+    "San Fernando",
+    "San Jose",
+    "Sipocot",
+    "Siruma",
+    "Tigaon",
+    "Tinambac",
+  ],
+  Catanduanes: [
+    "Bagamanoc",
+    "Baras",
+    "Bato",
+    "Caramoran",
+    "Gigmoto",
+    "Pandan",
+    "Panganiban",
+    "San Andres",
+    "San Miguel",
+    "Viga",
+    "Virac",
+  ],
+  Masbate: [
+    "Aroroy",
+    "Baleno",
+    "Balud",
+    "Batuan",
+    "Cataingan",
+    "Cawayan",
+    "Claveria",
+    "Dimasalang",
+    "Esperanza",
+    "Mandaon",
+    "Masbate City",
+    "Milagros",
+    "Mobo",
+    "Monreal",
+    "Palanas",
+    "Pio V. Corpuz",
+    "Placer",
+    "San Fernando",
+    "San Jacinto",
+    "San Pascual",
+    "Uson",
+  ],
+  Sorsogon: [
+    "Barcelona",
+    "Bulan",
+    "Bulusan",
+    "Casiguran",
+    "Castilla",
+    "Donsol",
+    "Gubat",
+    "Irosin",
+    "Juban",
+    "Magallanes",
+    "Matnog",
+    "Pilar",
+    "Prieto Diaz",
+    "Santa Magdalena",
+    "Sorsogon City",
+  ],
+};
+
+const PROVINCES = Object.keys(BICOL_LOCATIONS);
 
 export default function MerchantSignup() {
   const navigate = useNavigate();
@@ -13,6 +145,13 @@ export default function MerchantSignup() {
 
   // State for inline error validation
   const [emailError, setEmailError] = useState("");
+  const [submitError, setSubmitError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [legalModal, setLegalModal] = useState(null);
+  const [showPassword, setShowPassword] = useState({
+    password: false,
+    confirm: false,
+  });
 
   // Centralized form data state
   const [formData, setFormData] = useState({
@@ -34,33 +173,36 @@ export default function MerchantSignup() {
     dobDay: "",
     dobMonth: "",
     dobYear: "",
-    idFile: null, // Holds the uploaded file object
     password: "",
     confirmPassword: "",
-    // Step 3: Payment Options
-    payments: { gcash: false, paymaya: false, paypal: false, stripe: false },
     agreeTerms: false,
   });
+
+  const passwordPolicyMessage =
+    "Use at least 10 characters with uppercase, lowercase, number, and special character.";
+
+  const validateStrongPassword = (value) => {
+    if (value.length < 10) return false;
+    if (!/[A-Z]/.test(value)) return false;
+    if (!/[a-z]/.test(value)) return false;
+    if (!/\d/.test(value)) return false;
+    if (!/[^A-Za-z0-9]/.test(value)) return false;
+    return true;
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
+      ...(name === "bizProvince" ? { bizCity: "" } : {}),
+      ...(name === "postalProvince" ? { postalCity: "" } : {}),
     }));
 
     // Clear email error automatically when user starts typing again
     if (name === "studentEmail") {
       setEmailError("");
     }
-  };
-
-  const handlePaymentChange = (e) => {
-    const { name, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      payments: { ...prev.payments, [name]: checked },
-    }));
   };
 
   const nextStep = (e) => {
@@ -70,6 +212,10 @@ export default function MerchantSignup() {
       // 1. Password Match Validation
       if (formData.password !== formData.confirmPassword) {
         alert("Passwords don't match!");
+        return;
+      }
+      if (!validateStrongPassword(formData.password)) {
+        alert(passwordPolicyMessage);
         return;
       }
 
@@ -83,12 +229,6 @@ export default function MerchantSignup() {
         );
         return;
       }
-
-      // 3. Manual File Upload Validation (Fixes the silent block error)
-      if (!formData.idFile) {
-        alert("Please upload your COR or valid Student ID to continue.");
-        return;
-      }
     }
 
     // Move to next step if all validations pass
@@ -99,21 +239,74 @@ export default function MerchantSignup() {
     setStep((prev) => prev - 1);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!formData.agreeTerms) {
       alert("Please agree to the Terms and Conditions.");
       return;
     }
-    // Submit final data
-    console.log("Merchant Data Submitted:", formData);
-    login({
-      id: Date.now(),
-      name: formData.businessName,
-      role: "merchant",
-      email: formData.studentEmail,
-    });
-    navigate("/");
+
+    setIsSubmitting(true);
+    try {
+      const address = [
+        formData.bizCity,
+        formData.bizProvince,
+        formData.sameAsBiz
+          ? null
+          : [formData.postalCity, formData.postalProvince]
+              .filter(Boolean)
+              .join(", "),
+      ]
+        .filter(Boolean)
+        .join(" / ");
+
+      const response = await fetch("/api/signup.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          role: "merchant",
+          businessName: formData.businessName,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          username: formData.username,
+          gender: formData.gender,
+          email: formData.studentEmail,
+          phone: `+63${formData.phone}`,
+          studentNumber: formData.studentNumber,
+          dob: `${formData.dobYear}-${formData.dobMonth.padStart(2, "0")}-${formData.dobDay.padStart(2, "0")}`,
+          address,
+          password: formData.password,
+        }),
+      });
+
+      const raw = await response.text();
+      let payload = {};
+      try {
+        payload = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          "Signup API returned a non-JSON response. Check Vite proxy/PHP server.",
+        );
+      }
+      if (!response.ok) {
+        const details = Array.isArray(payload.details) ? payload.details : [];
+        throw new Error(
+          [payload.error || "Unable to create merchant account.", ...details]
+            .filter(Boolean)
+            .join("\n"),
+        );
+      }
+
+      login(payload.user);
+      clearRememberedClientSession();
+      navigate("/merchant", { replace: true });
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -262,7 +455,7 @@ export default function MerchantSignup() {
                 <span className="w-4 h-4 flex items-center justify-center border border-white rounded-full">
                   3
                 </span>
-                <span>Payment Options</span>
+                <span>Confirmation</span>
               </div>
             </div>
 
@@ -293,28 +486,23 @@ export default function MerchantSignup() {
                       Business Address
                     </label>
                     <div className="grid grid-cols-2 gap-2 mb-2">
-                      <select
+                      <LocationSelect
                         name="bizProvince"
                         value={formData.bizProvince}
                         onChange={handleChange}
+                        options={PROVINCES}
+                        placeholder="Province"
                         required
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                      >
-                        <option value="">Province</option>
-                        <option value="Albay">Albay</option>
-                        <option value="CamSur">Camarines Sur</option>
-                      </select>
-                      <select
+                      />
+                      <LocationSelect
                         name="bizCity"
                         value={formData.bizCity}
                         onChange={handleChange}
+                        options={BICOL_LOCATIONS[formData.bizProvince] || []}
+                        placeholder="Municipality/City"
+                        disabled={!formData.bizProvince}
                         required
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                      >
-                        <option value="">Municipality/City</option>
-                        <option value="Legazpi">Legazpi</option>
-                        <option value="Naga">Naga</option>
-                      </select>
+                      />
                     </div>
                   </div>
 
@@ -334,26 +522,25 @@ export default function MerchantSignup() {
                     </label>
                     {!formData.sameAsBiz && (
                       <div className="grid grid-cols-2 gap-2">
-                        <select
+                        <LocationSelect
                           name="postalProvince"
                           value={formData.postalProvince}
                           onChange={handleChange}
+                          options={PROVINCES}
+                          placeholder="Province"
                           required={!formData.sameAsBiz}
-                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                        >
-                          <option value="">Province</option>
-                          <option value="Albay">Albay</option>
-                        </select>
-                        <select
+                        />
+                        <LocationSelect
                           name="postalCity"
                           value={formData.postalCity}
                           onChange={handleChange}
+                          options={
+                            BICOL_LOCATIONS[formData.postalProvince] || []
+                          }
+                          placeholder="Municipality/City"
+                          disabled={!formData.postalProvince}
                           required={!formData.sameAsBiz}
-                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600"
-                        >
-                          <option value="">Municipality/City</option>
-                          <option value="Legazpi">Legazpi</option>
-                        </select>
+                        />
                       </div>
                     )}
                   </div>
@@ -383,7 +570,7 @@ export default function MerchantSignup() {
                       to="/signup"
                       className="flex-1 flex justify-center items-center text-gray-500 font-bold py-2.5 px-4 rounded-xl hover:bg-gray-100 transition-all"
                     >
-                      CANCEL
+                      RETURN
                     </Link>
                   </div>
                 </div>
@@ -541,90 +728,41 @@ export default function MerchantSignup() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
-                        Date of birth
-                      </label>
-                      <div className="grid grid-cols-3 gap-1">
-                        <input
-                          type="text"
-                          name="dobDay"
-                          value={formData.dobDay}
-                          onChange={handleChange}
-                          placeholder="DD"
-                          maxLength="2"
-                          required
-                          className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                        />
-                        <input
-                          type="text"
-                          name="dobMonth"
-                          value={formData.dobMonth}
-                          onChange={handleChange}
-                          placeholder="MM"
-                          maxLength="2"
-                          required
-                          className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                        />
-                        <input
-                          type="text"
-                          name="dobYear"
-                          value={formData.dobYear}
-                          onChange={handleChange}
-                          placeholder="YYYY"
-                          maxLength="4"
-                          required
-                          className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
-                        Upload ID{" "}
-                        <span className="font-normal text-gray-400">
-                          (COR/ID)
-                        </span>
-                      </label>
-                      {/* FIX applied here: removed 'required' from hidden input to allow submission */}
-                      <label
-                        className={`w-full flex justify-center items-center gap-2 px-2 py-1.5 bg-white border rounded-lg cursor-pointer transition-colors text-sm font-bold ${formData.idFile ? "border-green-500 text-green-600 bg-green-50 hover:bg-green-100" : "border-[#1EA1F2] text-[#1EA1F2] hover:bg-blue-50"}`}
-                      >
-                        {formData.idFile ? (
-                          <span className="flex items-center gap-1 text-[11px] truncate max-w-[100px]">
-                            <CheckCircle2 size={14} /> {formData.idFile.name}
-                          </span>
-                        ) : (
-                          <>
-                            UPLOAD{" "}
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                              stroke="currentColor"
-                              className="w-4 h-4"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-                              />
-                            </svg>
-                          </>
-                        )}
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/*,.pdf"
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              idFile: e.target.files[0],
-                            })
-                          }
-                        />
-                      </label>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
+                      Date of birth
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        name="dobDay"
+                        value={formData.dobDay}
+                        onChange={handleChange}
+                        placeholder="DD"
+                        maxLength="2"
+                        required
+                        className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                      />
+                      <input
+                        type="text"
+                        name="dobMonth"
+                        value={formData.dobMonth}
+                        onChange={handleChange}
+                        placeholder="MM"
+                        maxLength="2"
+                        required
+                        className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                      />
+                      <input
+                        type="text"
+                        name="dobYear"
+                        value={formData.dobYear}
+                        onChange={handleChange}
+                        placeholder="YYYY"
+                        maxLength="4"
+                        required
+                        className="w-full px-1 py-1.5 text-center bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                      />
                     </div>
                   </div>
 
@@ -633,27 +771,76 @@ export default function MerchantSignup() {
                       <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
                         Password
                       </label>
-                      <input
-                        type="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword.password ? "text" : "password"}
+                          name="password"
+                          value={formData.password}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-2.5 py-1.5 pr-9 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                        />
+                        <button
+                          type="button"
+                          aria-label={
+                            showPassword.password
+                              ? "Hide password"
+                              : "Show password"
+                          }
+                          onClick={() =>
+                            setShowPassword((current) => ({
+                              ...current,
+                              password: !current.password,
+                            }))
+                          }
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                        >
+                          {showPassword.password ? (
+                            <EyeOff size={15} />
+                          ) : (
+                            <Eye size={15} />
+                          )}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[10px] text-gray-400">
+                        {passwordPolicyMessage}
+                      </p>
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
                         Confirm Password
                       </label>
-                      <input
-                        type="password"
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword.confirm ? "text" : "password"}
+                          name="confirmPassword"
+                          value={formData.confirmPassword}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-2.5 py-1.5 pr-9 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm"
+                        />
+                        <button
+                          type="button"
+                          aria-label={
+                            showPassword.confirm
+                              ? "Hide confirm password"
+                              : "Show confirm password"
+                          }
+                          onClick={() =>
+                            setShowPassword((current) => ({
+                              ...current,
+                              confirm: !current.confirm,
+                            }))
+                          }
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                        >
+                          {showPassword.confirm ? (
+                            <EyeOff size={15} />
+                          ) : (
+                            <Eye size={15} />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -685,51 +872,28 @@ export default function MerchantSignup() {
               {/* ================= STEP 3 ================= */}
               {step === 3 && (
                 <div className="space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      Allowed Payments
-                    </label>
-                    <div className="space-y-3 pl-2">
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="gcash"
-                          checked={formData.payments.gcash}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        GCash
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="paymaya"
-                          checked={formData.payments.paymaya}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        PayMaya
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="paypal"
-                          checked={formData.payments.paypal}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        PayPal
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 font-medium hover:text-[#FF851B] transition-colors">
-                        <input
-                          type="checkbox"
-                          name="stripe"
-                          checked={formData.payments.stripe}
-                          onChange={handlePaymentChange}
-                          className="w-4 h-4 text-[#FF851B] focus:ring-[#FF851B] rounded border-gray-300"
-                        />{" "}
-                        Stripe
-                      </label>
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-5">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2
+                        size={22}
+                        className="text-[#FF851B] shrink-0 mt-0.5"
+                      />
+                      <div>
+                        <h3 className="text-sm font-bold text-[#003366]">
+                          Payment methods are preset
+                        </h3>
+                        <p className="mt-1 text-xs text-gray-600 leading-relaxed">
+                          IskoMart currently accepts only{" "}
+                          <span className="font-bold text-gray-800">GCash</span>{" "}
+                          and{" "}
+                          <span className="font-bold text-gray-800">
+                            Cash on Delivery / Meetup
+                          </span>
+                          . These are enabled automatically for merchant
+                          accounts, so no payment selection is needed during
+                          signup.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -745,19 +909,21 @@ export default function MerchantSignup() {
                       />
                       <span>
                         I agree to the{" "}
-                        <a
-                          href="#"
+                        <button
+                          type="button"
+                          onClick={() => setLegalModal("terms")}
                           className="text-[#0074D9] font-bold hover:underline"
                         >
                           Terms and Conditions
-                        </a>{" "}
+                        </button>{" "}
                         and{" "}
-                        <a
-                          href="#"
+                        <button
+                          type="button"
+                          onClick={() => setLegalModal("privacy")}
                           className="text-[#0074D9] font-bold hover:underline"
                         >
                           Privacy Policy
-                        </a>
+                        </button>
                       </span>
                     </label>
                   </div>
@@ -765,24 +931,87 @@ export default function MerchantSignup() {
                   <div className="flex gap-3 pt-2">
                     <button
                       type="submit"
-                      className="flex-[2] bg-[#FF851B] text-white font-bold py-3 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] transition-all"
+                      disabled={isSubmitting}
+                      className="flex-[2] bg-[#FF851B] text-white font-bold py-3 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] transition-all disabled:opacity-70 disabled:hover:translate-y-0"
                     >
-                      CREATE ACCOUNT
+                      {isSubmitting ? "CREATING..." : "CREATE ACCOUNT"}
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate("/signup")}
+                      onClick={prevStep}
                       className="flex-1 flex justify-center items-center text-gray-500 font-bold py-3 px-4 rounded-xl hover:bg-gray-100 transition-all"
                     >
-                      CANCEL
+                      RETURN
                     </button>
                   </div>
+                  {submitError && (
+                    <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+                      {submitError.split("\n").map((line, index) => (
+                        <p key={`${line}-${index}`}>{line}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </form>
           </div>
-        </div>
-      </div>
-    </div>
+	        </div>
+	      </div>
+	      {legalModal && (
+	        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+	          <button
+	            type="button"
+	            aria-label="Close legal details"
+	            className="absolute inset-0 bg-[#001a33]/60 backdrop-blur-sm"
+	            onClick={() => setLegalModal(null)}
+	          />
+	          <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 text-left text-black shadow-2xl">
+	            <h3 className="text-lg font-bold text-[#003366]">
+	              {legalModal === "terms" ? "Terms and Conditions" : "Privacy Policy"}
+	            </h3>
+	            <p className="mt-3 text-sm leading-6 text-gray-600">
+	              {legalModal === "terms"
+	                ? "Merchant accounts must use accurate registration details, follow campus marketplace policies, and keep order, payment, and customer communication records truthful."
+	                : "IskoMart stores account, shop, order, and contact details needed to operate the marketplace. Information is used for account access, transactions, fulfillment, and support."}
+	            </p>
+	            <button
+	              type="button"
+	              onClick={() => setLegalModal(null)}
+	              className="mt-6 w-full rounded-xl bg-[#003366] py-3 text-xs font-bold text-white hover:bg-[#002244]"
+	            >
+	              Close
+	            </button>
+	          </div>
+	        </div>
+	      )}
+	    </div>
+	  );
+	}
+
+function LocationSelect({
+  name,
+  value,
+  onChange,
+  options,
+  placeholder,
+  required = false,
+  disabled = false,
+}) {
+  return (
+    <select
+      name={name}
+      value={value}
+      onChange={onChange}
+      required={required}
+      disabled={disabled}
+      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1EA1F2] outline-none text-sm text-gray-600 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
   );
 }

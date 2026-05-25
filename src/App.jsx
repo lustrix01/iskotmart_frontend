@@ -1,164 +1,150 @@
-import React from "react";
+import { createElement, lazy, Suspense } from "react";
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
+  Outlet,
+  useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { CartProvider } from "./context/CartContext";
+import { useAuth } from "./context/useAuth";
 
 // Layouts
-import CustomerLayout from "./layouts/CustomerLayout";
-import ProfileLayout from "./layouts/ProfileLayout";
-import MerchantLayout from "./layouts/MerchantLayout";
-import AdminLayout from "./layouts/AdminLayout";
-import IskoModLayout from "./layouts/IskoModLayout";
+const CustomerLayout = lazy(() => import("./layouts/CustomerLayout"));
+const ProfileLayout = lazy(() => import("./layouts/ProfileLayout"));
+const MerchantLayout = lazy(() => import("./layouts/MerchantLayout"));
 
 // Customer Pages
-import CustomerHome from "./pages/customer/CustomerHome";
-import ProductDetails from "./pages/customer/ProductDetails";
-import Cart from "./pages/customer/Cart";
-import Checkout from "./pages/customer/Checkout";
-import Profile from "./pages/customer/Profile";
-import Addresses from "./pages/customer/Addresses";
-import ChangePassword from "./pages/customer/ChangePassword";
-import Orders from "./pages/customer/Orders";
-import Wishlist from "./pages/customer/Wishlist";
-import Messages from "./pages/customer/Messages";
-import Preferences from "./pages/customer/Preferences";
-import ShopProducts from "./pages/customer/ShopProducts";
-import BookServices from "./pages/customer/BookServices";
-import MerchantProfile from "./pages/customer/MerchantProfile";
+const CustomerHome = lazy(() => import("./pages/customer/CustomerHome"));
+const ProductDetails = lazy(() => import("./pages/customer/ProductDetails"));
+const Cart = lazy(() => import("./pages/customer/Cart"));
+const Checkout = lazy(() => import("./pages/customer/Checkout"));
+const Profile = lazy(() => import("./pages/customer/Profile"));
+const Addresses = lazy(() => import("./pages/customer/Addresses"));
+const ChangePassword = lazy(() => import("./pages/customer/ChangePassword"));
+const Orders = lazy(() => import("./pages/customer/Orders"));
+const Wishlist = lazy(() => import("./pages/customer/Wishlist"));
+const Messages = lazy(() => import("./pages/customer/Messages"));
+const Preferences = lazy(() => import("./pages/customer/Preferences"));
+const ShopProducts = lazy(() => import("./pages/customer/ShopProducts"));
+const BookServices = lazy(() => import("./pages/customer/BookServices"));
+const SearchResults = lazy(() => import("./pages/customer/SearchResults"));
+const MerchantProfile = lazy(() => import("./pages/customer/MerchantProfile"));
 
 // Merchant Pages
-import MerchantDashboard from "./pages/merchant/MerchantDashboard";
-import ShopSettings from "./pages/merchant/ShopSettings";
-import MerchantProducts from "./pages/merchant/MerchantProducts";
-import MerchantOrders from "./pages/merchant/MerchantOrders";
-import MerchantMessages from "./pages/merchant/MerchantMessages";
-import MerchantSubscriptions from "./pages/merchant/MerchantSubscriptions";
-import MerchantDiscounts from "./pages/merchant/MerchantDiscounts";
-import MerchantAnalytics from "./pages/merchant/MerchantAnalytics";
-import MerchantEarnings from "./pages/merchant/MerchantEarnings";
-
-// Admin Pages
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import MerchantVerification from "./pages/admin/MerchantVerification";
-import AccountManagement from "./pages/admin/AccountManagement";
-import OperationalCosts from "./pages/admin/OperationalCosts";
-import Moderators from "./pages/admin/Moderators";
-import ReportLogs from "./pages/admin/ReportLogs";
-import AccountLogs from "./pages/admin/AccountLogs";
-import ListingManagement from "./pages/admin/ListingManagement";
-import ReviewModeration from "./pages/admin/ReviewModeration";
-
-// Moderator Pages
-import ModDashboard from "./pages/moderator/ModDashboard";
-import AccountModeration from "./pages/moderator/AccountModeration";
-import PromotedServices from "./pages/moderator/PromotedServices";
+const MerchantDashboard = lazy(() => import("./pages/merchant/MerchantDashboard"));
+const ShopSettings = lazy(() => import("./pages/merchant/ShopSettings"));
+const MerchantProducts = lazy(() => import("./pages/merchant/MerchantProducts"));
+const MerchantOrders = lazy(() => import("./pages/merchant/MerchantOrders"));
+const MerchantMessages = lazy(() => import("./pages/merchant/MerchantMessages"));
+const MerchantDiscounts = lazy(() => import("./pages/merchant/MerchantDiscounts"));
+const MerchantInsights = lazy(() => import("./pages/merchant/MerchantInsights"));
 
 // Auth Pages
-import LoginPage from "./auth/LoginPage";
-import SignupPage from "./auth/SignupPage";
-import CustomerSignup from "./auth/CustomerSignup"; // Fixed: Added Import
-import MerchantSignup from "./auth/MerchantSignup"; // Fixed: Added Import
+const LoginPage = lazy(() => import("./auth/LoginPage"));
+const SignupPage = lazy(() => import("./auth/SignupPage"));
+const CustomerSignup = lazy(() => import("./auth/CustomerSignup"));
+const MerchantSignup = lazy(() => import("./auth/MerchantSignup"));
+const ForgotPassword = lazy(() => import("./auth/ForgotPassword"));
+const ResetPassword = lazy(() => import("./auth/ResetPassword"));
 
-// Placeholder Component
-const PlaceholderPage = ({ title }) => (
-  <div className="max-w-5xl mx-auto animate-in fade-in duration-500 py-10">
-    <div className="mb-8">
-      <h1 className="text-xl font-bold text-[#003366]">{title}</h1>
-      <p className="text-xs text-gray-400 mt-1 uppercase tracking-widest font-bold opacity-60">
-        Moderator Tool Access
-      </p>
-    </div>
-    <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-20 text-center">
-      <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-500">
-        <span className="font-black text-2xl">!</span>
-      </div>
-      <p className="text-gray-400 text-sm font-medium">
-        The {title} interface is linked and ready for development.
-      </p>
-    </div>
-  </div>
+const withSuspense = (Component) => (
+  <Suspense fallback={<div className="p-4 text-sm text-gray-500">Loading...</div>}>
+    {createElement(Component)}
+  </Suspense>
 );
+
+const RequireAuth = ({ roles }) => {
+  const { user, isAuthLoading } = useAuth();
+  const location = useLocation();
+
+  if (isAuthLoading) {
+    return <div className="p-4 text-sm text-gray-500">Loading...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  if (roles && !roles.includes(user.role)) {
+    return <Navigate to={user.role === "merchant" ? "/merchant" : "/"} replace />;
+  }
+
+  return <Outlet />;
+};
 
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
+      <CartProvider>
+        <Router>
+          <Routes>
           {/* Auth */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/login" element={withSuspense(LoginPage)} />
+          <Route path="/signup" element={withSuspense(SignupPage)} />
+          <Route path="/forgot-password" element={withSuspense(ForgotPassword)} />
+          <Route path="/reset-password" element={withSuspense(ResetPassword)} />
 
           {/* Simulation Routes - Points to your real components now */}
-          <Route path="/signup/customer" element={<CustomerSignup />} />
-          <Route path="/signup/merchant" element={<MerchantSignup />} />
+          <Route
+            path="/signup/customer"
+            element={withSuspense(CustomerSignup)}
+          />
+          <Route
+            path="/signup/merchant"
+            element={withSuspense(MerchantSignup)}
+          />
 
           {/* Customer Routes */}
-          <Route path="/" element={<CustomerLayout />}>
-            <Route index element={<CustomerHome />} />
-            <Route path="products" element={<ShopProducts />} />
-            <Route path="services" element={<BookServices />} />
-            <Route path="product/:id" element={<ProductDetails />} />
-            <Route path="service/:id" element={<ProductDetails />} />
-            <Route path="merchant/:id" element={<MerchantProfile />} />
-            <Route path="cart" element={<Cart />} />
-            <Route path="checkout" element={<Checkout />} />
+          <Route path="/" element={withSuspense(CustomerLayout)}>
+            <Route index element={withSuspense(CustomerHome)} />
+            <Route path="search" element={withSuspense(SearchResults)} />
+            <Route path="products" element={withSuspense(ShopProducts)} />
+            <Route path="services" element={withSuspense(BookServices)} />
+            <Route path="product/:id" element={withSuspense(ProductDetails)} />
+            <Route path="service/:id" element={withSuspense(ProductDetails)} />
+            <Route path="merchant/:id" element={withSuspense(MerchantProfile)} />
+            <Route element={<RequireAuth roles={["customer"]} />}>
+              <Route path="cart" element={withSuspense(Cart)} />
+              <Route path="checkout" element={withSuspense(Checkout)} />
+            </Route>
           </Route>
 
           {/* Profile/Account Routes */}
-          <Route path="/profile" element={<ProfileLayout />}>
-            <Route index element={<Profile />} />
-            <Route path="addresses" element={<Addresses />} />
-            <Route path="password" element={<ChangePassword />} />
-            <Route path="orders" element={<Orders />} />
-            <Route path="wishlist" element={<Wishlist />} />
-            <Route path="messages" element={<Messages />} />
-            <Route path="preferences" element={<Preferences />} />
+          <Route element={<RequireAuth roles={["customer"]} />}>
+            <Route path="/profile" element={withSuspense(ProfileLayout)}>
+              <Route index element={withSuspense(Profile)} />
+              <Route path="addresses" element={withSuspense(Addresses)} />
+              <Route path="password" element={withSuspense(ChangePassword)} />
+              <Route path="orders" element={withSuspense(Orders)} />
+              <Route path="wishlist" element={withSuspense(Wishlist)} />
+              <Route path="messages" element={withSuspense(Messages)} />
+              <Route path="preferences" element={withSuspense(Preferences)} />
+            </Route>
           </Route>
 
           {/* Merchant Command Center Routes */}
-          <Route path="/merchant" element={<MerchantLayout />}>
-            <Route index element={<MerchantDashboard />} />
-            <Route path="settings" element={<ShopSettings />} />
-            <Route path="products" element={<MerchantProducts />} />
-            <Route path="orders" element={<MerchantOrders />} />
-            <Route path="messages" element={<MerchantMessages />} />
-            <Route path="subscriptions" element={<MerchantSubscriptions />} />
-            <Route path="discounts" element={<MerchantDiscounts />} />
-            <Route path="analytics" element={<MerchantAnalytics />} />
-            <Route path="earnings" element={<MerchantEarnings />} />
-          </Route>
-
-          {/* Moderator Console Routes */}
-          <Route path="/moderator" element={<IskoModLayout />}>
-            <Route index element={<ModDashboard />} />
-            <Route path="reports" element={<ReportLogs />} />
-            <Route path="listings" element={<ListingManagement />} />
-            <Route path="reviews" element={<ReviewModeration />} />
-            <Route path="accounts" element={<AccountModeration />} />
-            <Route path="promotions" element={<PromotedServices />} />
-          </Route>
-
-          {/* Admin Command Center Routes */}
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminDashboard />} />
-            <Route path="verify" element={<MerchantVerification />} />
-            <Route path="accounts" element={<AccountManagement />} />
-            <Route path="costs" element={<OperationalCosts />} />
-            <Route path="moderators" element={<Moderators />} />
-            <Route path="reports" element={<ReportLogs />} />
-            <Route path="logs" element={<AccountLogs />} />
-            <Route path="listings" element={<ListingManagement />} />
-            <Route path="reviews" element={<ReviewModeration />} />
+          <Route element={<RequireAuth roles={["merchant"]} />}>
+            <Route path="/merchant" element={withSuspense(MerchantLayout)}>
+              <Route index element={withSuspense(MerchantDashboard)} />
+              <Route path="settings" element={withSuspense(ShopSettings)} />
+              <Route path="products" element={withSuspense(MerchantProducts)} />
+              <Route path="orders" element={withSuspense(MerchantOrders)} />
+              <Route path="messages" element={withSuspense(MerchantMessages)} />
+              <Route path="discounts" element={withSuspense(MerchantDiscounts)} />
+              <Route path="insights" element={withSuspense(MerchantInsights)} />
+              <Route path="analytics" element={<Navigate to="/merchant/insights" replace />} />
+              <Route path="earnings" element={<Navigate to="/merchant/insights" replace />} />
+            </Route>
           </Route>
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+          </Routes>
+        </Router>
+      </CartProvider>
     </AuthProvider>
   );
 }

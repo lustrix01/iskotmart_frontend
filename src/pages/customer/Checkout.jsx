@@ -1,11 +1,17 @@
-import React, { useState, useRef } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import {
+  Link,
+  useLocation,
+  useSearchParams,
+  useNavigate,
+} from "react-router-dom";
 import {
   MapPin,
   Truck,
   Store,
   Wallet,
   Smartphone,
+  Ticket,
   ChevronRight,
   Info,
   Calendar,
@@ -23,11 +29,39 @@ import {
   QrCode,
   Upload,
 } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
+import { useCart } from "../../context/useCart";
+
+const defaultServiceDeadline = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 7);
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeServiceRequirements = (requirements = {}) => ({
+  deadline: requirements.deadline || defaultServiceDeadline(),
+  package: requirements.package || "",
+  businessType: requirements.businessType || "",
+  brief: requirements.brief || "",
+  complexity: requirements.complexity || requirements.package || "",
+});
+
+const serviceRequirementKey = (item, index) => `${Number(item?.id || 0)}-${index}`;
 
 export default function Checkout() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { productItems, serviceItems, removeFromCart } = useCart();
   const type = searchParams.get("type") || "product";
+  const checkoutState = location.state || {};
+  const cartCheckoutItems = type === "product" ? productItems : serviceItems;
+  const checkoutItems =
+    Array.isArray(checkoutState.items) && checkoutState.items.length > 0
+      ? checkoutState.items
+      : cartCheckoutItems;
+  const hasCheckoutItems = checkoutItems.length > 0;
 
   // --- FR-28 & FR-29: Choose payment options, including COD ---
   const [deliveryMethod, setDeliveryMethod] = useState("standard");
@@ -36,6 +70,19 @@ export default function Checkout() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showGCashModal, setShowGCashModal] = useState(false);
   const [isProcessingGCash, setIsProcessingGCash] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
+  const [voucherInput, setVoucherInput] = useState("");
+  const [appliedVouchers, setAppliedVouchers] = useState([]);
+  const [voucherMessage, setVoucherMessage] = useState("");
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+  const [paymentOptions, setPaymentOptions] = useState({
+    allowedMethods: { cod: true, gcash: true },
+    deliveryOptions: { standard: true, pickup: true, deliveryFee: 50 },
+    merchants: [],
+    loaded: false,
+    error: "",
+  });
 
   const [orderNumber, setOrderNumber] = useState("");
 
@@ -45,69 +92,451 @@ export default function Checkout() {
   // FR-21: Collect customer shipping and contact information
   const [isEditing, setIsEditing] = useState(false);
   const [addressData, setAddressData] = useState({
-    name: "Owhie Lumbang",
-    phone: "09564499020",
-    label: "Home",
-    address:
-      "BRGY 38 GOGON LEGAZPI CITY 1035, Bgy. 38 - Gogon (Bgy. 54), Legazpi, Albay",
+    name: "",
+    phone: "",
+    label: "",
+    address: "",
   });
+  const [isLoadingAddress, setIsLoadingAddress] = useState(true);
+  const [addressError, setAddressError] = useState("");
 
-  const [serviceData, setServiceData] = useState({
-    deadline: "March 30, 2026",
-    complexity: "Premium Branding",
-  });
+  const [serviceRequirementsByItem, setServiceRequirementsByItem] = useState(() =>
+    Object.fromEntries(
+      checkoutItems.map((item, index) => [
+        serviceRequirementKey(item, index),
+        normalizeServiceRequirements(item.serviceRequirements),
+      ]),
+    ),
+  );
 
   // --- ADDED STATES FOR NEW GCASH LOGIC ---
   const [referenceNumber, setReferenceNumber] = useState("");
   const [paymentScreenshot, setPaymentScreenshot] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Price Calculation Logic
-  const subtotal = 1903.3;
+  const subtotal = checkoutItems.reduce(
+    (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 1),
+    0,
+  );
   const shippingFee =
-    deliveryMethod === "standard" && type === "product" ? 50.0 : 0.0;
-  const total = subtotal + shippingFee;
+    hasCheckoutItems && deliveryMethod === "standard" && type === "product"
+      ? Number(paymentOptions.deliveryOptions?.deliveryFee ?? 50)
+      : 0.0;
+  const serviceFee = hasCheckoutItems && type === "service" ? 50.0 : 0.0;
+  const discountAmount = appliedVouchers.reduce(
+    (sum, voucher) => sum + Number(voucher.discountAmount || 0),
+    0,
+  );
+  const total = Math.max(0, subtotal + shippingFee + serviceFee - discountAmount);
+  const hasShippingAddress =
+    type !== "product" ||
+    Boolean(addressData.name && addressData.phone && addressData.address);
+  const hasRequiredCustomerInfo =
+    type === "product"
+      ? hasShippingAddress
+      : Boolean(addressData.name && addressData.phone);
+  const optionItemsKey = useMemo(
+    () =>
+      checkoutItems
+        .map((item) => `${Number(item.id)}:${Number(item.qty || 1)}`)
+        .join("|"),
+    [checkoutItems],
+  );
+  const isPaymentAllowed = (method) =>
+    !paymentOptions.loaded || Boolean(paymentOptions.allowedMethods?.[method]);
+  const isDeliveryAllowed = (method) =>
+    type !== "product" ||
+    !paymentOptions.loaded ||
+    Boolean(paymentOptions.deliveryOptions?.[method]);
+  const gcashPaymentDetails = paymentOptions.merchants
+    .map((merchant) => ({
+      ...merchant,
+      methods: (merchant.methods || []).filter((method) => method.kind === "gcash"),
+    }))
+    .filter((merchant) => merchant.methods.length > 0);
+  const firstServiceRequirement =
+    serviceRequirementsByItem[serviceRequirementKey(checkoutItems[0], 0)] ||
+    normalizeServiceRequirements();
+  const updateServiceRequirement = (key, field, value) => {
+    setServiceRequirementsByItem((current) => ({
+      ...current,
+      [key]: {
+        ...normalizeServiceRequirements(current[key]),
+        [field]: value,
+      },
+    }));
+  };
 
-  // --- FR-30: Record selected payment methods ---
-  const handlePlaceOrder = () => {
-    if (paymentMethod === "gcash") {
-      setShowGCashModal(true);
-    } else {
-      // For COD: Record as COD, Status is Unpaid
-      const newOrderNum = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
-      setOrderNumber(newOrderNum);
-      setPaymentStatus("Unpaid");
+  useEffect(() => {
+    if (!user) {
+      setIsLoadingAddress(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadDefaultAddress = async () => {
+      setIsLoadingAddress(true);
+      setAddressError("");
+
+      try {
+        const response = await fetch("/api/addresses.php", {
+          method: "GET",
+          credentials: "include",
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load saved addresses.");
+        }
+
+        const addresses = Array.isArray(payload.addresses)
+          ? payload.addresses
+          : [];
+        const selectedAddress =
+          addresses.find((address) => address.isDefault) || addresses[0];
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (selectedAddress) {
+          setAddressData({
+            name: selectedAddress.recipientName || "",
+            phone: selectedAddress.phone || "",
+            label: selectedAddress.category || "Address",
+            address: formatAddressLine(selectedAddress),
+          });
+        } else {
+          setAddressData({ name: "", phone: "", label: "", address: "" });
+        }
+      } catch (error) {
+        if (isMounted) {
+          setAddressError(error.message);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingAddress(false);
+        }
+      }
+    };
+
+    loadDefaultAddress();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !hasCheckoutItems) {
+      setPaymentOptions({
+        allowedMethods: { cod: true, gcash: true },
+        deliveryOptions: { standard: true, pickup: true, deliveryFee: 50 },
+        merchants: [],
+        loaded: false,
+        error: "",
+      });
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadPaymentOptions = async () => {
+      try {
+        const response = await fetch("/api/checkout_payment_options.php", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type,
+            items: checkoutItems.map((item) => ({
+              id: Number(item.id),
+              quantity: Number(item.qty || 1),
+            })),
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to load payment options.");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextOptions = {
+          allowedMethods: {
+            cod: Boolean(payload.allowedMethods?.cod),
+            gcash: Boolean(payload.allowedMethods?.gcash),
+          },
+          deliveryOptions: {
+            standard: Boolean(payload.deliveryOptions?.standard),
+            pickup: Boolean(payload.deliveryOptions?.pickup),
+            deliveryFee: Number(payload.deliveryOptions?.deliveryFee ?? 50),
+          },
+          merchants: Array.isArray(payload.merchants) ? payload.merchants : [],
+          loaded: true,
+          error: "",
+        };
+        setPaymentOptions(nextOptions);
+
+        if (!nextOptions.allowedMethods[paymentMethod]) {
+          setPaymentMethod(nextOptions.allowedMethods.cod ? "cod" : "gcash");
+        }
+        if (type === "product" && !nextOptions.deliveryOptions[deliveryMethod]) {
+          setDeliveryMethod(nextOptions.deliveryOptions.standard ? "standard" : "pickup");
+        }
+      } catch (error) {
+        if (isMounted) {
+          setPaymentOptions({
+            allowedMethods: { cod: false, gcash: false },
+            deliveryOptions: { standard: false, pickup: false, deliveryFee: 50 },
+            merchants: [],
+            loaded: true,
+            error: error.message,
+          });
+        }
+      }
+    };
+
+    loadPaymentOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [type, user, hasCheckoutItems, checkoutItems, optionItemsKey, paymentMethod, deliveryMethod]);
+
+  const submitOrder = async ({ gcashReference = "" } = {}) => {
+    if (!user) {
+      navigate("/login", { state: { from: location } });
+      return false;
+    }
+
+    if (!hasCheckoutItems) {
+      setCheckoutError("Your checkout is empty. Add an item to your cart first.");
+      return false;
+    }
+
+    if (!hasRequiredCustomerInfo) {
+      setCheckoutError(
+        type === "product"
+          ? "Add a shipping address before placing this order."
+          : "Add a saved address with recipient name and phone before booking this service.",
+      );
+      return false;
+    }
+
+    setCheckoutError("");
+    setIsSubmittingOrder(true);
+
+    try {
+      const response = await fetch("/api/checkout.php", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          paymentMethod,
+          deliveryMethod,
+          referenceNumber: gcashReference,
+          paymentProofImage:
+            paymentMethod === "gcash" ? paymentScreenshot || "" : "",
+          voucherCodes: appliedVouchers.map((voucher) => voucher.code),
+          customer: {
+            recipientName: addressData.name,
+            phone: addressData.phone,
+            address: addressData.address,
+          },
+          service: firstServiceRequirement,
+          items: checkoutItems.map((item, index) => ({
+            id: Number(item.id),
+            name: item.name,
+            quantity: Number(item.qty || 1),
+            serviceRequirements:
+              type === "service"
+                ? normalizeServiceRequirements(
+                    serviceRequirementsByItem[
+                      serviceRequirementKey(item, index)
+                    ],
+                  )
+                : normalizeServiceRequirements(item.serviceRequirements),
+          })),
+          totals: {
+            subtotal,
+            shippingFee,
+            serviceFee,
+            discountAmount,
+            total,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to place order.");
+      }
+
+      setOrderNumber(payload.orderNumber);
+      setPaymentStatus(payload.paymentStatus);
+      checkoutItems.forEach((item) => {
+        removeFromCart(type, item.id);
+      });
       setShowSuccess(true);
+      return true;
+    } catch (error) {
+      setCheckoutError(error.message);
+      return false;
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
-  // GCash simulation logic (Modified to handle manual form submission)
+  // --- FR-30: Record selected payment methods ---
+  const handlePlaceOrder = () => {
+    if (!hasRequiredCustomerInfo) {
+      setCheckoutError(
+        type === "product"
+          ? "Add a shipping address before placing this order."
+          : "Add a saved address with recipient name and phone before booking this service.",
+      );
+      return;
+    }
+
+    if (!isDeliveryAllowed(deliveryMethod)) {
+      setCheckoutError(
+        deliveryMethod === "standard"
+          ? "Standard delivery is not enabled by this merchant."
+          : "Campus meetup is not enabled by this merchant.",
+      );
+      return;
+    }
+
+    if (paymentMethod === "gcash") {
+      if (!isPaymentAllowed("gcash") || gcashPaymentDetails.length === 0) {
+        setCheckoutError("GCash is not configured for this merchant.");
+        return;
+      }
+      setShowGCashModal(true);
+    } else {
+      if (!isPaymentAllowed("cod")) {
+        setCheckoutError("COD is not configured for this merchant.");
+        return;
+      }
+      submitOrder();
+    }
+  };
+
+  const handleApplyVoucher = async () => {
+    const code = voucherInput.trim().toUpperCase();
+
+    if (!code) {
+      setVoucherMessage("");
+      return;
+    }
+
+    if (appliedVouchers.some((voucher) => voucher.code === code)) {
+      setVoucherMessage(`Voucher ${code} is already applied.`);
+      return;
+    }
+
+    setIsApplyingVoucher(true);
+    setVoucherMessage("");
+
+    try {
+      const response = await fetch("/api/customer_voucher.php", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          code,
+          appliedCodes: appliedVouchers.map((voucher) => voucher.code),
+          items: checkoutItems.map((item) => ({
+            id: Number(item.id),
+            quantity: Number(item.qty || 1),
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Invalid voucher code.");
+      }
+
+      const merchantId = Number(payload.merchantId || 0);
+      const eligibleSubtotal = Number(payload.eligibleSubtotal || 0);
+      const existingMerchantDiscount = appliedVouchers
+        .filter((voucher) => Number(voucher.merchantId || 0) === merchantId)
+        .reduce((sum, voucher) => sum + Number(voucher.discountAmount || 0), 0);
+      const discountAmount = Math.min(
+        Number(payload.discountAmount || 0),
+        Math.max(0, eligibleSubtotal - existingMerchantDiscount),
+      );
+
+      if (discountAmount <= 0) {
+        throw new Error("Voucher discount exceeds the eligible store subtotal.");
+      }
+
+      const nextVoucher = {
+        code: payload.code || code,
+        discountAmount,
+        eligibleSubtotal,
+        merchantId,
+      };
+      setAppliedVouchers((current) => [...current, nextVoucher]);
+      setVoucherInput("");
+      setVoucherMessage(payload.message || `Voucher ${code} applied.`);
+    } catch (error) {
+      setVoucherMessage(error.message);
+    } finally {
+      setIsApplyingVoucher(false);
+    }
+  };
+
+  const handleRemoveVoucher = (code) => {
+    setAppliedVouchers((current) =>
+      current.filter((voucher) => voucher.code !== code),
+    );
+    setVoucherMessage("");
+  };
+
   const handleGCashSubmit = (e) => {
-    if (e) e.preventDefault(); // Prevent page reload if called from form
+    if (e) e.preventDefault();
     if (!referenceNumber) {
       alert("Please enter the 13-digit Reference Number.");
       return;
     }
+    if (!paymentScreenshot) {
+      alert("Please upload the GCash payment proof image.");
+      return;
+    }
 
     setIsProcessingGCash(true);
-    setTimeout(() => {
-      setIsProcessingGCash(false);
-      setShowGCashModal(false);
-
-      // For GCash: Record as GCash, Status is Paid
-      const newOrderNum = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
-      setOrderNumber(newOrderNum);
-      setPaymentStatus("Paid");
-      setShowSuccess(true);
-    }, 2000);
+    submitOrder({ gcashReference: referenceNumber })
+      .then((placed) => {
+        if (placed) {
+          setShowGCashModal(false);
+        }
+      })
+      .finally(() => {
+        setIsProcessingGCash(false);
+      });
   };
 
-  // Added handler for the screenshot
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setPaymentScreenshot(URL.createObjectURL(file));
+    if (!file) {
+      setPaymentScreenshot(null);
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPaymentScreenshot(String(reader.result || ""));
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -142,10 +571,16 @@ export default function Checkout() {
                   : "Service requirements"}
               </h3>
               <button
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={() =>
+                  type === "product"
+                    ? navigate("/profile/addresses", { state: { from: location } })
+                    : setIsEditing(!isEditing)
+                }
                 className="text-[10px] text-[#FF851B] font-bold hover:underline flex items-center gap-1"
               >
-                {isEditing ? (
+                {type === "product" ? (
+                  addressData.address ? "Manage" : "Add address"
+                ) : isEditing ? (
                   <>
                     <Save size={12} /> Save
                   </>
@@ -157,62 +592,11 @@ export default function Checkout() {
 
             <div className="p-6">
               {type === "product" ? (
-                isEditing ? (
-                  <div className="space-y-3 animate-in fade-in">
-                    <div className="flex gap-3">
-                      <input
-                        type="text"
-                        value={addressData.name}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            name: e.target.value,
-                          })
-                        }
-                        className="flex-1 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Full Name"
-                      />
-                      <input
-                        type="text"
-                        value={addressData.phone}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            phone: e.target.value,
-                          })
-                        }
-                        className="flex-1 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Phone Number"
-                      />
-                    </div>
-                    <div className="flex gap-3">
-                      <input
-                        type="text"
-                        value={addressData.label}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            label: e.target.value,
-                          })
-                        }
-                        className="w-1/3 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Label (e.g. Home)"
-                      />
-                      <input
-                        type="text"
-                        value={addressData.address}
-                        onChange={(e) =>
-                          setAddressData({
-                            ...addressData,
-                            address: e.target.value,
-                          })
-                        }
-                        className="w-2/3 border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                        placeholder="Full Address"
-                      />
-                    </div>
+                isLoadingAddress ? (
+                  <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-5 text-xs font-bold text-gray-400">
+                    Loading saved address...
                   </div>
-                ) : (
+                ) : addressData.address ? (
                   <div className="space-y-1 animate-in fade-in">
                     <div className="flex items-center gap-3 mb-2">
                       <span className="font-bold text-gray-800 text-sm">
@@ -231,69 +615,124 @@ export default function Checkout() {
                       </p>
                     </div>
                   </div>
+                ) : (
+                  <div className="rounded-md border border-orange-100 bg-orange-50 px-5 py-5">
+                    <div className="flex items-start gap-3">
+                      <MapPin className="text-[#FF851B] shrink-0 mt-0.5" size={18} />
+                      <div className="flex-grow">
+                        <p className="text-xs font-bold text-[#003366]">
+                          Add a shipping address to continue.
+                        </p>
+                        <p className="mt-1 text-[10px] font-semibold text-gray-500 leading-relaxed">
+                          Checkout uses your saved address book. Add one in your
+                          profile, then return to place this order.
+                        </p>
+                        {addressError && (
+                          <p className="mt-2 text-[10px] font-bold text-red-500">
+                            {addressError}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate("/profile/addresses", {
+                              state: { from: location },
+                            })
+                          }
+                          className="mt-4 rounded-md bg-[#003366] px-4 py-2 text-[10px] font-bold text-white hover:bg-[#002244]"
+                        >
+                          Add address
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )
-              ) : isEditing ? (
-                <div className="grid grid-cols-2 gap-6 animate-in fade-in">
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-gray-400 font-bold">
-                      Target deadline
-                    </label>
-                    <input
-                      type="date"
-                      value="2026-03-30"
-                      onChange={(e) =>
-                        setServiceData({
-                          ...serviceData,
-                          deadline: e.target.value,
-                        })
-                      }
-                      className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-gray-400 font-bold">
-                      Complexity
-                    </label>
-                    <select
-                      value={serviceData.complexity}
-                      onChange={(e) =>
-                        setServiceData({
-                          ...serviceData,
-                          complexity: e.target.value,
-                        })
-                      }
-                      className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
-                    >
-                      <option>Basic Design</option>
-                      <option>Premium Branding</option>
-                      <option>Full Agency Setup</option>
-                    </select>
-                  </div>
-                </div>
               ) : (
-                <div className="grid grid-cols-2 gap-6 animate-in fade-in">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="text-[#0074D9]" size={18} />
-                    <div>
-                      <p className="text-[9px] text-gray-400 font-bold">
-                        Target deadline
-                      </p>
-                      <p className="text-xs font-bold text-gray-700">
-                        {serviceData.deadline}
-                      </p>
+                <div className="space-y-4 animate-in fade-in">
+                  {isLoadingAddress ? (
+                    <div className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3 text-xs font-bold text-gray-400">
+                      Loading saved contact...
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Clock className="text-[#0074D9]" size={18} />
-                    <div>
-                      <p className="text-[9px] text-gray-400 font-bold">
-                        Complexity
-                      </p>
-                      <p className="text-xs font-bold text-gray-700">
-                        {serviceData.complexity}
-                      </p>
+                  ) : addressData.name && addressData.phone ? (
+                    <div className="rounded-md border border-blue-100 bg-blue-50/50 px-4 py-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-[#0074D9]">
+                            Booking contact
+                          </p>
+                          <p className="text-xs font-bold text-[#003366]">
+                            {addressData.name}
+                          </p>
+                          <p className="text-[10px] font-semibold text-gray-500">
+                            {addressData.phone}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate("/profile/addresses", {
+                              state: { from: location },
+                            })
+                          }
+                          className="text-left text-[10px] font-bold text-[#FF851B] hover:underline sm:text-right"
+                        >
+                          Manage contact
+                        </button>
+                      </div>
+                      {addressData.address && (
+                        <p className="mt-2 text-[10px] font-semibold leading-relaxed text-gray-500">
+                          {addressData.address}
+                        </p>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="rounded-md border border-orange-100 bg-orange-50 px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        <Info className="mt-0.5 shrink-0 text-[#FF851B]" size={16} />
+                        <div>
+                          <p className="text-xs font-bold text-[#003366]">
+                            Add a booking contact to continue.
+                          </p>
+                          <p className="mt-1 text-[10px] font-semibold leading-relaxed text-gray-500">
+                            Service requests use your saved recipient name and phone
+                            so the merchant can coordinate details with you.
+                          </p>
+                          {addressError && (
+                            <p className="mt-2 text-[10px] font-bold text-red-500">
+                              {addressError}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate("/profile/addresses", {
+                                state: { from: location },
+                              })
+                            }
+                            className="mt-3 rounded-md bg-[#003366] px-4 py-2 text-[10px] font-bold text-white hover:bg-[#002244]"
+                          >
+                            Add contact
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {checkoutItems.map((item, index) => {
+                    const key = serviceRequirementKey(item, index);
+                    return (
+                      <ServiceRequirementCard
+                        key={key}
+                        item={item}
+                        requirements={normalizeServiceRequirements(
+                          serviceRequirementsByItem[key],
+                        )}
+                        isEditing={isEditing}
+                        onChange={(field, value) =>
+                          updateServiceRequirement(key, field, value)
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -311,6 +750,7 @@ export default function Checkout() {
                 id="standard"
                 selected={deliveryMethod === "standard"}
                 onClick={setDeliveryMethod}
+                disabled={!isDeliveryAllowed("standard")}
                 icon={<Truck size={20} />}
                 title={
                   type === "product" ? "Standard delivery" : "Online / Remote"
@@ -320,13 +760,18 @@ export default function Checkout() {
                     ? "3-5 business days via campus rider"
                     : "Via Email/Cloud Link"
                 }
-                price={type === "product" ? "₱50.0" : "₱0.0"}
+                price={
+                  type === "product"
+                    ? `₱${Number(paymentOptions.deliveryOptions?.deliveryFee ?? 50).toFixed(1)}`
+                    : "₱0.0"
+                }
               />
 
               <MethodCard
                 id="pickup"
                 selected={deliveryMethod === "pickup"}
                 onClick={setDeliveryMethod}
+                disabled={!isDeliveryAllowed("pickup")}
                 icon={<Handshake size={20} />}
                 title={
                   type === "product" ? "Campus Meetup" : "On-campus meeting"
@@ -372,22 +817,37 @@ export default function Checkout() {
                 id="cod"
                 selected={paymentMethod === "cod"}
                 onClick={setPaymentMethod}
+                disabled={!isPaymentAllowed("cod")}
                 icon={<Wallet size={20} />}
                 title={
                   type === "product"
                     ? "Cash on Delivery / Hand-over"
                     : "Pay on meetup"
                 }
-                desc="Pay directly in cash during the transaction"
+                desc={
+                  isPaymentAllowed("cod")
+                    ? "Pay directly in cash during the transaction"
+                    : "Not enabled by this merchant"
+                }
               />
               <MethodCard
                 id="gcash"
                 selected={paymentMethod === "gcash"}
                 onClick={setPaymentMethod}
+                disabled={!isPaymentAllowed("gcash")}
                 icon={<Smartphone size={20} />}
                 title="GCash"
-                desc="Pay securely with GCash e-wallet"
+                desc={
+                  isPaymentAllowed("gcash")
+                    ? "Pay through the merchant's configured GCash account"
+                    : "Not enabled by this merchant"
+                }
               />
+              {paymentOptions.error && (
+                <p className="rounded-sm border border-red-100 bg-red-50 px-3 py-2 text-[10px] font-bold text-red-600">
+                  {paymentOptions.error}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -400,14 +860,13 @@ export default function Checkout() {
             </h2>
 
             <div className="space-y-4 mb-8">
-              {[1, 2].map((i) => (
-                <div key={i} className="flex gap-4 items-center">
+              {checkoutItems.map((item, i) => (
+                <div key={`${item.id}-${i}`} className="flex gap-4 items-center">
                   <div className="w-12 h-12 bg-gray-50 border border-gray-100 rounded-sm overflow-hidden shrink-0">
                     <img
                       src={
-                        type === "product"
-                          ? "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=100"
-                          : "https://images.unsplash.com/photo-1626785774573-4b799315345d?q=80&w=100"
+                        item.img ||
+                        "/placeholders/offering.svg"
                       }
                       className="w-full h-full object-cover"
                       alt="item"
@@ -415,19 +874,31 @@ export default function Checkout() {
                   </div>
                   <div className="flex-grow">
                     <p className="text-[10px] font-bold text-gray-700 truncate">
-                      {type === "product"
-                        ? "BU Canvas Tote Bag - Isko Originals"
-                        : "Professional Logo Design"}
+                      {item.name}
                     </p>
                     <p className="text-[9px] text-gray-400 font-semibold">
-                      Qty: 1 x ₱{subtotal / 2}
+                      Qty: {item.qty || 1} x ₱
+                      {Number(item.price || 0).toFixed(1)}
                     </p>
                   </div>
                   <span className="text-[11px] font-bold text-gray-800">
-                    ₱{(subtotal / 2).toFixed(1)}
+                    ₱
+                    {(
+                      Number(item.price || 0) * Number(item.qty || 1)
+                    ).toFixed(1)}
                   </span>
                 </div>
               ))}
+              {!hasCheckoutItems && (
+                <div className="rounded-md border border-orange-100 bg-orange-50 px-4 py-5 text-center">
+                  <p className="text-[11px] font-bold text-[#003366]">
+                    No checkout items found.
+                  </p>
+                  <p className="mt-1 text-[10px] font-semibold text-gray-500">
+                    Add a {type} to your cart before placing an order.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4 border-t border-gray-50 pt-6 mb-8 text-[11px] font-bold text-gray-400 tracking-wider">
@@ -442,9 +913,78 @@ export default function Checkout() {
                   {type === "product" ? "Shipping / Meetup fee" : "Service Fee"}
                 </span>
                 <span className="text-gray-700 font-bold">
-                  ₱{shippingFee.toFixed(1)}
+                  ₱{(type === "product" ? shippingFee : serviceFee).toFixed(1)}
                 </span>
               </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-green-500">
+                  <span>Voucher discount</span>
+                  <span>- ₱{discountAmount.toFixed(1)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mb-8 rounded-md border border-gray-200/50 bg-[#F8FAFC] p-5">
+              <label className="mb-2 block text-[8px] font-bold tracking-widest text-gray-400">
+                Voucher Code
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-grow">
+                  <Ticket
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
+                  />
+                  <input
+                    type="text"
+                    value={voucherInput}
+                    onChange={(e) => {
+                      setVoucherInput(e.target.value);
+                      setVoucherMessage("");
+                    }}
+                    placeholder="Enter voucher code"
+                    className="w-full rounded-sm border border-gray-200 py-2.5 pl-9 pr-2 text-[11px] focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleApplyVoucher}
+                  disabled={isApplyingVoucher || !hasCheckoutItems}
+                  className="rounded-sm bg-[#003366] px-5 py-2.5 text-[10px] font-bold text-white transition-colors hover:bg-[#002244] disabled:bg-gray-300"
+                >
+                  {isApplyingVoucher ? "Checking" : "Apply"}
+                </button>
+              </div>
+              {voucherMessage && (
+                <p
+                  className={`mt-2 text-[10px] font-bold ${
+                    voucherMessage.toLowerCase().includes("applied")
+                      ? "text-green-600"
+                      : "text-red-500"
+                  }`}
+                >
+                  {voucherMessage}
+                </p>
+              )}
+              {appliedVouchers.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {appliedVouchers.map((voucher) => (
+                    <span
+                      key={voucher.code}
+                      className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-[10px] font-bold text-green-700"
+                    >
+                      {voucher.code} - ₱{Number(voucher.discountAmount || 0).toFixed(1)}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveVoucher(voucher.code)}
+                        className="text-green-500 hover:text-red-500"
+                        aria-label={`Remove voucher ${voucher.code}`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="border-t-2 border-gray-50 pt-6 mb-8 flex justify-between items-baseline">
@@ -456,11 +996,27 @@ export default function Checkout() {
               </span>
             </div>
 
+            {checkoutError && (
+              <div className="mb-4 rounded-sm border border-red-100 bg-red-50 px-4 py-3 text-[11px] font-bold text-red-600">
+                {checkoutError}
+              </div>
+            )}
+
             <button
               onClick={handlePlaceOrder}
-              className="w-full bg-[#FF851B] text-white py-4 rounded-md font-bold text-xs tracking-wide hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100 active:scale-95"
+              disabled={
+                isSubmittingOrder ||
+                !hasCheckoutItems ||
+                isLoadingAddress ||
+                !hasRequiredCustomerInfo ||
+                !isPaymentAllowed(paymentMethod) ||
+                !isDeliveryAllowed(deliveryMethod)
+              }
+              className="w-full bg-[#FF851B] text-white py-4 rounded-md font-bold text-xs tracking-wide hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100 active:scale-95 disabled:bg-gray-300 disabled:shadow-none"
             >
-              {paymentMethod === "gcash"
+              {isSubmittingOrder
+                ? "Validating order..."
+                : paymentMethod === "gcash"
                 ? "Proceed to GCash"
                 : "Place order now"}
             </button>
@@ -468,7 +1024,6 @@ export default function Checkout() {
         </aside>
       </div>
 
-      {/* --- MODIFIED GCASH POPUP ONLY (Fixed height, no scrolling, form inputs) --- */}
       {showGCashModal && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
           <div
@@ -505,28 +1060,53 @@ export default function Checkout() {
                 </div>
               ) : (
                 <form onSubmit={handleGCashSubmit} className="space-y-4">
-                  {/* Compact Merchant Details */}
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4">
-                    <div className="w-20 h-20 bg-white p-1.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-center relative shrink-0">
-                      <QrCode size={60} className="text-[#0055E3] opacity-20" />
-                      <span className="absolute text-[8px] font-black text-gray-400">
-                        QR
-                      </span>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest">
-                        Send to Merchant
-                      </p>
-                      <p className="text-lg font-black text-[#003366]">
-                        0912-345-6789
-                      </p>
-                      <p className="text-[10px] font-bold text-gray-500 italic">
-                        IskoMart Store
-                      </p>
-                    </div>
+                  <div className="space-y-3">
+                    {gcashPaymentDetails.map((merchant) =>
+                      merchant.methods.map((method) => (
+                        <div
+                          key={`${merchant.id}-${method.id}`}
+                          className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4"
+                        >
+                          <div className="w-20 h-20 bg-white p-1.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-center relative shrink-0 overflow-hidden">
+                            {method.qrUrl ? (
+                              <img
+                                src={method.qrUrl}
+                                alt={`${merchant.name} GCash QR`}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <>
+                                <QrCode
+                                  size={60}
+                                  className="text-[#0055E3] opacity-20"
+                                />
+                                <span className="absolute text-[8px] font-black text-gray-400">
+                                  QR
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <div className="min-w-0 text-left">
+                            <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest">
+                              Send to Merchant
+                            </p>
+                            <p className="truncate text-lg font-black text-[#003366]">
+                              {method.number || method.username || method.link}
+                            </p>
+                            <p className="text-[10px] font-bold text-gray-500 italic">
+                              {method.username || merchant.name}
+                            </p>
+                            {method.other && (
+                              <p className="mt-1 text-[9px] font-semibold text-gray-400">
+                                {method.other}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )),
+                    )}
                   </div>
 
-                  {/* Manual Inputs - Non-Scrollable Layout */}
                   <div className="space-y-3">
                     <div>
                       <label className="text-[9px] font-black text-gray-400 uppercase ml-1 tracking-widest">
@@ -670,12 +1250,96 @@ export default function Checkout() {
   );
 }
 
-function MethodCard({ id, selected, onClick, icon, title, desc, price }) {
+function ServiceRequirementCard({ item, requirements, isEditing, onChange }) {
+  const fields = [
+    {
+      field: "deadline",
+      label: "Target deadline",
+      type: "date",
+      icon: Calendar,
+      value: requirements.deadline,
+      placeholder: "",
+    },
+    {
+      field: "package",
+      label: "Package",
+      type: "text",
+      icon: Clock,
+      value: requirements.package,
+      placeholder: "Package details",
+    },
+    {
+      field: "businessType",
+      label: "Business type",
+      type: "text",
+      icon: Info,
+      value: requirements.businessType,
+      placeholder: "Business type",
+    },
+    {
+      field: "brief",
+      label: "Brief",
+      type: "text",
+      icon: MessageSquare,
+      value: requirements.brief,
+      placeholder: "Service brief",
+    },
+  ];
+
   return (
-    <div
+    <div className="rounded-md border border-gray-100 bg-[#F8FAFC] p-4">
+      <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-[#003366]">
+        {item.name}
+      </p>
+      {isEditing ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fields.map(({ field, label, type, value, placeholder }) => (
+            <div key={field} className="space-y-1">
+              <label className="text-[9px] text-gray-400 font-bold">
+                {label}
+              </label>
+              <input
+                type={type}
+                value={value}
+                onChange={(event) => onChange(field, event.target.value)}
+                placeholder={placeholder}
+                className="w-full border border-gray-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-[#FF851B]"
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fields.map(({ field, label, icon, value }) => (
+            <div key={field} className="flex items-center gap-3">
+              {React.createElement(icon, {
+                className: "text-[#0074D9] shrink-0",
+                size: 18,
+              })}
+              <div className="min-w-0">
+                <p className="text-[9px] text-gray-400 font-bold">{label}</p>
+                <p className="text-xs font-bold text-gray-700 truncate">
+                  {value || "Not specified"}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MethodCard({ id, selected, onClick, icon, title, desc, price, disabled }) {
+  return (
+    <button
+      type="button"
       onClick={() => onClick(id)}
-      className={`p-4 border-2 rounded-md flex items-center justify-between cursor-pointer transition-all ${
-        selected
+      disabled={disabled}
+      className={`w-full p-4 border-2 rounded-md flex items-center justify-between cursor-pointer transition-all text-left ${
+        disabled
+          ? "border-gray-100 bg-gray-100 opacity-60 cursor-not-allowed"
+          : selected
           ? "border-[#FF851B] bg-[#FFF7F0]"
           : "border-gray-100 bg-gray-50/30 hover:border-gray-200"
       }`}
@@ -694,6 +1358,19 @@ function MethodCard({ id, selected, onClick, icon, title, desc, price }) {
       {price && (
         <span className="font-bold text-[#FF851B] text-sm">{price}</span>
       )}
-    </div>
+    </button>
   );
+}
+
+function formatAddressLine(address) {
+  return [
+    address.unitFloor,
+    address.specific,
+    address.city,
+    address.province,
+    address.region,
+    address.postalCode,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }

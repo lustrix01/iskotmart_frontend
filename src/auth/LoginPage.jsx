@@ -1,48 +1,81 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useAuth } from "../context/useAuth";
+import {
+  clearRememberedClientSession,
+  rememberClientSession,
+} from "../api/clientSession";
 import logo from "../assets/logo.png";
+import { Eye, EyeOff } from "lucide-react";
+
+const redirectByRole = {
+  merchant: "/merchant",
+  customer: "/",
+};
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
-  const handleLogin = (e) => {
+  const from = location.state?.from;
+  const requestedPath =
+    from && `${from.pathname || "/"}${from.search || ""}${from.hash || ""}`;
+
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (email && password) {
-      let role = "customer";
-      let redirectPath = "/";
+    setError("");
+    setIsSubmitting(true);
 
-      // SIMULATION LOGIC: Determine role based on the email entered
-      const lowerEmail = email.toLowerCase();
-
-      if (lowerEmail.includes("admin")) {
-        role = "admin";
-        redirectPath = "/admin";
-      } else if (lowerEmail.includes("mod")) {
-        role = "moderator";
-        redirectPath = "/moderator";
-      } else if (lowerEmail.includes("merchant")) {
-        role = "merchant";
-        redirectPath = "/merchant";
-      } else {
-        role = "customer";
-        redirectPath = "/"; // Default customer route
-      }
-
-      // Save user session in context
-      login({
-        id: Date.now(),
-        name: `${role.toUpperCase()} User`,
-        role: role,
-        email: email,
+    try {
+      const response = await fetch("/api/login.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password, rememberMe }),
       });
 
-      // Send them to their specific page
-      navigate(redirectPath);
+      const raw = await response.text();
+      let payload = {};
+      try {
+        payload = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          "Login API returned a non-JSON response. Check Vite proxy/PHP server.",
+        );
+      }
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to sign in.");
+      }
+
+      login(payload.user);
+      if (rememberMe) {
+        rememberClientSession();
+      } else {
+        clearRememberedClientSession();
+      }
+      const isMerchant = payload.user.role === "merchant";
+      const merchantRequestedPath =
+        isMerchant && requestedPath?.startsWith("/merchant")
+          ? requestedPath
+          : null;
+      const destination = isMerchant
+        ? merchantRequestedPath || "/merchant"
+        : requestedPath || redirectByRole[payload.user.role] || "/";
+
+      navigate(destination, {
+        replace: true,
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -74,7 +107,7 @@ export default function LoginPage() {
                 Welcome Back!
               </h2>
               <p className="text-sm text-gray-500 font-medium">
-                Sign in to continue shopping
+                Sign in to continue
               </p>
             </div>
 
@@ -105,17 +138,30 @@ export default function LoginPage() {
                 >
                   Password
                 </label>
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF851B] focus:border-[#FF851B] focus:bg-white outline-none transition-all"
-                  placeholder="••••••••"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    name="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#FF851B] focus:border-[#FF851B] focus:bg-white outline-none transition-all"
+                    placeholder="Password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#003366] transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
+              {error && (
+                <p className="text-sm font-semibold text-red-600">{error}</p>
+              )}
 
               <div className="flex items-center justify-between text-sm mt-2">
                 <div className="flex items-center">
@@ -145,11 +191,20 @@ export default function LoginPage() {
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full bg-[#FF851B] text-white font-bold py-3.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300"
+                  disabled={isSubmitting}
+                  className="w-full bg-[#FF851B] text-white font-bold py-3.5 px-4 rounded-xl hover:bg-[#e67616] hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgb(255,133,27,0.3)] focus:outline-none focus:ring-4 focus:ring-orange-300 transition-all duration-300 disabled:opacity-70 disabled:hover:translate-y-0"
                 >
-                  Sign In
+                  {isSubmitting ? "Signing in..." : "Sign In"}
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => navigate("/", { replace: true })}
+                className="w-full border-2 border-[#003366] text-[#003366] font-bold py-3 px-4 rounded-xl hover:bg-[#003366] hover:text-white transition-all duration-300"
+              >
+                Continue as guest
+              </button>
 
               <div className="text-center text-sm text-gray-500 mt-6">
                 Don't have an account?{" "}

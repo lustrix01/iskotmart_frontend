@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Package,
   Truck,
@@ -17,13 +17,16 @@ import {
   Camera,
   Plus,
   Image as ImageIcon,
+  Printer,
 } from "lucide-react";
 
 export default function Orders() {
+  const navigate = useNavigate();
   // --- FR-27: Allow customers to track the status of their orders ---
   const [activeTab, setActiveTab] = useState("All");
 
   const [notification, setNotification] = useState(null);
+  const [chatLoadingOrder, setChatLoadingOrder] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null); // For "View Details" Modal
 
   // Modal states for FR-25 and FR-26
@@ -31,91 +34,108 @@ export default function Orders() {
   const [confirmTarget, setConfirmTarget] = useState(null);
 
   // --- FR-15: Rating & Review States ---
-  const [ratingTarget, setRatingTarget] = useState(null); // For the Review Modal
+  const [ratingTarget, setRatingTarget] = useState(null); // { order, item }
   const [ratingValue, setRatingValue] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewImage, setReviewImage] = useState(null); // Holds the uploaded picture
   const fileInputRef = useRef(null);
 
-  // --- STATEFUL MOCK DATA ---
-  const [orders, setOrders] = useState([
-    {
-      id: "ORD-9921",
-      merchant: "TechHub Electronics",
-      merchantId: "M-101",
-      type: "product",
-      items: [
-        {
-          name: "Mechanical Keyboard",
-          price: 2450,
-          qty: 1,
-          img: "https://images.unsplash.com/photo-1511467687858-23d96c32e4ae?w=200",
-        },
-      ],
-      status: "To ship",
-      payment: "GCash",
-      mode: "Standard delivery",
-      total: 2500,
-      date: "Mar 22, 2026",
-    },
-    {
-      id: "ORD-8842",
-      merchant: "Creative Studio",
-      merchantId: "M-202",
-      type: "service",
-      items: [
-        {
-          name: "Logo Design",
-          price: 5000,
-          qty: 1,
-          img: "https://images.unsplash.com/photo-1626785774573-4b799315345d?w=200",
-        },
-      ],
-      status: "To confirm", // Can be cancelled (FR-26)
-      payment: "Bank transfer",
-      mode: "Online",
-      total: 5000,
-      date: "Mar 22, 2026",
-    },
-    {
-      id: "ORD-6650",
-      merchant: "IskoThreads",
-      merchantId: "M-303",
-      type: "product",
-      items: [
-        {
-          name: "University Hoodie",
-          price: 850,
-          qty: 1,
-          img: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=200",
-        },
-      ],
-      status: "To receive", // Waiting for customer confirmation (FR-25)
-      payment: "GCash",
-      mode: "Standard delivery",
-      total: 900,
-      date: "Mar 20, 2026",
-    },
-    {
-      id: "ORD-1122",
-      merchant: "BU Prints",
-      merchantId: "M-404",
-      type: "product",
-      items: [
-        {
-          name: "Lanyard & ID Lace",
-          price: 150,
-          qty: 2,
-          img: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=200",
-        },
-      ],
-      status: "Completed",
-      payment: "Cash on Delivery",
-      mode: "Campus Meetup",
-      total: 300,
-      date: "Mar 15, 2026",
-    },
-  ]);
+  const handlePrintReceipt = (order) => {
+    const receiptWindow = window.open("", "_blank", "width=720,height=900");
+    if (!receiptWindow) {
+      showToast("Allow popups to print the receipt.");
+      return;
+    }
+
+    const itemRows = order.items
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.name}</td>
+            <td style="text-align:center;">${item.qty}</td>
+            <td style="text-align:right;">PHP ${item.price.toLocaleString()}</td>
+            <td style="text-align:right;">PHP ${(item.price * item.qty).toLocaleString()}</td>
+          </tr>
+        `,
+      )
+      .join("");
+
+    receiptWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt ${order.id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #1f2937; padding: 32px; }
+            h1 { color: #003366; margin-bottom: 4px; }
+            .muted { color: #6b7280; font-size: 12px; }
+            .row { display: flex; justify-content: space-between; margin: 8px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+            th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; font-size: 12px; }
+            th { text-align: left; color: #003366; background: #f9fafb; }
+            .total { font-size: 22px; font-weight: 800; color: #ff851b; }
+            .footer { margin-top: 28px; font-size: 11px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <h1>IskoMart Receipt</h1>
+          <p class="muted">Generated from order record ${order.id}</p>
+          <div style="margin-top: 24px;">
+            <div class="row"><strong>Merchant</strong><span>${order.merchant}</span></div>
+            <div class="row"><strong>Date</strong><span>${order.date}</span></div>
+            <div class="row"><strong>Status</strong><span>${order.status}</span></div>
+            <div class="row"><strong>Payment</strong><span>${order.payment}</span></div>
+            <div class="row"><strong>Delivery mode</strong><span>${order.mode}</span></div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Item</th><th>Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Line Total</th></tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <div class="row" style="margin-top: 24px;">
+            <strong>Total Paid</strong><span class="total">PHP ${order.total.toLocaleString()}</span>
+          </div>
+          <p class="footer">Receipt values are based on the selected order record displayed in IskoMart.</p>
+          <script>window.print(); window.close();</script>
+        </body>
+      </html>
+    `);
+    receiptWindow.document.close();
+  };
+
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [ordersError, setOrdersError] = useState("");
+  const loadOrders = useCallback(async ({ silent = false } = {}) => {
+    try {
+      if (!silent) {
+        setLoadingOrders(true);
+      }
+      setOrdersError("");
+      const response = await fetch("/api/customer_orders.php", {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to load orders.");
+      }
+
+      setOrders(Array.isArray(payload.orders) ? payload.orders : []);
+      return true;
+    } catch (error) {
+      setOrders([]);
+      setOrdersError(error.message || "Unable to load orders.");
+      return false;
+    } finally {
+      if (!silent) {
+        setLoadingOrders(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
 
   // --- ACTIONS ---
   const showToast = (msg) => {
@@ -124,39 +144,112 @@ export default function Orders() {
   };
 
   // --- FR-26: Cancel Order Logic ---
-  const handleCancelOrder = () => {
-    if (cancelTarget) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === cancelTarget ? { ...o, status: "Cancelled" } : o,
-        ),
-      );
+  const handleCancelOrder = async () => {
+    if (!cancelTarget) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/customer_order_actions.php", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: cancelTarget,
+          action: "cancel",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to cancel this order.");
+      }
+
+      await loadOrders({ silent: true });
       showToast(`Order ${cancelTarget} has been cancelled.`);
       setCancelTarget(null);
+    } catch (error) {
+      showToast(error.message || "Unable to cancel this order.");
     }
   };
 
   // --- FR-25: Confirm Order Logic ---
-  const handleConfirmReceipt = () => {
-    if (confirmTarget) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === confirmTarget ? { ...o, status: "Completed" } : o,
-        ),
-      );
+  const handleConfirmReceipt = async () => {
+    if (!confirmTarget) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/customer_order_actions.php", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference: confirmTarget,
+          action: "confirm",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to confirm this order.");
+      }
+
+      await loadOrders({ silent: true });
       showToast(`Order ${confirmTarget} marked as completed!`);
       setConfirmTarget(null);
+    } catch (error) {
+      showToast(error.message || "Unable to confirm this order.");
     }
   };
 
-  const handleVisitShop = (mId) => {
+  const handleVisitShop = () => {
     showToast(`Redirecting to Shop Profile...`);
+  };
+
+  const merchantIdFromOrder = (order) => {
+    const value = String(order?.merchantId || "");
+    const match = value.match(/\d+/);
+    return match ? Number(match[0]) : 0;
+  };
+
+  const handleOpenChat = async (order) => {
+    const merchantId = merchantIdFromOrder(order);
+    if (!merchantId || chatLoadingOrder) {
+      return;
+    }
+
+    setChatLoadingOrder(order);
+    try {
+      const response = await fetch("/api/customer_messages.php", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchantId,
+          message: `Hi, I would like to ask about order ${order.id}.`,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to open IskoChat.");
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+      navigate("/profile/messages", { state: { merchantId } });
+    } catch (error) {
+      showToast(error.message || "Unable to open IskoChat.");
+      setChatLoadingOrder(null);
+    }
   };
 
   // --- FR-15: Review Submission ---
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        showToast("Review image must be 5MB or smaller.");
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setReviewImage(reader.result);
@@ -165,15 +258,54 @@ export default function Orders() {
     }
   };
 
-  const handleSubmitReview = (e) => {
-    e.preventDefault();
-    // In a real app, you would send ratingTarget.id, ratingValue, reviewComment, and reviewImage to the server.
-    showToast(`Review submitted for ${ratingTarget.merchant}! Thank you.`);
-    // Reset states
-    setRatingTarget(null);
-    setRatingValue(5);
-    setReviewComment("");
+  const openReviewModal = (order) => {
+    const reviewItem = order.items.find((item) => item.offeringId) || order.items[0];
+    if (!reviewItem?.offeringId) {
+      showToast("This order item cannot be rated yet.");
+      return;
+    }
+
+    setRatingTarget({ order, item: reviewItem });
+    setRatingValue(reviewItem.review?.rating || 5);
+    setReviewComment(reviewItem.review?.description || "");
     setReviewImage(null);
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!ratingTarget?.item?.offeringId) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/offering_reviews.php", {
+        method: ratingTarget.item.review ? "PATCH" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offeringId: ratingTarget.item.offeringId,
+          source: ratingTarget.item.source,
+          orderId: ratingTarget.item.orderId,
+          requestId: ratingTarget.item.requestId,
+          rating: ratingValue,
+          description: reviewComment,
+          reviewImage,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to save rating.");
+      }
+
+      await loadOrders({ silent: true });
+      showToast(ratingTarget.item.review ? "Rating updated." : "Rating submitted. Thank you.");
+      setRatingTarget(null);
+      setRatingValue(5);
+      setReviewComment("");
+      setReviewImage(null);
+    } catch (error) {
+      showToast(error.message || "Unable to save rating.");
+    }
   };
 
   const filteredOrders = useMemo(
@@ -183,6 +315,8 @@ export default function Orders() {
         : orders.filter((o) => o.status === activeTab),
     [activeTab, orders],
   );
+
+  const isPaid = (order) => order?.paymentStatusCode === "PAID";
 
   // Helper for dynamic tracking text
   const getLiveUpdateText = (status) => {
@@ -212,6 +346,22 @@ export default function Orders() {
         </div>
       )}
 
+      {chatLoadingOrder && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-[#003366]/35 backdrop-blur-sm font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl border border-white/80 px-8 py-7 w-full max-w-xs text-center animate-in zoom-in duration-200">
+            <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+              <MessageSquare size={24} />
+            </div>
+            <p className="text-sm font-bold text-[#003366]">
+              Opening IskoChat...
+            </p>
+            <p className="text-xs text-gray-400 mt-2">
+              Connecting you to {chatLoadingOrder.merchant}.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* --- DETAIL MODAL --- */}
       {selectedOrder && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
@@ -233,7 +383,7 @@ export default function Orders() {
               </button>
             </div>
 
-            <div className="space-y-6 font-sans">
+              <div className="space-y-6 font-sans">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400 font-medium">
                   Payment method
@@ -268,14 +418,22 @@ export default function Orders() {
                   ₱{selectedOrder.total.toLocaleString()}
                 </span>
               </div>
-            </div>
+              </div>
 
-            <button
-              onClick={() => setSelectedOrder(null)}
-              className="w-full mt-8 py-4 bg-[#003366] text-white rounded-2xl text-xs font-bold hover:bg-[#002244] transition-colors font-sans"
-            >
-              Close details
-            </button>
+            <div className="mt-8 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => handlePrintReceipt(selectedOrder)}
+                className="py-4 bg-[#FF851B] text-white rounded-2xl text-xs font-bold hover:bg-[#E67616] transition-colors font-sans flex items-center justify-center gap-2"
+              >
+                <Printer size={16} /> Print receipt
+              </button>
+              <button
+                onClick={() => setSelectedOrder(null)}
+                className="py-4 bg-[#003366] text-white rounded-2xl text-xs font-bold hover:bg-[#002244] transition-colors font-sans"
+              >
+                Close details
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -295,9 +453,11 @@ export default function Orders() {
               <div className="w-20 h-20 bg-orange-50 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-orange-100">
                 <ImageIcon size={32} className="text-[#FF851B]" />
               </div>
-              <h3 className="text-xl font-bold text-[#003366]">Rate Product</h3>
+              <h3 className="text-xl font-bold text-[#003366]">
+                {ratingTarget.item.review ? "Edit Rating" : "Rate Item"}
+              </h3>
               <p className="text-xs text-gray-400 font-medium mt-1">
-                Your feedback helps the Bicol U community!
+                {ratingTarget.item.name}
               </p>
             </div>
 
@@ -329,7 +489,6 @@ export default function Orders() {
                   Tell us more
                 </label>
                 <textarea
-                  required
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
                   placeholder="What did you like or dislike about the product/service?"
@@ -382,7 +541,7 @@ export default function Orders() {
                 type="submit"
                 className="w-full py-4 bg-[#FF851B] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#E67616] transition-all shadow-lg shadow-orange-100"
               >
-                Submit Review
+                {ratingTarget.item.review ? "Update Rating" : "Submit Rating"}
               </button>
             </form>
           </div>
@@ -422,11 +581,22 @@ export default function Orders() {
 
       {/* --- ORDERS LIST --- */}
       <div className="space-y-6 font-sans">
-        {filteredOrders.length === 0 ? (
+        {loadingOrders ? (
+          <div className="text-center py-20 bg-white rounded-[32px] border border-gray-100">
+            <p className="font-bold text-[#003366] text-sm">Loading orders...</p>
+          </div>
+        ) : ordersError ? (
+          <div className="text-center py-20 bg-red-50 rounded-[32px] border border-red-100">
+            <p className="font-bold text-red-600 text-sm">{ordersError}</p>
+          </div>
+        ) : filteredOrders.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[32px] border border-gray-100">
             <Package size={48} className="mx-auto mb-4 text-gray-300" />
             <p className="font-bold text-gray-400 text-sm">
-              No orders found in this category.
+              No orders available yet.
+            </p>
+            <p className="text-xs text-gray-400 mt-2">
+              Your purchases and service bookings will appear here once order history is connected.
             </p>
           </div>
         ) : (
@@ -524,21 +694,30 @@ export default function Orders() {
 
                   {/* FR-25: Confirm Receipt Button (Only if "To receive") */}
                   {order.status === "To receive" && (
-                    <button
-                      onClick={() => setConfirmTarget(order.id)}
-                      className="flex-grow px-6 py-3 bg-green-600 text-white text-xs font-bold rounded-2xl hover:bg-green-700 transition-all shadow-md"
-                    >
-                      Confirm receipt
-                    </button>
+                    isPaid(order) ? (
+                      <button
+                        onClick={() => setConfirmTarget(order.id)}
+                        className="flex-grow px-6 py-3 bg-green-600 text-white text-xs font-bold rounded-2xl hover:bg-green-700 transition-all shadow-md"
+                      >
+                        Confirm receipt
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="flex-grow px-6 py-3 bg-gray-100 text-gray-400 text-xs font-bold rounded-2xl cursor-not-allowed"
+                      >
+                        Awaiting payment confirmation
+                      </button>
+                    )
                   )}
 
                   {/* FR-15: Rate Button (Now launches the review popup) */}
                   {order.status === "Completed" && (
                     <button
-                      onClick={() => setRatingTarget(order)}
+                      onClick={() => openReviewModal(order)}
                       className="flex-grow px-6 py-3 bg-[#FF851B] text-white text-xs font-bold rounded-2xl hover:bg-[#e67616] transition-all"
                     >
-                      Rate product
+                      {order.items[0]?.review ? "Edit rating" : "Rate item"}
                     </button>
                   )}
 
@@ -549,7 +728,8 @@ export default function Orders() {
                     View details
                   </button>
                   <button
-                    onClick={() => showToast("Opening IskoChat...")}
+                    onClick={() => handleOpenChat(order)}
+                    disabled={Boolean(chatLoadingOrder)}
                     className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 transition-all"
                   >
                     <MessageSquare size={18} />

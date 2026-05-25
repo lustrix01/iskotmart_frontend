@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "powershell -ExecutionPolicy Bypass -File scripts/dev-local.ps1",
+    "api": "C:\\xampp\\php\\php.exe -S 127.0.0.1:8000 -t .",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "powershell -ExecutionPolicy Bypass -File scripts/test-e2e.ps1",
+    "test:e2e:headed": "powershell -ExecutionPolicy Bypass -File scripts/test-e2e.ps1 --headed",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "axios": "^1.13.6",
@@ -18,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
